@@ -1,50 +1,47 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { User, Mail, Lock, Eye, EyeOff, UserPlus, MailCheck } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, UserPlus, MailCheck, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Register() {
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
   const [showPw, setShowPw] = useState(false);
   const [verifySent, setVerifySent] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    // Simulate email verification step before activating the account.
-    setVerifySent(true);
-  };
-
-  const confirmVerification = () => {
-    login({ name: form.name, email: form.email });
-    navigate("/dashboard");
+    setError("");
+    setBusy(true);
+    try {
+      // Creates the account on the backend and signs the user in (stores JWT).
+      await register(form.name, form.email, form.password);
+      setVerifySent(true);
+    } catch (err) {
+      setError(err.message || "Registration failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (verifySent) {
     return (
-      <AuthShell title="Verify your email">
+      <AuthShell title="Account created">
         <div className="card p-6 text-center">
           <MailCheck className="mx-auto h-14 w-14 text-brand-600" />
-          <h3 className="mt-4 text-lg font-bold">Check your inbox</h3>
+          <h3 className="mt-4 text-lg font-bold">You're all set!</h3>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            We sent a verification link to{" "}
+            A verification email was sent to{" "}
             <span className="font-semibold text-slate-800 dark:text-slate-200">{form.email}</span>.
-            Click the link to activate your account.
+            You can verify anytime — your account is ready to use now.
           </p>
-          <button onClick={confirmVerification} className="btn-primary mt-6 w-full">
-            I've verified — Continue
+          <button onClick={() => navigate("/dashboard")} className="btn-primary mt-6 w-full">
+            Continue to Dashboard
           </button>
-          <button
-            onClick={() => setVerifySent(false)}
-            className="btn-ghost mt-2 w-full"
-          >
-            Use a different email
-          </button>
-          <p className="mt-4 text-xs text-slate-400">
-            Didn't get it? Check spam or <button className="text-brand-600 hover:underline">resend</button>.
-          </p>
         </div>
       </AuthShell>
     );
@@ -53,6 +50,11 @@ export default function Register() {
   return (
     <AuthShell title="Create your account" subtitle="Join 1,20,000+ students preparing the smart way.">
       <form onSubmit={submit} className="space-y-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+          </div>
+        )}
         <div>
           <label className="mb-1.5 block text-sm font-medium">Full Name</label>
           <div className="relative">
@@ -108,8 +110,9 @@ export default function Register() {
           I agree to the Terms of Service and Privacy Policy.
         </label>
 
-        <button type="submit" className="btn-primary w-full">
-          <UserPlus className="h-4 w-4" /> Create Account
+        <button type="submit" disabled={busy} className="btn-primary w-full">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+          {busy ? "Creating account..." : "Create Account"}
         </button>
       </form>
 

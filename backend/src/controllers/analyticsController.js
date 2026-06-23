@@ -2,6 +2,9 @@ import User from "../models/User.js";
 import TestSeries from "../models/TestSeries.js";
 import Attempt from "../models/Attempt.js";
 
+const initials = (name = "") =>
+  name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+
 // GET /api/admin/analytics  (admin) — platform-wide stats
 export async function platformAnalytics(req, res) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -12,13 +15,8 @@ export async function platformAnalytics(req, res) {
     Attempt.countDocuments(),
   ]);
 
-  const planAgg = await User.aggregate([
-    { $group: { _id: "$plan", count: { $sum: 1 } } },
-  ]);
-
-  const avgScoreAgg = await Attempt.aggregate([
-    { $group: { _id: null, avg: { $avg: "$percentage" } } },
-  ]);
+  const planAgg = await User.aggregate([{ $group: { _id: "$plan", count: { $sum: 1 } } }]);
+  const avgScoreAgg = await Attempt.aggregate([{ $group: { _id: null, avg: { $avg: "$percentage" } } }]);
 
   res.json({
     totalUsers,
@@ -30,36 +28,83 @@ export async function platformAnalytics(req, res) {
   });
 }
 
-// GET /api/me/dashboard — current student's dashboard data
+// GET /api/me/dashboard — everything the student dashboard needs in one call.
 export async function studentDashboard(req, res) {
-  const attempts = await Attempt.find({ user: req.user._id })
-    .sort("-createdAt")
-    .limit(10)
-    .populate("testSeries", "name marks");
+  const user = req.user;
 
-  const avg =
-    attempts.reduce((s, a) => s + (a.percentage || 0), 0) /
-    (attempts.length || 1);
+  const [attempts, enrolled, upcoming] = await Promise.all([
+    Attempt.find({ user: user._id }).sort("-createdAt").limit(10).populate("testSeries", "name marks"),
+    TestSeries.find({ _id: { $in: user.enrolledTests || [] } }).select("name questions marks duration difficulty"),
+    TestSeries.find({ schedule: { $gte: new Date() }, status: { $in: ["scheduled", "published"] } })
+      .sort("schedule")
+      .limit(3)
+      .select("name schedule"),
+  ]);
+
+  const recentScores = attempts.map((a) => ({
+    id: a._id,
+    name: a.testSeries?.name || "Quiz",
+    score: a.score,
+    total: a.testSeries?.marks || a.maxScore || a.total * 4,
+    date: new Date(a.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+    percentile: a.percentage,
+  }));
+
+  const avgPercentile = Math.round(
+    attempts.reduce((s, a) => s + (a.percentage || 0), 0) / (attempts.length || 1)
+  );
+
+  const performanceTrend = [...attempts]
+    .reverse()
+    .map((a) => ({
+      label: new Date(a.createdAt).toLocaleDateString("en-IN", { month: "short", day: "2-digit" }),
+      value: a.percentage,
+    }));
 
   res.json({
-    recentAttempts: attempts,
-    avgPercentile: Math.round(avg),
-    completedTests: attempts.length,
-    streak: req.user.streak,
+    profile: {
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar || initials(user.name),
+      streak: user.streak,
+      plan: user.plan,
+    },
+    stats: {
+      enrolled: enrolled.length,
+      upcoming: upcoming.length,
+      completed: attempts.length,
+      avgPercentile,
+    },
+    enrolledSeries: enrolled,
+    upcomingTests: upcoming.map((t) => ({
+      id: t._id,
+      name: t.name,
+      date: t.schedule ? new Date(t.schedule).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "TBA",
+    })),
+    recentScores,
+    performanceTrend,
   });
 }
 
-// GET /api/leaderboard — top users by total score
+// GET /api/leaderboard — top users by total score (frontend-ready)
 export async function leaderboard(req, res) {
   const top = await Attempt.aggregate([
     { $group: { _id: "$user", totalScore: { $sum: "$score" } } },
     { $sort: { totalScore: -1 } },
-    { $limit: 20 },
-    {
-      $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" },
-    },
+    { $limit: 10 },
+    { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
     { $unwind: "$user" },
     { $project: { name: "$user.name", totalScore: 1 } },
   ]);
-  res.json(top);
+
+  const currentId = req.user?._id?.toString();
+  const rows = top.map((row, i) => ({
+    rank: i + 1,
+    name: row._id.toString() === currentId ? "You" : row.name,
+    avatar: initials(row.name),
+    score: row.totalScore,
+    change: "same",
+    isCurrentUser: row._id.toString() === currentId,
+  }));
+  res.json(rows);
 }

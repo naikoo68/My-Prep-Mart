@@ -1,95 +1,130 @@
-import { useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock } from "lucide-react";
-import { adminTests } from "../../data/admin";
+import { useEffect, useState } from "react";
+import { Plus, Trash2, Eye, EyeOff, X, CalendarClock } from "lucide-react";
+import { testService } from "../../services";
 import Badge from "../../components/ui/Badge";
+import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
-const blank = { name: "", questions: 30, marks: 100, duration: 60, schedule: "", status: "draft" };
+const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
+const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
 
 export default function AdminTests() {
-  const [tests, setTests] = useState(adminTests);
+  const [tests, setTests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(blank);
+  const [saving, setSaving] = useState(false);
 
-  const togglePublish = (id) =>
-    setTests((ts) =>
-      ts.map((t) =>
-        t.id === id
-          ? { ...t, status: t.status === "published" ? "draft" : "published" }
-          : t
-      )
-    );
-
-  const save = (e) => {
-    e.preventDefault();
-    setTests((ts) => [{ id: `at${Date.now()}`, ...form }, ...ts]);
-    setModal(false);
-    setForm(blank);
+  const load = () => {
+    setLoading(true);
+    setError("");
+    testService
+      .adminList()
+      .then(setTests)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   };
 
-  const statusVariant = (s) =>
-    s === "published" ? "brand" : s === "scheduled" ? "accent" : "neutral";
+  useEffect(load, []);
+
+  const togglePublish = async (t) => {
+    try {
+      const res = await testService.togglePublish(t._id);
+      setTests((list) => list.map((x) => (x._id === t._id ? { ...x, status: res.status } : x)));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const remove = async (id) => {
+    try {
+      await testService.remove(id);
+      setTests((list) => list.filter((x) => x._id !== id));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = { ...form };
+      if (!payload.schedule) delete payload.schedule;
+      const created = await testService.create(payload);
+      setTests((list) => [{ ...created, questionCount: 0 }, ...list]);
+      setModal(false);
+      setForm(blank);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusVariant = (s) => (s === "published" ? "brand" : s === "scheduled" ? "accent" : "neutral");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Test Series Management</h1>
-          <p className="text-slate-500 dark:text-slate-400">
-            Create, schedule and publish full-length & subject tests.
-          </p>
+          <p className="text-slate-500 dark:text-slate-400">Create, schedule and publish tests.</p>
         </div>
         <button onClick={() => setModal(true)} className="btn-primary">
           <Plus className="h-4 w-4" /> Create Test
         </button>
       </div>
 
-      <div className="card overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-800/60">
-            <tr>
-              <th className="px-5 py-3 font-semibold">Test Name</th>
-              <th className="px-5 py-3 font-semibold">Questions</th>
-              <th className="px-5 py-3 font-semibold">Marks</th>
-              <th className="px-5 py-3 font-semibold">Duration</th>
-              <th className="px-5 py-3 font-semibold">Schedule</th>
-              <th className="px-5 py-3 font-semibold">Status</th>
-              <th className="px-5 py-3 text-right font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {tests.map((t) => (
-              <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <td className="px-5 py-3 font-medium">{t.name}</td>
-                <td className="px-5 py-3">{t.questions}</td>
-                <td className="px-5 py-3">{t.marks}</td>
-                <td className="px-5 py-3">{t.duration} min</td>
-                <td className="px-5 py-3">{t.schedule}</td>
-                <td className="px-5 py-3"><Badge variant={statusVariant(t.status)}>{t.status}</Badge></td>
-                <td className="px-5 py-3">
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => togglePublish(t.id)}
-                      title={t.status === "published" ? "Unpublish" : "Publish"}
-                      className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      {t.status === "published" ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                    <button className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setTests((ts) => ts.filter((x) => x.id !== t.id))}
-                      className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </td>
+      {loading ? (
+        <Loading label="Loading tests..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : tests.length === 0 ? (
+        <EmptyState message="No test series yet. Create your first test." />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-800/60">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Test Name</th>
+                <th className="px-5 py-3 font-semibold">Category</th>
+                <th className="px-5 py-3 font-semibold">Questions</th>
+                <th className="px-5 py-3 font-semibold">Marks</th>
+                <th className="px-5 py-3 font-semibold">Duration</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 text-right font-semibold">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {tests.map((t) => (
+                <tr key={t._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                  <td className="px-5 py-3 font-medium">{t.name}</td>
+                  <td className="px-5 py-3">{t.category}</td>
+                  <td className="px-5 py-3">{t.questionCount}</td>
+                  <td className="px-5 py-3">{t.marks}</td>
+                  <td className="px-5 py-3">{t.duration} min</td>
+                  <td className="px-5 py-3"><Badge variant={statusVariant(t.status)}>{t.status}</Badge></td>
+                  <td className="px-5 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => togglePublish(t)}
+                        title={t.status === "published" ? "Unpublish" : "Publish"}
+                        className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                        {t.status === "published" ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                      <button onClick={() => remove(t._id)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {modal && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
@@ -103,11 +138,21 @@ export default function AdminTests() {
                 <label className="mb-1.5 block text-sm font-medium">Test Name</label>
                 <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder="e.g. JEE Main Full Mock 2" />
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium">Questions</label>
-                  <input type="number" value={form.questions} onChange={(e) => setForm({ ...form, questions: +e.target.value })} className="input" />
+                  <label className="mb-1.5 block text-sm font-medium">Category</label>
+                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input">
+                    {categories.map((c) => <option key={c}>{c}</option>)}
+                  </select>
                 </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Difficulty</label>
+                  <select value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: e.target.value })} className="input">
+                    <option>Easy</option><option>Medium</option><option>Hard</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">Marks</label>
                   <input type="number" value={form.marks} onChange={(e) => setForm({ ...form, marks: +e.target.value })} className="input" />
@@ -134,9 +179,12 @@ export default function AdminTests() {
                   </select>
                 </div>
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Tip: add questions to this test from the Content section after creating it.
+              </p>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setModal(false)} className="btn-outline">Cancel</button>
-                <button type="submit" className="btn-primary">Create</button>
+                <button type="submit" disabled={saving} className="btn-primary">{saving ? "Creating..." : "Create"}</button>
               </div>
             </form>
           </div>

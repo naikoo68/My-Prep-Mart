@@ -1,14 +1,34 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { ChevronLeft, Play, HelpCircle, FileQuestion } from "lucide-react";
-import { getSessions, getSubject } from "../../data/subjects";
+import { contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
-import ProgressBar from "../../components/ui/ProgressBar";
+import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
 export default function SubjectSessions() {
   const { subjectId } = useParams();
-  const subject = getSubject(subjectId);
-  const sessions = getSessions(subjectId);
+  const [subject, setSubject] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = () => {
+    setLoading(true);
+    setError("");
+    Promise.all([contentService.subjects(), contentService.sessions(subjectId)])
+      .then(([subjects, sess]) => {
+        setSubject(subjects.find((s) => s._id === subjectId) || null);
+        setSessions(sess);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [subjectId]);
+
+  if (loading) return <div className="container-page"><Loading label="Loading sessions..." /></div>;
+  if (error) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;
 
   if (!subject) {
     return (
@@ -45,38 +65,34 @@ export default function SubjectSessions() {
       </div>
 
       <h2 className="mt-10 text-xl font-bold">Sessions & Chapters</h2>
-      <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {sessions.map((s, i) => (
-          <div
-            key={s.id}
-            style={{ animationDelay: `${i * 50}ms` }}
-            className="card-hover animate-fade-in-up flex flex-col p-6 opacity-0"
-          >
-            <div className="flex items-start justify-between">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-100 text-sm font-bold text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
-                {s.index}
-              </span>
-              <Badge variant={s.difficulty}>{s.difficulty}</Badge>
-            </div>
-            <h3 className="mt-3 text-lg font-bold">{s.title}</h3>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-              <HelpCircle className="h-4 w-4" /> {s.questions} questions
-            </p>
-
-            <div className="mt-4">
-              <div className="mb-1.5 flex justify-between text-xs">
-                <span className="text-slate-500 dark:text-slate-400">Progress</span>
-                <span className="font-semibold">{s.progress}%</span>
+      {sessions.length === 0 ? (
+        <EmptyState message="No sessions in this subject yet." />
+      ) : (
+        <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {sessions.map((s, i) => (
+            <div
+              key={s._id}
+              style={{ animationDelay: `${i * 50}ms` }}
+              className="card-hover animate-fade-in-up flex flex-col p-6 opacity-0"
+            >
+              <div className="flex items-start justify-between">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-100 text-sm font-bold text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+                  {s.index}
+                </span>
+                <Badge variant={s.difficulty}>{s.difficulty}</Badge>
               </div>
-              <ProgressBar value={s.progress} />
-            </div>
+              <h3 className="mt-3 text-lg font-bold">{s.title}</h3>
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+                <HelpCircle className="h-4 w-4" /> {s.questions} questions
+              </p>
 
-            <Link to={`/quiz/${subjectId}/${s.id}`} className="btn-primary mt-5 w-full">
-              <Play className="h-4 w-4" /> {s.progress > 0 ? "Continue" : "Start"} Quiz
-            </Link>
-          </div>
-        ))}
-      </div>
+              <Link to={`/quiz/${subjectId}/${s._id}`} className="btn-primary mt-auto w-full">
+                <Play className="h-4 w-4" /> Start Quiz
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

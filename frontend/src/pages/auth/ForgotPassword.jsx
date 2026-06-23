@@ -1,15 +1,25 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Mail, Send, MailCheck, ArrowLeft } from "lucide-react";
+import { Mail, Send, MailCheck, ArrowLeft, Loader2 } from "lucide-react";
 import AuthShell from "../../components/auth/AuthShell";
+import { authService } from "../../services";
 
 export default function ForgotPassword() {
   const [sent, setSent] = useState(false);
   const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    setSent(true);
+    setBusy(true);
+    try {
+      await authService.forgotPassword(email);
+    } catch {
+      /* The API always responds success-style; ignore errors to avoid leaking accounts. */
+    } finally {
+      setBusy(false);
+      setSent(true);
+    }
   };
 
   return (
@@ -47,8 +57,9 @@ export default function ForgotPassword() {
                 />
               </div>
             </div>
-            <button type="submit" className="btn-primary w-full">
-              <Send className="h-4 w-4" /> Send Reset Link
+            <button type="submit" disabled={busy} className="btn-primary w-full">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {busy ? "Sending..." : "Send Reset Link"}
             </button>
           </form>
           <Link

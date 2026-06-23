@@ -7,10 +7,16 @@ const slugify = (s) =>
 
 /* ---------------- Subjects ---------------- */
 
-// GET /api/subjects
+// GET /api/subjects  — includes a session count for each subject
 export async function listSubjects(req, res) {
-  const subjects = await Subject.find({ isActive: true }).sort("name");
-  res.json(subjects);
+  const subjects = await Subject.find({ isActive: true }).sort("name").lean();
+  const counts = await Session.aggregate([
+    { $group: { _id: "$subject", count: { $sum: 1 } } },
+  ]);
+  const countMap = Object.fromEntries(counts.map((c) => [String(c._id), c.count]));
+  res.json(
+    subjects.map((s) => ({ ...s, chapters: countMap[String(s._id)] || 0 }))
+  );
 }
 
 // POST /api/subjects  (admin)
@@ -37,10 +43,17 @@ export async function deleteSubject(req, res) {
 
 /* ---------------- Sessions ---------------- */
 
-// GET /api/subjects/:subjectId/sessions
+// GET /api/subjects/:subjectId/sessions — includes a question count per session
 export async function listSessions(req, res) {
-  const sessions = await Session.find({ subject: req.params.subjectId }).sort("index");
-  res.json(sessions);
+  const sessions = await Session.find({ subject: req.params.subjectId }).sort("index").lean();
+  const counts = await Question.aggregate([
+    { $match: { session: { $in: sessions.map((s) => s._id) } } },
+    { $group: { _id: "$session", count: { $sum: 1 } } },
+  ]);
+  const countMap = Object.fromEntries(counts.map((c) => [String(c._id), c.count]));
+  res.json(
+    sessions.map((s) => ({ ...s, questions: countMap[String(s._id)] || 0 }))
+  );
 }
 
 // POST /api/sessions  (admin)
@@ -63,15 +76,33 @@ export async function deleteSession(req, res) {
 
 /* ---------------- Questions ---------------- */
 
-// GET /api/sessions/:sessionId/questions  (correct answer hidden for students)
+// GET /api/sessions/:sessionId/questions
+// Quizzes are practice with instant feedback, so the correct answer and
+// explanation are returned. (Graded tests hide the answer — see testController.)
 export async function listQuestions(req, res) {
   const isAdmin = req.user?.role === "admin";
-  const select = isAdmin ? "" : "-correct";
   const questions = await Question.find({
     session: req.params.sessionId,
     ...(isAdmin ? {} : { status: "published" }),
-  }).select(select);
+  });
   res.json(questions);
+}
+
+// GET /api/questions  (admin) — list all questions with subject/session names
+export async function listAllQuestions(req, res) {
+  const questions = await Question.find()
+    .sort("-createdAt")
+    .limit(500)
+    .populate("subject", "name")
+    .populate("session", "title")
+    .lean();
+  res.json(
+    questions.map((q) => ({
+      ...q,
+      subject: q.subject?.name || "—",
+      session: q.session?.title || "—",
+    }))
+  );
 }
 
 // POST /api/questions  (admin)

@@ -9,7 +9,13 @@
     "dev": "node --watch src/server.js",
     "seed": "node src/utils/seed.js"
   },
-  "keywords": ["education", "quiz", "test-series", "express", "mongodb"],
+  "keywords": [
+    "education",
+    "quiz",
+    "test-series",
+    "express",
+    "mongodb"
+  ],
   "license": "MIT",
   "dependencies": {
     "bcryptjs": "^2.4.3",

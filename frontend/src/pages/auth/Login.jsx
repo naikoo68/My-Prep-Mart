@@ -1,24 +1,40 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff, LogIn } from "lucide-react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Mail, Lock, Eye, EyeOff, LogIn, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showPw, setShowPw] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    login({ email: form.email });
-    navigate("/dashboard");
+    setError("");
+    setBusy(true);
+    try {
+      await login(form.email, form.password);
+      navigate(location.state?.from || "/dashboard", { replace: true });
+    } catch (err) {
+      setError(err.message || "Login failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <AuthShell title="Welcome back" subtitle="Log in to access your dashboard and test series.">
       <form onSubmit={submit} className="space-y-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+          </div>
+        )}
         <div>
           <label className="mb-1.5 block text-sm font-medium">Email</label>
           <div className="relative">
@@ -65,10 +81,15 @@ export default function Login() {
           Remember me
         </label>
 
-        <button type="submit" className="btn-primary w-full">
-          <LogIn className="h-4 w-4" /> Log In
+        <button type="submit" disabled={busy} className="btn-primary w-full">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+          {busy ? "Logging in..." : "Log In"}
         </button>
       </form>
+
+      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+        Demo: <b>student@myprepmart.com</b> / <b>student123</b>
+      </p>
 
       <div className="my-5 flex items-center gap-3 text-xs text-slate-400">
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" /> OR
@@ -85,7 +106,7 @@ export default function Login() {
       </p>
       <p className="mt-3 text-center text-xs text-slate-400">
         Admin?{" "}
-        <Link to="/admin" className="hover:underline">Go to admin panel</Link>
+        <Link to="/admin/login" className="hover:underline">Go to admin panel</Link>
       </p>
     </AuthShell>
   );

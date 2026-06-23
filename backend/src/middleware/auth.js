@@ -25,7 +25,7 @@ export async function protect(req, res, next) {
   }
 }
 
-// Restricts a route to specific roles, e.g. admin(...roles).
+// Restricts a route to specific roles, e.g. authorize("admin").
 export function authorize(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -33,4 +33,19 @@ export function authorize(...roles) {
     }
     next();
   };
+}
+
+// Attaches req.user if a valid token is present, but never blocks the request.
+export async function optionalAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (header && header.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(header.split(" ")[1], process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id);
+      if (user && user.status !== "blocked") req.user = user;
+    } catch {
+      /* ignore invalid token for optional auth */
+    }
+  }
+  next();
 }

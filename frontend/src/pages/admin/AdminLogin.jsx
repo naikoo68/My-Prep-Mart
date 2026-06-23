@@ -1,18 +1,33 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ShieldCheck, Mail, Lock, LogIn, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, Mail, Lock, LogIn, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
 export default function AdminLogin() {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
   const [showPw, setShowPw] = useState(false);
   const [form, setForm] = useState({ email: "admin@myprepmart.com", password: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    login({ email: form.email, name: "Admin", role: "admin" });
-    navigate("/admin");
+    setError("");
+    setBusy(true);
+    try {
+      const profile = await login(form.email, form.password);
+      if (profile?.role !== "admin") {
+        logout();
+        setError("This account does not have admin access.");
+        return;
+      }
+      navigate("/admin");
+    } catch (err) {
+      setError(err.message || "Login failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -29,6 +44,11 @@ export default function AdminLogin() {
         </div>
 
         <form onSubmit={submit} className="mt-8 space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-sm font-medium">Admin Email</label>
             <div className="relative">
@@ -51,7 +71,7 @@ export default function AdminLogin() {
                 type={showPw ? "text" : "password"}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="Enter any password (demo)"
+                placeholder="Enter admin password"
                 className="input px-9"
               />
               <button
@@ -63,12 +83,17 @@ export default function AdminLogin() {
               </button>
             </div>
           </div>
-          <button type="submit" className="btn-primary w-full">
-            <LogIn className="h-4 w-4" /> Access Admin Panel
+          <button type="submit" disabled={busy} className="btn-primary w-full">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+            {busy ? "Verifying..." : "Access Admin Panel"}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-500">
+        <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+          Demo: <b>admin@myprepmart.com</b> / <b>admin123</b>
+        </p>
+
+        <p className="mt-4 text-center text-sm text-slate-500">
           <Link to="/" className="hover:underline">← Back to site</Link>
         </p>
       </div>

@@ -2,13 +2,27 @@ import TestSeries from "../models/TestSeries.js";
 import Question from "../models/Question.js";
 import Attempt from "../models/Attempt.js";
 
-// GET /api/tests
+// GET /api/tests  — list published tests with question counts + enrollment
 export async function listTests(req, res) {
   const { category } = req.query;
   const filter = { status: "published" };
   if (category && category !== "All") filter.category = category;
-  const tests = await TestSeries.find(filter).select("-questions").sort("-createdAt");
-  res.json(tests);
+  const tests = await TestSeries.find(filter).sort("-createdAt").lean();
+  const enrolled = new Set((req.user?.enrolledTests || []).map(String));
+  res.json(
+    tests.map((t) => ({
+      ...t,
+      questionCount: t.questions?.length || 0,
+      enrolled: enrolled.has(String(t._id)),
+      questions: undefined,
+    }))
+  );
+}
+
+// GET /api/tests/admin/all  (admin) — every test regardless of status
+export async function listAllTests(req, res) {
+  const tests = await TestSeries.find().sort("-createdAt").lean();
+  res.json(tests.map((t) => ({ ...t, questionCount: t.questions?.length || 0, questions: undefined })));
 }
 
 // GET /api/tests/:id  (questions without correct answers for taking the test)

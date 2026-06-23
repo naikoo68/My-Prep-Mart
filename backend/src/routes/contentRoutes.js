@@ -9,6 +9,7 @@ import {
   updateSession,
   deleteSession,
   listQuestions,
+  listAllQuestions,
   createQuestion,
   bulkCreateQuestions,
   updateQuestion,
@@ -32,6 +33,7 @@ router.put("/sessions/:id", ...admin, updateSession);
 router.delete("/sessions/:id", ...admin, deleteSession);
 
 // Questions
+router.get("/questions", ...admin, listAllQuestions);
 router.get("/sessions/:sessionId/questions", listQuestions);
 router.post("/questions", ...admin, createQuestion);
 router.post("/questions/bulk", ...admin, bulkCreateQuestions);

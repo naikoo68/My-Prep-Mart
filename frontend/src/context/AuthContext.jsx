@@ -1,38 +1,78 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { authService } from "../services";
+import { setToken, clearToken, getToken } from "../lib/api";
 
 const AuthContext = createContext();
 
-// Demo auth layer. In production these methods call the backend
-// (POST /api/auth/login, /register, etc.) and store a JWT.
+const initials = (s = "") =>
+  s.trim().split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+
+// Real auth backed by the API. The JWT is stored via the api layer and the
+// user profile is cached in localStorage for instant first paint, then
+// revalidated against /auth/me on load.
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    if (typeof window === "undefined") return null;
     const raw = localStorage.getItem("mpm-user");
     return raw ? JSON.parse(raw) : null;
   });
+  const [loading, setLoading] = useState(!!getToken());
 
+  const persist = useCallback((u) => {
+    if (u) {
+      const profile = { ...u, avatar: u.avatar || initials(u.name || u.email) };
+      localStorage.setItem("mpm-user", JSON.stringify(profile));
+      setUser(profile);
+      return profile;
+    }
+    localStorage.removeItem("mpm-user");
+    setUser(null);
+    return null;
+  }, []);
+
+  // Revalidate the session on first load if a token exists.
   useEffect(() => {
-    if (user) localStorage.setItem("mpm-user", JSON.stringify(user));
-    else localStorage.removeItem("mpm-user");
-  }, [user]);
-
-  const login = ({ email, name, role = "student" }) => {
-    const profile = {
-      name: name || email.split("@")[0],
-      email,
-      role,
-      avatar: (name || email).slice(0, 2).toUpperCase(),
-      joined: "2026",
-      streak: 7,
+    if (!getToken()) return;
+    let active = true;
+    authService
+      .me()
+      .then((res) => active && persist(res.user))
+      .catch(() => {
+        clearToken();
+        active && persist(null);
+      })
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
     };
-    setUser(profile);
-    return profile;
+  }, [persist]);
+
+  const login = async (email, password) => {
+    const { user: u, token } = await authService.login(email, password);
+    setToken(token);
+    return persist(u);
   };
 
-  const logout = () => setUser(null);
+  const register = async (name, email, password) => {
+    const { user: u, token } = await authService.register(name, email, password);
+    if (token) setToken(token);
+    return persist(u);
+  };
+
+  const loginWithGoogle = async (profile) => {
+    const { user: u, token } = await authService.google(profile);
+    setToken(token);
+    return persist(u);
+  };
+
+  const logout = () => {
+    clearToken();
+    persist(null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, loginWithGoogle, logout, isAuthenticated: !!user }}
+    >
       {children}
     </AuthContext.Provider>
   );

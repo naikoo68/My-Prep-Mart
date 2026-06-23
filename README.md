@@ -1,13 +1,38 @@
 # My Prep Mart
 
-A modern, responsive educational platform for **quizzes and test-series preparation**.
+A modern, responsive, **full-stack** educational platform for **quizzes and test-series preparation**.
 Blue/white/orange theme, dark + light mode, smooth animations, charts, dashboards and a full admin panel.
 
 ```
 .
-├── frontend/   # React 19 + Vite + Tailwind CSS (UI for all modules)
-└── backend/    # Node.js + Express + MongoDB REST API (JWT auth, Cloudinary)
+├── frontend/      # React + Vite + Tailwind CSS (UI for all modules)
+├── backend/       # Node.js + Express + MongoDB REST API (JWT auth, Cloudinary)
+└── DEPLOYMENT.md  # Step-by-step guide to publish the full app online
 ```
+
+> **Real mode is wired up:** the frontend talks to the backend API for real login/registration
+> (JWT), database-backed subjects, sessions, questions, quiz attempts, test grading, dashboard
+> analytics, leaderboard, and the admin panel. Set `VITE_API_URL` in the frontend and run the
+> backend with a MongoDB connection. See **[DEPLOYMENT.md](DEPLOYMENT.md)** to go live.
+
+## 🚀 Run locally (real mode)
+
+```bash
+# 1) Backend  (needs a MongoDB connection string)
+cd backend
+npm install
+cp .env.example .env          # set MONGO_URI and JWT_SECRET
+npm run seed                  # sample data + admin/student logins
+npm run dev                   # http://localhost:5000
+
+# 2) Frontend  (in a second terminal)
+cd frontend
+npm install
+cp .env.example .env          # VITE_API_URL=http://localhost:5000/api
+npm run dev                   # http://localhost:5173
+```
+
+Seeded logins: **admin@myprepmart.com / admin123** · **student@myprepmart.com / student123**
 
 ## ✨ Features
 
