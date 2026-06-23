@@ -11,6 +11,7 @@ import userRoutes from "./routes/userRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import quizRoutes from "./routes/quizRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import setupRoutes from "./routes/setupRoutes.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 
 const app = express();
@@ -46,6 +47,7 @@ app.use("/api/quiz", quizRoutes); // /quiz/:sessionId/submit
 app.use("/api/users", userRoutes);
 app.use("/api", analyticsRoutes); // /admin/analytics, /me/dashboard, /leaderboard
 app.use("/api/upload", uploadRoutes);
+app.use("/api/setup", setupRoutes); // one-time bootstrap (auto-disabled after first admin)
 
 // Errors
 app.use(notFound);
