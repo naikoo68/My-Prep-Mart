@@ -322,22 +322,25 @@ function FormModal({ modal, saving, onClose, onSave }) {
               </Field>
 
               {form.type === "matching" ? (
-                <Field label="Matching pairs (left ↔ right)">
+                <Field label="Column A ↔ Column B (enter each item with its correct match)">
+                  <p className="mb-2 text-xs text-slate-400">
+                    In the quiz, Column A is numbered 1, 2, 3…, Column B is shown <b>shuffled</b> as Roman numerals (I, II, III…),
+                    and students pick the correct sequence from four answer choices (a–d). Equations render with $…$.
+                  </p>
                   <div className="space-y-2">
                     {form.pairs.map((p, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <span className="w-5 flex-shrink-0 text-sm font-bold text-brand-600">{String.fromCharCode(65 + i)}</span>
-                        <input className="input" value={p.left} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, left: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Left item ${String.fromCharCode(65 + i)}`} />
-                        <span className="text-slate-400">↔</span>
-                        <span className="w-4 flex-shrink-0 text-sm font-bold text-accent-600">{i + 1}</span>
-                        <input className="input" value={p.right} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, right: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Option ${i + 1}`} />
-                        <button type="button" onClick={() => setForm({ ...form, pairs: form.pairs.filter((_, xi) => xi !== i) })} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30" disabled={form.pairs.length <= 2}>
+                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{i + 1}</span>
+                        <input className="input" value={p.left} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, left: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Column A item ${i + 1}`} />
+                        <span className="flex-shrink-0 text-slate-400">→</span>
+                        <input className="input" value={p.right} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, right: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Correct match for ${i + 1}`} />
+                        <button type="button" onClick={() => setForm({ ...form, pairs: form.pairs.filter((_, xi) => xi !== i) })} className="flex-shrink-0 rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/30" disabled={form.pairs.length <= 2}>
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     ))}
                     <button type="button" onClick={() => setForm({ ...form, pairs: [...form.pairs, { left: "", right: "" }] })} className="btn-outline py-2">
-                      <Plus className="h-4 w-4" /> Add pair
+                      <Plus className="h-4 w-4" /> Add row
                     </button>
                   </div>
                 </Field>
