@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Mail, Phone, MapPin, Send, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Mail, Phone, MapPin, Send, CheckCircle2, Loader2, AlertCircle, LogIn, UserPlus, Lock } from "lucide-react";
 import { useSettings } from "../context/SettingsContext";
+import { useAuth } from "../context/AuthContext";
 import { messageService } from "../services";
 
 const ICONS = { email: Mail, phone: Phone, address: MapPin };
@@ -8,10 +10,11 @@ const LABELS = { email: "Email", phone: "Phone", address: "Address" };
 
 export default function Contact() {
   const { settings } = useSettings();
+  const { user } = useAuth();
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
+  const [form, setForm] = useState({ subject: "", message: "" });
 
   const info = (settings.contacts || []).map((c) => ({
     icon: ICONS[c.type] || Mail,
@@ -61,12 +64,31 @@ export default function Contact() {
         </div>
 
         <div className="card p-6 lg:col-span-2">
-          {sent ? (
+          {!user ? (
+            /* Must have an account to contact */
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+                <Lock className="h-7 w-7" />
+              </span>
+              <h3 className="mt-4 text-xl font-bold">Please sign in to contact us</h3>
+              <p className="mt-2 max-w-md text-slate-600 dark:text-slate-400">
+                To send us a message you need an account. It's free and takes less than a minute — this helps us respond to you directly.
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <Link to="/register" className="btn-primary">
+                  <UserPlus className="h-4 w-4" /> Create an account
+                </Link>
+                <Link to="/login" className="btn-outline">
+                  <LogIn className="h-4 w-4" /> Log in
+                </Link>
+              </div>
+            </div>
+          ) : sent ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <CheckCircle2 className="h-14 w-14 text-emerald-500" />
               <h3 className="mt-4 text-xl font-bold">Message sent!</h3>
               <p className="mt-2 text-slate-600 dark:text-slate-400">
-                Thanks for reaching out. Our team will reply within 24 hours.
+                Thanks for reaching out. We'll reply to <b>{user.email}</b> soon.
               </p>
             </div>
           ) : (
@@ -76,15 +98,8 @@ export default function Contact() {
                   <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
                 </div>
               )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Full Name</label>
-                  <input required className="input" placeholder="Your name" value={form.name} onChange={(e) => set("name", e.target.value)} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Email</label>
-                  <input required type="email" className="input" placeholder="you@example.com" value={form.email} onChange={(e) => set("email", e.target.value)} />
-                </div>
+              <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                Sending as <b>{user.name}</b> ({user.email})
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Subject</label>

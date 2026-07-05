@@ -1,13 +1,42 @@
 import Message from "../models/Message.js";
+import { sendMail } from "../config/mailer.js";
 
-// POST /api/messages  (public) — visitor submits the contact form
+// POST /api/messages  (auth required) — a logged-in user submits the contact form.
+// The sender's identity comes from their account; a notification email is sent
+// to the admin (best-effort — the message is always saved regardless).
 export async function createMessage(req, res) {
-  const { name, email, subject, message } = req.body;
+  const { subject, message } = req.body;
+  const name = req.user?.name || req.body.name;
+  const email = req.user?.email || req.body.email;
   if (!name || !email || !message) {
-    return res.status(400).json({ message: "Name, email and message are required" });
+    return res.status(400).json({ message: "A message is required" });
   }
-  await Message.create({ name, email, subject, message });
-  res.status(201).json({ message: "Thanks! Your message has been received." });
+
+  const doc = await Message.create({
+    user: req.user?._id,
+    name,
+    email,
+    subject,
+    message,
+  });
+
+  // Notify the admin by email (fire-and-forget).
+  const to = process.env.NOTIFY_EMAIL || process.env.SMTP_USER;
+  if (to) {
+    sendMail({
+      to,
+      replyTo: email,
+      subject: `New contact message: ${subject || "(no subject)"}`,
+      text: `From: ${name} <${email}>\nSubject: ${subject || "(none)"}\n\n${message}`,
+      html: `<h3>New contact message</h3>
+             <p><b>From:</b> ${name} &lt;${email}&gt;</p>
+             <p><b>Subject:</b> ${subject || "(none)"}</p>
+             <p><b>Message:</b></p>
+             <p style="white-space:pre-wrap">${message}</p>`,
+    }).catch((e) => console.error("Email notification failed:", e.message));
+  }
+
+  res.status(201).json({ id: doc._id, message: "Thanks! Your message has been received." });
 }
 
 // GET /api/messages  (admin) — inbox, newest first

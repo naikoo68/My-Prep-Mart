@@ -71,7 +71,7 @@ export const settingsService = {
 
 // ---- Contact messages ----
 export const messageService = {
-  send: (data) => api.post("/messages", data, { auth: false }),
+  send: (data) => api.post("/messages", data), // requires login (sends JWT)
   list: () => api.get("/messages"),
   unreadCount: () => api.get("/messages/unread-count"),
   toggleRead: (id, read) => api.patch(`/messages/${id}/read`, { read }),

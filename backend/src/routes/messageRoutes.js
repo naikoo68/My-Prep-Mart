@@ -11,7 +11,7 @@ import { protect, authorize } from "../middleware/auth.js";
 const router = Router();
 const admin = [protect, authorize("admin")];
 
-router.post("/", createMessage); // public: contact form
+router.post("/", protect, createMessage); // must be logged in to contact
 router.get("/", ...admin, listMessages);
 router.get("/unread-count", ...admin, unreadCount);
 router.patch("/:id/read", ...admin, toggleRead);
