@@ -62,6 +62,14 @@ export function Whatsapp({ className }) {
   );
 }
 
+export function Telegram({ className }) {
+  return (
+    <Svg className={className}>
+      <path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.77 8.66-7.83c.38-.34-.08-.53-.59-.19L6.72 13.2l-4.62-1.45c-1-.31-1.02-1 .21-1.48l18.06-6.96c.84-.31 1.57.2 1.3 1z" />
+    </Svg>
+  );
+}
+
 export function Website({ className }) {
   return (
     <Svg className={className}>
@@ -78,8 +86,9 @@ export const SOCIAL_ICONS = {
   linkedin: Linkedin,
   youtube: Youtube,
   whatsapp: Whatsapp,
+  telegram: Telegram,
   website: Website,
   other: Website,
 };
 
-export const SOCIAL_PLATFORMS = ["facebook", "twitter", "instagram", "linkedin", "youtube", "whatsapp", "website", "other"];
+export const SOCIAL_PLATFORMS = ["facebook", "twitter", "instagram", "linkedin", "youtube", "whatsapp", "telegram", "website", "other"];
