@@ -6,6 +6,11 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// True only when all three Cloudinary credentials are present.
+export function isCloudinaryConfigured() {
+  return !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+}
+
 // Uploads a base64 / data URI or remote URL to Cloudinary.
 // resource_type "auto" lets Cloudinary accept images AND raw files (PDF, docs).
 export async function uploadToCloudinary(fileStr, folder = "myprepmart") {

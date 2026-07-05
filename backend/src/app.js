@@ -18,6 +18,7 @@ import examRoutes from "./routes/examRoutes.js";
 import studyRoutes from "./routes/studyRoutes.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import { isMailConfigured, verifyMail } from "./config/mailer.js";
+import { isCloudinaryConfigured } from "./config/cloudinary.js";
 
 const app = express();
 
@@ -37,7 +38,12 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50 });
 // Health check — also reports whether email (SMTP) is configured so you can
 // verify your Render settings by visiting /api/health in a browser.
 app.get("/api/health", (req, res) =>
-  res.json({ status: "ok", service: "my-prep-mart-api", mailConfigured: isMailConfigured() })
+  res.json({
+    status: "ok",
+    service: "my-prep-mart-api",
+    mailConfigured: isMailConfigured(),
+    uploadConfigured: isCloudinaryConfigured(),
+  })
 );
 
 // Diagnostic: tests the SMTP login (does NOT send an email) and returns the
