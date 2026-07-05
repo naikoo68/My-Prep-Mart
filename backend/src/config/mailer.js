@@ -17,8 +17,12 @@ function getTransporter() {
     port: Number(SMTP_PORT) || 587,
     secure: Number(SMTP_PORT) === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
-    // Fail fast instead of hanging when the SMTP port is blocked/unreachable
-    // (common on some cloud hosts), so the caller can fall back gracefully.
+    // Force IPv4. Some hosts (e.g. Render) have no outbound IPv6, and Node may
+    // otherwise resolve smtp.gmail.com to an IPv6 address, causing
+    // "connect ENETUNREACH … :587" errors.
+    family: 4,
+    // Fail fast instead of hanging when the SMTP port is blocked/unreachable,
+    // so the caller can fall back gracefully.
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
