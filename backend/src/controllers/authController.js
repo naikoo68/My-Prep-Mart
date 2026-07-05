@@ -59,12 +59,14 @@ export async function register(req, res) {
   const otp = await issueOtp(user);
   const emailSent = await sendOtpEmail(email, name, otp).catch(() => false);
 
+  // Only reveal the code on-screen in non-production (local dev) when email
+  // couldn't be sent. In production the student MUST verify via the emailed OTP.
+  const exposeDevOtp = !emailSent && process.env.NODE_ENV !== "production";
   res.status(201).json({
     needsVerification: true,
     email,
     emailSent,
-    // Fallback so signup isn't blocked before SMTP is configured (dev/testing only).
-    ...(emailSent ? {} : { devOtp: otp }),
+    ...(exposeDevOtp ? { devOtp: otp } : {}),
   });
 }
 
@@ -100,7 +102,8 @@ export async function resendOtp(req, res) {
 
   const otp = await issueOtp(user);
   const emailSent = await sendOtpEmail(email, user.name, otp).catch(() => false);
-  res.json({ emailSent, ...(emailSent ? {} : { devOtp: otp }) });
+  const exposeDevOtp = !emailSent && process.env.NODE_ENV !== "production";
+  res.json({ emailSent, ...(exposeDevOtp ? { devOtp: otp } : {}) });
 }
 
 // POST /api/auth/login
