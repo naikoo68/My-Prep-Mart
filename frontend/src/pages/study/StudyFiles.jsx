@@ -12,6 +12,23 @@ const safeUrl = (u) => {
   return /^https?:\/\//i.test(s) || s.startsWith("data:") ? s : `https://${s}`;
 };
 
+// A URL that forces a download rather than opening in the browser. The HTML
+// `download` attribute is ignored across origins, so we ask the file's host to
+// serve it as an attachment instead.
+const downloadUrl = (u) => {
+  const s = safeUrl(u);
+  // Cloudinary: fl_attachment makes it download.
+  if (s.includes("res.cloudinary.com") && s.includes("/upload/")) {
+    return s.replace("/upload/", "/upload/fl_attachment/");
+  }
+  // Google Drive: convert a share/view link to a direct-download link.
+  if (s.includes("drive.google.com")) {
+    const m = s.match(/\/file\/d\/([^/]+)/) || s.match(/[?&]id=([^&]+)/);
+    if (m) return `https://drive.google.com/uc?export=download&id=${m[1]}`;
+  }
+  return s;
+};
+
 export default function StudyFiles() {
   const { institutionId, subjectId, classId } = useParams();
   const [cls, setCls] = useState(null);
@@ -61,7 +78,7 @@ export default function StudyFiles() {
               </div>
               <div className="flex flex-shrink-0 gap-2">
                 <a href={safeUrl(f.url)} target="_blank" rel="noreferrer" className="btn-outline py-2"><ExternalLink className="h-4 w-4" /> View</a>
-                <a href={safeUrl(f.url)} download target="_blank" rel="noreferrer" className="btn-primary py-2"><Download className="h-4 w-4" /> Download</a>
+                <a href={downloadUrl(f.url)} download target="_blank" rel="noreferrer" className="btn-primary py-2"><Download className="h-4 w-4" /> Download</a>
               </div>
             </div>
           ))}
