@@ -46,6 +46,14 @@ function stableShuffle(arr, seed) {
     .map((x) => x.v);
 }
 
+const letterOf = (i) => String.fromCharCode(65 + i); // 0→A, 1→B...
+function toRoman(num) {
+  const map = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]];
+  let r = "";
+  for (const [s, v] of map) while (num >= v) { r += s; num -= v; }
+  return r;
+}
+
 const TIMER_OPTIONS = [
   { label: "No timer", sub: "Practice at your own pace", value: "off" },
   { label: "10 seconds", sub: "per question", value: 10 },
@@ -369,28 +377,37 @@ export default function QuizPlay() {
           </h2>
 
           {isMatching ? (
-            <div className="mt-5 space-y-3">
+            <div className="mt-5 space-y-4">
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Match each item (A, B, C…) with the correct option (1, 2, 3…).
+                Match each item in <b>Column&nbsp;I</b> (I, II, III…) with the correct option in <b>Column&nbsp;II</b> (A, B, C…).
               </p>
-              <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
-                <p className="mb-1 font-semibold text-slate-500 dark:text-slate-400">Options:</p>
-                <div className="flex flex-wrap gap-x-5 gap-y-1">
+
+              {/* Column II — options (equations render here) */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Column II — Options
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
                   {rights.map((r, ri) => (
-                    <span key={ri}><b className="text-brand-600 dark:text-brand-400">{ri + 1}.</b> <MathText>{r}</MathText></span>
+                    <div key={ri} className="flex items-start gap-2 text-sm">
+                      <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-accent-100 text-xs font-bold text-accent-700 dark:bg-accent-900/40 dark:text-accent-300">
+                        {letterOf(ri)}
+                      </span>
+                      <MathText>{r}</MathText>
+                    </div>
                   ))}
                 </div>
               </div>
+
+              {/* Column I — items with A/B/C/D pickers */}
               {q.pairs.map((p, k) => {
                 const chosen = locked ? answers[current]?.[k] : draft[k];
                 const rowCorrect = locked && chosen === p.right;
                 const rowWrong = locked && chosen !== p.right;
-                const leftLabel = String.fromCharCode(65 + k); // A, B, C, D...
-                const numOf = (val) => { const idx = rights.indexOf(val); return idx >= 0 ? idx + 1 : "?"; };
                 return (
                   <div
                     key={k}
-                    className={`flex flex-col gap-2 rounded-xl border-2 p-3 sm:flex-row sm:items-center ${
+                    className={`rounded-xl border-2 p-3 ${
                       rowCorrect
                         ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
                         : rowWrong
@@ -398,38 +415,41 @@ export default function QuizPlay() {
                         : "border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    <div className="flex flex-1 items-center gap-2 font-medium">
-                      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                        {leftLabel}
+                    <div className="flex items-center gap-2 font-medium">
+                      <span className="flex h-7 min-w-[1.75rem] flex-shrink-0 items-center justify-center rounded-lg bg-brand-100 px-1.5 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                        {toRoman(k + 1)}
                       </span>
                       <MathText>{p.left}</MathText>
                     </div>
-                    <ChevronRight className="hidden h-4 w-4 flex-shrink-0 text-slate-400 sm:block" />
-                    <div className="flex-1">
-                      {locked ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-medium ${rowCorrect ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"}`}>
-                            {rowCorrect ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                            {chosen ? <span className="font-bold">{numOf(chosen)}.</span> : null} <MathText>{chosen || "—"}</MathText>
-                          </span>
-                          {rowWrong && (
-                            <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                              Correct: <b>{numOf(p.right)}.</b> <MathText>{p.right}</MathText>
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <select value={draft[k] ?? ""} onChange={(e) => setMatch(k, e.target.value)} className="input">
-                          <option value="" disabled>Choose match…</option>
-                          {rights.map((r, ri) => (
-                            <option key={ri} value={r}>{ri + 1}. {r}</option>
-                          ))}
-                        </select>
-                      )}
+                    <div className="mt-2 flex flex-wrap gap-2 pl-9">
+                      {rights.map((r, ri) => {
+                        const selected = chosen === r;
+                        let cls = "flex h-9 w-9 items-center justify-center rounded-lg border-2 text-sm font-bold transition ";
+                        if (locked) {
+                          if (r === p.right) cls += "border-emerald-500 bg-emerald-500 text-white";
+                          else if (selected) cls += "border-rose-500 bg-rose-500 text-white";
+                          else cls += "border-slate-200 text-slate-400 dark:border-slate-700";
+                        } else {
+                          cls += selected
+                            ? "border-brand-500 bg-brand-600 text-white"
+                            : "border-slate-300 text-slate-600 hover:border-brand-400 dark:border-slate-600 dark:text-slate-300";
+                        }
+                        return (
+                          <button key={ri} type="button" disabled={locked} onClick={() => setMatch(k, r)} className={cls}>
+                            {letterOf(ri)}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {rowWrong && (
+                      <p className="mt-2 pl-9 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        Correct answer: {letterOf(rights.indexOf(p.right))}
+                      </p>
+                    )}
                   </div>
                 );
               })}
+
               {!locked && (
                 <button onClick={checkMatch} disabled={!allMatched} className="btn-primary">
                   <CheckCircle2 className="h-4 w-4" /> Check Answer

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { testService } from "../../services";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
+import MathText from "../../components/ui/MathText";
 
 const STATUS = {
   NOT_VISITED: "not_visited",
@@ -230,7 +231,7 @@ export default function TestAttempt() {
           </div>
 
           {q.image && <img src={q.image} alt="" className="mt-4 max-h-64 rounded-xl object-contain" />}
-          <h2 className="mt-5 text-lg font-semibold leading-relaxed">{q.text}</h2>
+          <h2 className="mt-5 text-lg font-semibold leading-relaxed"><MathText>{q.text}</MathText></h2>
 
           <div className="mt-5 space-y-3">
             {q.options.map((opt, idx) => (
@@ -249,7 +250,7 @@ export default function TestAttempt() {
                   onChange={() => select(idx)}
                   className="h-4 w-4 text-brand-600"
                 />
-                {opt}
+                <MathText>{opt}</MathText>
               </label>
             ))}
           </div>
