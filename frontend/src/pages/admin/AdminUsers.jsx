@@ -1,10 +1,39 @@
 import { useEffect, useState } from "react";
-import { Search, Ban, CheckCircle2, KeyRound, Crown, UserPlus, Pencil, Trash2, X } from "lucide-react";
+import { Search, Ban, CheckCircle2, KeyRound, Crown, UserPlus, Pencil, Trash2, X, Clock, AlarmClock } from "lucide-react";
 import { userService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 
-const blankUser = { name: "", email: "", password: "", role: "student", plan: "Free" };
+// Duration units offered when creating a temporary account.
+const UNIT_MS = { Minutes: 60_000, Hours: 3_600_000, Days: 86_400_000, Weeks: 604_800_000 };
+
+const blankUser = {
+  name: "",
+  email: "",
+  password: "",
+  role: "student",
+  plan: "Free",
+  isTemp: false, // temporary account toggle
+  durationValue: 7, // "valid for" amount
+  durationUnit: "Days", // amount unit
+};
+
+// Human-friendly absolute date, e.g. "22 Jun 2026, 4:30 PM".
+const fmtDate = (d) =>
+  new Date(d).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+// Relative countdown, e.g. "in 3 days" / "in 2 hours" / "Expired".
+function relativeTo(d) {
+  const ms = new Date(d).getTime() - Date.now();
+  if (ms <= 0) return "Expired";
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `in ${mins} min`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `in ${hrs} hr${hrs === 1 ? "" : "s"}`;
+  const days = Math.round(hrs / 24);
+  return `in ${days} day${days === 1 ? "" : "s"}`;
+}
+const isExpired = (d) => d && new Date(d).getTime() < Date.now();
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -19,7 +48,16 @@ export default function AdminUsers() {
 
   const openAdd = () => { setForm(blankUser); setEditing(null); setError(""); setModal(true); };
   const openEdit = (u) => {
-    setForm({ name: u.name, email: u.email, password: "", role: u.role, plan: u.plan });
+    setForm({
+      name: u.name,
+      email: u.email,
+      password: "",
+      role: u.role,
+      plan: u.plan,
+      isTemp: !!u.expiresAt,
+      durationValue: 7,
+      durationUnit: "Days",
+    });
     setEditing(u);
     setError("");
     setModal(true);
@@ -76,16 +114,25 @@ export default function AdminUsers() {
     setSaving(true);
     setError("");
     try {
+      // Compute the expiry timestamp from the chosen duration (from now).
+      const expiresAt = form.isTemp
+        ? new Date(Date.now() + Math.max(1, Number(form.durationValue) || 1) * UNIT_MS[form.durationUnit]).toISOString()
+        : null;
+
       if (editing) {
         const payload = { name: form.name, email: form.email, role: form.role, plan: form.plan };
         if (form.password) payload.password = form.password; // only change if provided
+        // Only recompute expiry when a new duration was chosen; otherwise keep
+        // the existing one. Turning the toggle OFF clears it (sends null).
+        if (!form.isTemp) payload.expiresAt = null;
+        else if (form.isTemp) payload.expiresAt = expiresAt;
         const updated = await userService.update(editing._id, payload);
         setUsers((list) => list.map((x) => (x._id === editing._id ? { ...x, ...updated } : x)));
         flash("User updated.");
       } else {
-        const created = await userService.create(form);
+        const created = await userService.create({ ...form, expiresAt });
         setUsers((list) => [created, ...list]);
-        flash("User created.");
+        flash(form.isTemp ? "Temporary account created." : "User created.");
       }
       setModal(false);
       setForm(blankUser);
@@ -111,7 +158,7 @@ export default function AdminUsers() {
         <div>
           <h1 className="text-2xl font-extrabold">User Management</h1>
           <p className="text-slate-500 dark:text-slate-400">
-            Add, delete, block/unblock, reset passwords and manage subscriptions.
+            Add users (permanent or temporary/auto-expiring), block/unblock, reset passwords and manage subscriptions.
           </p>
         </div>
         <button onClick={openAdd} className="btn-primary">
@@ -125,11 +172,12 @@ export default function AdminUsers() {
         <ErrorState message={error} onRetry={load} />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { l: "Total Users", v: users.length, c: "text-brand-600" },
               { l: "Active", v: users.filter((u) => u.status === "active").length, c: "text-emerald-600" },
               { l: "Blocked", v: users.filter((u) => u.status === "blocked").length, c: "text-rose-600" },
+              { l: "Temporary", v: users.filter((u) => u.expiresAt).length, c: "text-accent-600" },
             ].map((s) => (
               <div key={s.l} className="card p-5 text-center">
                 <p className={`text-3xl font-extrabold ${s.c}`}>{s.v}</p>
@@ -151,6 +199,7 @@ export default function AdminUsers() {
                   <th className="px-5 py-3 font-semibold">Role</th>
                   <th className="px-5 py-3 font-semibold">Plan</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
+                  <th className="px-5 py-3 font-semibold">Expires</th>
                   <th className="px-5 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -178,6 +227,20 @@ export default function AdminUsers() {
                     </td>
                     <td className="px-5 py-3">
                       <Badge variant={u.status === "active" ? "Easy" : "Hard"}>{u.status}</Badge>
+                    </td>
+                    <td className="px-5 py-3">
+                      {u.expiresAt ? (
+                        <div className="flex items-center gap-1.5">
+                          {isExpired(u.expiresAt) ? (
+                            <Badge variant="Hard">Expired</Badge>
+                          ) : (
+                            <Badge variant="accent"><Clock className="h-3 w-3" /> {relativeTo(u.expiresAt)}</Badge>
+                          )}
+                          <span className="hidden text-xs text-slate-400 lg:inline">{fmtDate(u.expiresAt)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">Never</span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
@@ -245,6 +308,56 @@ export default function AdminUsers() {
                     <option>Free</option><option>Premium</option><option>Pro</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Temporary account — auto-expires after the chosen duration */}
+              <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <AlarmClock className="h-4 w-4 text-accent-600" /> Temporary account (auto-expires)
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-accent-600"
+                    checked={form.isTemp}
+                    onChange={(e) => setForm({ ...form, isTemp: e.target.checked })}
+                  />
+                </label>
+
+                {form.isTemp && (
+                  <div className="mt-4 space-y-3">
+                    {editing && (
+                      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        {editing.expiresAt ? `Currently expires ${fmtDate(editing.expiresAt)}.` : "Currently permanent."}{" "}
+                        Choosing a duration below resets the expiry from now.
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">Valid for</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input"
+                          value={form.durationValue}
+                          onChange={(e) => setForm({ ...form, durationValue: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">Unit</label>
+                        <select className="input" value={form.durationUnit} onChange={(e) => setForm({ ...form, durationUnit: e.target.value })}>
+                          {Object.keys(UNIT_MS).map((u) => (
+                            <option key={u}>{u}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <p className="flex flex-wrap items-center gap-1.5 text-sm text-accent-700 dark:text-accent-300">
+                      <Clock className="h-4 w-4" /> Expires on{" "}
+                      <strong>{fmtDate(Date.now() + Math.max(1, Number(form.durationValue) || 1) * UNIT_MS[form.durationUnit])}</strong>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-3">

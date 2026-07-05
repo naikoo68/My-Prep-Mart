@@ -12,6 +12,9 @@ const userSchema = new mongoose.Schema(
     plan: { type: String, enum: ["Free", "Premium", "Pro"], default: "Free" },
     status: { type: String, enum: ["active", "blocked"], default: "active" },
     isEmailVerified: { type: Boolean, default: false },
+    // Temporary accounts (created by an admin) expire at this time. When null
+    // the account never expires. After expiry the user can no longer log in.
+    expiresAt: { type: Date, default: null },
     emailVerificationToken: String,
     otpHash: { type: String, select: false },
     otpExpires: { type: Date, select: false },

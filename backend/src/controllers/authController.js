@@ -40,6 +40,7 @@ const sanitize = (u) => ({
   plan: u.plan,
   avatar: u.avatar,
   isEmailVerified: u.isEmailVerified,
+  expiresAt: u.expiresAt,
   streak: u.streak,
 });
 
@@ -112,6 +113,9 @@ export async function login(req, res) {
   }
   if (user.status === "blocked") {
     return res.status(403).json({ message: "Account blocked" });
+  }
+  if (user.expiresAt && user.expiresAt.getTime() < Date.now()) {
+    return res.status(403).json({ message: "This temporary account has expired. Please contact the administrator." });
   }
   if (!user.isEmailVerified) {
     return res.status(403).json({

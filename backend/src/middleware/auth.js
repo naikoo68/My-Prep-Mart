@@ -18,6 +18,9 @@ export async function protect(req, res, next) {
     if (user.status === "blocked") {
       return res.status(403).json({ message: "Your account has been blocked" });
     }
+    if (user.expiresAt && user.expiresAt.getTime() < Date.now()) {
+      return res.status(403).json({ message: "This temporary account has expired" });
+    }
     req.user = user;
     next();
   } catch {
@@ -42,7 +45,8 @@ export async function optionalAuth(req, res, next) {
     try {
       const decoded = jwt.verify(header.split(" ")[1], process.env.JWT_SECRET);
       const user = await User.findById(decoded.id);
-      if (user && user.status !== "blocked") req.user = user;
+      const expired = user?.expiresAt && user.expiresAt.getTime() < Date.now();
+      if (user && user.status !== "blocked" && !expired) req.user = user;
     } catch {
       /* ignore invalid token for optional auth */
     }

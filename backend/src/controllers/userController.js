@@ -20,14 +20,24 @@ export async function listUsers(req, res) {
 
 // POST /api/users  (admin) — create a new user
 export async function createUser(req, res) {
-  const { name, password, role = "student", plan = "Free" } = req.body;
+  const { name, password, role = "student", plan = "Free", expiresAt } = req.body;
   const email = String(req.body.email || "").toLowerCase().trim();
   if (!name || !email || !password) {
     return res.status(400).json({ message: "Name, email and password are required" });
   }
   const exists = await User.findOne({ email });
   if (exists) return res.status(409).json({ message: "Email already registered" });
-  const user = await User.create({ name, email, password, role, plan, isEmailVerified: true });
+
+  // Optional temporary-account expiry. Must be a valid future date.
+  let expiry = null;
+  if (expiresAt) {
+    const d = new Date(expiresAt);
+    if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid expiry date" });
+    if (d.getTime() <= Date.now()) return res.status(400).json({ message: "Expiry must be in the future" });
+    expiry = d;
+  }
+
+  const user = await User.create({ name, email, password, role, plan, isEmailVerified: true, expiresAt: expiry });
   const obj = user.toObject();
   delete obj.password;
   res.status(201).json(obj);
@@ -52,6 +62,19 @@ export async function updateUser(req, res) {
   if (role) user.role = role;
   if (plan) user.plan = plan;
   if (password) user.password = password; // re-hashed by the model's pre-save hook
+
+  // Temporary-account expiry: an explicit value updates it; null/"" clears it
+  // (makes the account permanent). Only touched when the key is present.
+  if ("expiresAt" in req.body) {
+    if (!req.body.expiresAt) {
+      user.expiresAt = null;
+    } else {
+      const d = new Date(req.body.expiresAt);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid expiry date" });
+      if (d.getTime() <= Date.now()) return res.status(400).json({ message: "Expiry must be in the future" });
+      user.expiresAt = d;
+    }
+  }
 
   await user.save();
   const obj = user.toObject();
