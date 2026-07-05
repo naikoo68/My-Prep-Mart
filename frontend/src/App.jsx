@@ -22,6 +22,11 @@ const SessionQuizzes = lazy(() => import("./pages/quiz/SessionQuizzes"));
 const QuizPlay = lazy(() => import("./pages/quiz/QuizPlay"));
 const QuizResult = lazy(() => import("./pages/quiz/QuizResult"));
 
+const StudyHome = lazy(() => import("./pages/study/StudyHome"));
+const StudySubjects = lazy(() => import("./pages/study/StudySubjects"));
+const StudyClasses = lazy(() => import("./pages/study/StudyClasses"));
+const StudyFiles = lazy(() => import("./pages/study/StudyFiles"));
+
 const TestExams = lazy(() => import("./pages/testseries/TestExams"));
 const ExamPosts = lazy(() => import("./pages/testseries/ExamPosts"));
 const PostTests = lazy(() => import("./pages/testseries/PostTests"));
@@ -36,6 +41,7 @@ const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminContent = lazy(() => import("./pages/admin/AdminContent"));
 const AdminTests = lazy(() => import("./pages/admin/AdminTests"));
+const AdminStudyMaterial = lazy(() => import("./pages/admin/AdminStudyMaterial"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const AdminCustomization = lazy(() => import("./pages/admin/AdminCustomization"));
@@ -65,6 +71,11 @@ const router = createBrowserRouter([
       { path: "/test-series", element: S(TestExams) },
       { path: "/test-series/:examId", element: S(ExamPosts) },
       { path: "/test-series/:examId/:postId", element: S(PostTests) },
+
+      { path: "/study", element: S(StudyHome) },
+      { path: "/study/:institutionId", element: S(StudySubjects) },
+      { path: "/study/:institutionId/:subjectId", element: S(StudyClasses) },
+      { path: "/study/:institutionId/:subjectId/:classId", element: S(StudyFiles) },
 
       { path: "/login", element: S(Login) },
       { path: "/register", element: S(Register) },
@@ -96,6 +107,7 @@ const router = createBrowserRouter([
       { index: true, element: S(AdminDashboard) },
       { path: "content", element: S(AdminContent) },
       { path: "tests", element: S(AdminTests) },
+      { path: "study", element: S(AdminStudyMaterial) },
       { path: "users", element: S(AdminUsers) },
       { path: "messages", element: S(AdminMessages) },
       { path: "customization", element: S(AdminCustomization) },

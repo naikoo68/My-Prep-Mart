@@ -113,6 +113,35 @@ export const examService = {
   deletePost: (id) => api.del(`/posts/${id}`),
 };
 
+// ---- Study Material (Institution → Subject → Class → Files) ----
+export const studyService = {
+  institutions: () => api.get("/institutions"),
+  subjects: (institutionId) => api.get(`/institutions/${institutionId}/subjects`),
+  classes: (subjectId) => api.get(`/sm-subjects/${subjectId}/classes`),
+  files: (classId) => api.get(`/sm-classes/${classId}/files`),
+  createInstitution: (d) => api.post("/institutions", d),
+  updateInstitution: (id, d) => api.put(`/institutions/${id}`, d),
+  deleteInstitution: (id) => api.del(`/institutions/${id}`),
+  createSubject: (d) => api.post("/sm-subjects", d),
+  updateSubject: (id, d) => api.put(`/sm-subjects/${id}`, d),
+  deleteSubject: (id) => api.del(`/sm-subjects/${id}`),
+  createClass: (d) => api.post("/sm-classes", d),
+  updateClass: (id, d) => api.put(`/sm-classes/${id}`, d),
+  deleteClass: (id) => api.del(`/sm-classes/${id}`),
+  createFile: (d) => api.post("/sm-files", d),
+  updateFile: (id, d) => api.put(`/sm-files/${id}`, d),
+  deleteFile: (id) => api.del(`/sm-files/${id}`),
+};
+
+// ---- File upload (Cloudinary) ----
+export const uploadService = {
+  file: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post("/upload", fd);
+  },
+};
+
 // ---- Users (admin) ----
 export const userService = {
   list: (search = "") => api.get(`/users${search ? `?search=${encodeURIComponent(search)}` : ""}`),
