@@ -11,6 +11,8 @@ const DEFAULTS = {
   primaryColor: "#2563eb",
   accentColor: "#f97316",
   fontFamily: "Inter",
+  socialLinks: [],
+  contacts: [],
 };
 
 export function SettingsProvider({ children }) {

@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
   listUsers,
+  createUser,
+  deleteUser,
   toggleStatus,
   updatePlan,
   adminResetPassword,
@@ -11,6 +13,8 @@ const router = Router();
 const admin = [protect, authorize("admin")];
 
 router.get("/", ...admin, listUsers);
+router.post("/", ...admin, createUser);
+router.delete("/:id", ...admin, deleteUser);
 router.patch("/:id/status", ...admin, toggleStatus);
 router.patch("/:id/plan", ...admin, updatePlan);
 router.post("/:id/reset-password", ...admin, adminResetPassword);

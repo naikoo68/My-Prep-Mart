@@ -16,6 +16,28 @@ export async function listUsers(req, res) {
   res.json({ users, total, page: Number(page) });
 }
 
+// POST /api/users  (admin) — create a new user
+export async function createUser(req, res) {
+  const { name, email, password, role = "student", plan = "Free" } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: "Name, email and password are required" });
+  }
+  const exists = await User.findOne({ email });
+  if (exists) return res.status(409).json({ message: "Email already registered" });
+  const user = await User.create({ name, email, password, role, plan, isEmailVerified: true });
+  const obj = user.toObject();
+  delete obj.password;
+  res.status(201).json(obj);
+}
+
+// DELETE /api/users/:id  (admin)
+export async function deleteUser(req, res) {
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ message: "User not found" });
+  await User.findByIdAndDelete(req.params.id);
+  res.json({ message: "User deleted" });
+}
+
 // PATCH /api/users/:id/status  (admin) — block / unblock
 export async function toggleStatus(req, res) {
   const user = await User.findById(req.params.id);

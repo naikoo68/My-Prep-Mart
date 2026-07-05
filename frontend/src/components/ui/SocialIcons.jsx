@@ -53,3 +53,24 @@ export function Youtube({ className }) {
     </Svg>
   );
 }
+
+export function Website({ className }) {
+  return (
+    <Svg className={className}>
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.6a15.7 15.7 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8zM12 4c.8 1.1 1.4 2.5 1.8 4h-3.6c.4-1.5 1-2.9 1.8-4zM4.3 14a7.9 7.9 0 0 1 0-4h3a17.6 17.6 0 0 0 0 4H4.3zm.8 2h2.6c.3 1.3.8 2.5 1.4 3.6A8 8 0 0 1 5.1 16zm2.6-8H5.1a8 8 0 0 1 4-3.6C8.5 5.5 8 6.7 7.7 8zM12 20c-.8-1.1-1.4-2.5-1.8-4h3.6c-.4 1.5-1 2.9-1.8 4zm2.2-6H9.8a15.3 15.3 0 0 1 0-4h4.4a15.3 15.3 0 0 1 0 4zm.7 5.6c.6-1.1 1.1-2.3 1.4-3.6h2.6a8 8 0 0 1-4 3.6zm2.1-5.6a17.6 17.6 0 0 0 0-4h3a7.9 7.9 0 0 1 0 4h-3z" />
+    </Svg>
+  );
+}
+
+// Map a platform key → icon component (used by the admin-managed social links)
+export const SOCIAL_ICONS = {
+  facebook: Facebook,
+  twitter: Twitter,
+  instagram: Instagram,
+  linkedin: Linkedin,
+  youtube: Youtube,
+  website: Website,
+  other: Website,
+};
+
+export const SOCIAL_PLATFORMS = ["facebook", "twitter", "instagram", "linkedin", "youtube", "website", "other"];

@@ -2,21 +2,7 @@ import { Link } from "react-router-dom";
 import { Mail } from "lucide-react";
 import { useSettings } from "../../context/SettingsContext";
 import Brand from "./Brand";
-import {
-  Facebook,
-  Twitter,
-  Instagram,
-  Linkedin,
-  Youtube,
-} from "../ui/SocialIcons";
-
-const socials = [
-  { Icon: Facebook, label: "Facebook" },
-  { Icon: Twitter, label: "Twitter" },
-  { Icon: Instagram, label: "Instagram" },
-  { Icon: Linkedin, label: "LinkedIn" },
-  { Icon: Youtube, label: "YouTube" },
-];
+import { SOCIAL_ICONS, Website } from "../ui/SocialIcons";
 
 const columns = [
   {
@@ -49,6 +35,9 @@ const columns = [
 
 export default function Footer() {
   const { settings } = useSettings();
+  const socialLinks = (settings.socialLinks || []).filter((s) => s.url && s.url !== "#");
+  const email = (settings.contacts || []).find((c) => c.type === "email")?.value;
+
   return (
     <footer className="mt-20 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="container-page py-12">
@@ -61,25 +50,30 @@ export default function Footer() {
               {settings.tagline} Subject-wise quizzes, full-length test series,
               instant results and performance analytics — all in one place.
             </p>
-            <div className="mt-5 flex gap-3">
-              {socials.map(({ Icon, label }) => (
-                <a
-                  key={label}
-                  href="#"
-                  aria-label={label}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-brand-600 hover:text-white dark:bg-slate-800 dark:text-slate-400"
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              ))}
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="mt-5 flex flex-wrap gap-3">
+                {socialLinks.map((s, i) => {
+                  const Icon = SOCIAL_ICONS[s.platform] || Website;
+                  return (
+                    <a
+                      key={i}
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={s.platform}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-brand-600 hover:text-white dark:bg-slate-800 dark:text-slate-400"
+                    >
+                      <Icon className="h-4 w-4" />
+                    </a>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {columns.map((col) => (
             <div key={col.title}>
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-                {col.title}
-              </h4>
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{col.title}</h4>
               <ul className="mt-4 space-y-2.5">
                 {col.links.map((link) => (
                   <li key={link.label}>
@@ -98,12 +92,11 @@ export default function Footer() {
 
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-slate-200 pt-6 text-sm text-slate-500 sm:flex-row dark:border-slate-800 dark:text-slate-400">
           <p>© {new Date().getFullYear()} {settings.siteName}. All rights reserved.</p>
-          <a
-            href="mailto:hello@mystudyguide.com"
-            className="flex items-center gap-2 hover:text-brand-600 dark:hover:text-brand-400"
-          >
-            <Mail className="h-4 w-4" /> hello@mystudyguide.com
-          </a>
+          {email && (
+            <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-brand-600 dark:hover:text-brand-400">
+              <Mail className="h-4 w-4" /> {email}
+            </a>
+          )}
         </div>
       </div>
     </footer>

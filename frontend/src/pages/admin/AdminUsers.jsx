@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Search, Ban, CheckCircle2, KeyRound, Crown } from "lucide-react";
+import { Search, Ban, CheckCircle2, KeyRound, Crown, UserPlus, Trash2, X } from "lucide-react";
 import { userService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
+
+const blankUser = { name: "", email: "", password: "", role: "student", plan: "Free" };
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -10,6 +12,9 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState(blankUser);
+  const [saving, setSaving] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -25,7 +30,7 @@ export default function AdminUsers() {
 
   const flash = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 2500);
+    setTimeout(() => setToast(""), 2800);
   };
 
   const toggleBlock = async (u) => {
@@ -46,6 +51,34 @@ export default function AdminUsers() {
     }
   };
 
+  const removeUser = async (u) => {
+    if (!window.confirm(`Delete user "${u.name}"? This cannot be undone.`)) return;
+    try {
+      await userService.remove(u._id);
+      setUsers((list) => list.filter((x) => x._id !== u._id));
+      flash("User deleted.");
+    } catch (e) {
+      flash(e.message);
+    }
+  };
+
+  const addUser = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const created = await userService.create(form);
+      setUsers((list) => [created, ...list]);
+      setModal(false);
+      setForm(blankUser);
+      flash("User created.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const filtered = users.filter(
     (u) =>
       u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -56,16 +89,21 @@ export default function AdminUsers() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold">User Management</h1>
-        <p className="text-slate-500 dark:text-slate-400">
-          View users, manage subscriptions, block/unblock and reset passwords.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold">User Management</h1>
+          <p className="text-slate-500 dark:text-slate-400">
+            Add, delete, block/unblock, reset passwords and manage subscriptions.
+          </p>
+        </div>
+        <button onClick={() => { setForm(blankUser); setError(""); setModal(true); }} className="btn-primary">
+          <UserPlus className="h-4 w-4" /> Add User
+        </button>
       </div>
 
       {loading ? (
         <Loading label="Loading users..." />
-      ) : error ? (
+      ) : error && !modal ? (
         <ErrorState message={error} onRetry={load} />
       ) : (
         <>
@@ -84,21 +122,16 @@ export default function AdminUsers() {
 
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search users..."
-              className="input pl-9"
-            />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users..." className="input pl-9" />
           </div>
 
           <div className="card overflow-x-auto">
-            <table className="w-full min-w-[680px] text-sm">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-slate-50 text-left text-slate-500 dark:bg-slate-800/60">
                 <tr>
                   <th className="px-5 py-3 font-semibold">User</th>
+                  <th className="px-5 py-3 font-semibold">Role</th>
                   <th className="px-5 py-3 font-semibold">Plan</th>
-                  <th className="px-5 py-3 font-semibold">Joined</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
                   <th className="px-5 py-3 text-right font-semibold">Actions</th>
                 </tr>
@@ -118,12 +151,12 @@ export default function AdminUsers() {
                       </div>
                     </td>
                     <td className="px-5 py-3">
+                      <Badge variant={u.role === "admin" ? "accent" : "neutral"}>{u.role}</Badge>
+                    </td>
+                    <td className="px-5 py-3">
                       <Badge variant={planVariant(u.plan)}>
                         {u.plan !== "Free" && <Crown className="h-3 w-3" />} {u.plan}
                       </Badge>
-                    </td>
-                    <td className="px-5 py-3">
-                      {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN") : "—"}
                     </td>
                     <td className="px-5 py-3">
                       <Badge variant={u.status === "active" ? "Easy" : "Hard"}>{u.status}</Badge>
@@ -136,13 +169,12 @@ export default function AdminUsers() {
                         <button
                           onClick={() => toggleBlock(u)}
                           title={u.status === "blocked" ? "Unblock" : "Block"}
-                          className={`rounded-lg p-2 ${
-                            u.status === "blocked"
-                              ? "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30"
-                              : "text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"
-                          }`}
+                          className={`rounded-lg p-2 ${u.status === "blocked" ? "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" : "text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30"}`}
                         >
                           {u.status === "blocked" ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                        </button>
+                        <button onClick={() => removeUser(u)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -152,6 +184,52 @@ export default function AdminUsers() {
             </table>
           </div>
         </>
+      )}
+
+      {/* Add user modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+          <form onSubmit={addUser} className="my-8 w-full max-w-md animate-scale-in card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Add User</h3>
+              <button type="button" onClick={() => setModal(false)}><X className="h-5 w-5" /></button>
+            </div>
+            {error && <div className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{error}</div>}
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Full Name</label>
+                <input required className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Jane Doe" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Email</label>
+                <input required type="email" className="input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="jane@example.com" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Password</label>
+                <input required minLength={6} className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="At least 6 characters" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Role</label>
+                  <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                    <option value="student">Student</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Plan</label>
+                  <select className="input" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })}>
+                    <option>Free</option><option>Premium</option><option>Pro</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setModal(false)} className="btn-outline">Cancel</button>
+              <button type="submit" disabled={saving} className="btn-primary">{saving ? "Creating..." : "Create User"}</button>
+            </div>
+          </form>
+        </div>
       )}
 
       {toast && (

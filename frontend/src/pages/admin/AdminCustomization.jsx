@@ -1,24 +1,74 @@
 import { useState } from "react";
-import { Palette, Type, ImagePlus, Save, RotateCcw, CheckCircle2, Eye } from "lucide-react";
+import {
+  Palette, Type, ImagePlus, Save, RotateCcw, CheckCircle2, Eye,
+  Share2, Phone, Plus, Trash2, Upload, X,
+} from "lucide-react";
 import { useSettings } from "../../context/SettingsContext";
 import { FONT_OPTIONS } from "../../lib/theme";
+import { SOCIAL_PLATFORMS } from "../../components/ui/SocialIcons";
 
 const PRIMARY_PRESETS = ["#2563eb", "#7c3aed", "#0891b2", "#059669", "#db2777", "#e11d48"];
 const ACCENT_PRESETS = ["#f97316", "#f59e0b", "#10b981", "#06b6d4", "#8b5cf6", "#ef4444"];
-const DEFAULTS = { siteName: "My Study Guide", tagline: "Prepare Smart, Achieve More.", logoUrl: "", primaryColor: "#2563eb", accentColor: "#f97316", fontFamily: "Inter" };
+const CONTACT_TYPES = ["email", "phone", "address"];
+
+const DEFAULTS = {
+  siteName: "My Study Guide",
+  tagline: "Prepare Smart, Achieve More.",
+  logoUrl: "",
+  primaryColor: "#2563eb",
+  accentColor: "#f97316",
+  fontFamily: "Inter",
+  socialLinks: [
+    { platform: "facebook", url: "#" },
+    { platform: "twitter", url: "#" },
+    { platform: "instagram", url: "#" },
+    { platform: "linkedin", url: "#" },
+    { platform: "youtube", url: "#" },
+  ],
+  contacts: [
+    { type: "email", value: "hello@mystudyguide.com" },
+    { type: "phone", value: "+91 98765 43210" },
+    { type: "address", value: "Knowledge Park, New Delhi, India" },
+  ],
+};
 
 export default function AdminCustomization() {
   const { settings, save } = useSettings();
-  const [form, setForm] = useState({ ...DEFAULTS, ...settings });
+  const [form, setForm] = useState({
+    ...DEFAULTS,
+    ...settings,
+    socialLinks: settings.socialLinks?.length ? settings.socialLinks : DEFAULTS.socialLinks,
+    contacts: settings.contacts?.length ? settings.contacts : DEFAULTS.contacts,
+  });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const flash = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
-  const flash = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(""), 2500);
+  // ---- Social links ----
+  const addSocial = () => set("socialLinks", [...form.socialLinks, { platform: "website", url: "" }]);
+  const updateSocial = (i, key, val) =>
+    set("socialLinks", form.socialLinks.map((s, idx) => (idx === i ? { ...s, [key]: val } : s)));
+  const removeSocial = (i) => set("socialLinks", form.socialLinks.filter((_, idx) => idx !== i));
+
+  // ---- Contacts ----
+  const addContact = () => set("contacts", [...form.contacts, { type: "email", value: "" }]);
+  const updateContact = (i, key, val) =>
+    set("contacts", form.contacts.map((c, idx) => (idx === i ? { ...c, [key]: val } : c)));
+  const removeContact = (i) => set("contacts", form.contacts.filter((_, idx) => idx !== i));
+
+  // ---- Logo file → base64 ----
+  const onLogoFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Please choose an image file."); return; }
+    if (file.size > 800 * 1024) { setError("Logo must be under 800 KB. Try a smaller image."); return; }
+    setError("");
+    const reader = new FileReader();
+    reader.onload = () => set("logoUrl", reader.result);
+    reader.readAsDataURL(file);
   };
 
   const submit = async (e) => {
@@ -26,7 +76,12 @@ export default function AdminCustomization() {
     setSaving(true);
     setError("");
     try {
-      await save(form);
+      const payload = {
+        ...form,
+        socialLinks: form.socialLinks.filter((s) => s.url && s.url.trim() && s.url !== "#"),
+        contacts: form.contacts.filter((c) => c.value && c.value.trim()),
+      };
+      await save(payload);
       flash("Saved! Your changes are now live across the site.");
     } catch (err) {
       setError(err.message || "Could not save settings");
@@ -51,13 +106,8 @@ export default function AdminCustomization() {
   const Swatch = ({ value, onPick, presets }) => (
     <div className="flex flex-wrap items-center gap-2">
       {presets.map((c) => (
-        <button
-          type="button"
-          key={c}
-          onClick={() => onPick(c)}
-          style={{ background: c }}
-          className={`h-9 w-9 rounded-lg ring-offset-2 transition dark:ring-offset-slate-900 ${value === c ? "ring-2 ring-slate-900 dark:ring-white" : ""}`}
-        />
+        <button type="button" key={c} onClick={() => onPick(c)} style={{ background: c }}
+          className={`h-9 w-9 rounded-lg ring-offset-2 transition dark:ring-offset-slate-900 ${value === c ? "ring-2 ring-slate-900 dark:ring-white" : ""}`} />
       ))}
       <input type="color" value={value} onChange={(e) => onPick(e.target.value)} className="h-9 w-12 cursor-pointer rounded-lg border border-slate-300 dark:border-slate-700" />
       <span className="text-xs font-mono text-slate-500">{value}</span>
@@ -69,24 +119,18 @@ export default function AdminCustomization() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">Customization</h1>
-          <p className="text-slate-500 dark:text-slate-400">Change the site name, logo, colours and font. Changes apply everywhere instantly.</p>
+          <p className="text-slate-500 dark:text-slate-400">Branding, colours, font, logo, social profiles and contact details. Changes apply everywhere.</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={resetDefaults} className="btn-outline">
-            <RotateCcw className="h-4 w-4" /> Reset
-          </button>
-          <button type="submit" disabled={saving} className="btn-primary">
-            <Save className="h-4 w-4" /> {saving ? "Saving..." : "Save Changes"}
-          </button>
+          <button type="button" onClick={resetDefaults} className="btn-outline"><RotateCcw className="h-4 w-4" /> Reset</button>
+          <button type="submit" disabled={saving} className="btn-primary"><Save className="h-4 w-4" /> {saving ? "Saving..." : "Save Changes"}</button>
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{error}</div>
-      )}
+      {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{error}</div>}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Branding */}
+        {/* Branding + Logo upload */}
         <div className="card p-6">
           <h3 className="mb-4 flex items-center gap-2 font-bold"><ImagePlus className="h-5 w-5 text-brand-600" /> Branding</h3>
           <div className="space-y-4">
@@ -96,12 +140,25 @@ export default function AdminCustomization() {
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">Tagline</label>
-              <input className="input" value={form.tagline} onChange={(e) => set("tagline", e.target.value)} placeholder="Prepare Smart, Achieve More." />
+              <input className="input" value={form.tagline} onChange={(e) => set("tagline", e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Logo URL (optional)</label>
-              <input className="input" value={form.logoUrl} onChange={(e) => set("logoUrl", e.target.value)} placeholder="https://.../logo.png" />
-              <p className="mt-1 text-xs text-slate-400">Leave blank to use the default graduation-cap icon.</p>
+              <label className="mb-1.5 block text-sm font-medium">Logo (upload an image)</label>
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-brand-600 to-accent-500 text-white">
+                  {form.logoUrl ? <img src={form.logoUrl} alt="logo" className="h-full w-full object-cover" /> : (form.siteName || "M")[0]}
+                </div>
+                <label className="btn-outline cursor-pointer">
+                  <Upload className="h-4 w-4" /> Upload Image
+                  <input type="file" accept="image/*" className="hidden" onChange={onLogoFile} />
+                </label>
+                {form.logoUrl && (
+                  <button type="button" onClick={() => set("logoUrl", "")} className="btn-ghost text-rose-600">
+                    <X className="h-4 w-4" /> Remove
+                  </button>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-400">PNG/JPG/SVG under 800 KB. Leave empty to use the default icon.</p>
             </div>
           </div>
         </div>
@@ -131,17 +188,56 @@ export default function AdminCustomization() {
               <Swatch value={form.accentColor} onPick={(c) => set("accentColor", c)} presets={ACCENT_PRESETS} />
             </div>
           </div>
-
-          {/* Live preview */}
           <div className="mt-6 rounded-2xl border border-slate-200 p-5 dark:border-slate-800">
             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-500"><Eye className="h-4 w-4" /> Live preview</p>
             <div className="flex flex-wrap items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl text-white" style={{ background: `linear-gradient(135deg, ${form.primaryColor}, ${form.accentColor})` }}>{(form.siteName || "M")[0]}</span>
+              <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl text-white" style={{ background: `linear-gradient(135deg, ${form.primaryColor}, ${form.accentColor})` }}>
+                {form.logoUrl ? <img src={form.logoUrl} alt="" className="h-full w-full object-cover" /> : (form.siteName || "M")[0]}
+              </span>
               <span className="text-lg font-extrabold">{form.siteName || "My Study Guide"}</span>
               <button type="button" className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: form.primaryColor }}>Primary button</button>
               <button type="button" className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: form.accentColor }}>Accent button</button>
             </div>
-            <p className="mt-2 text-xs text-slate-400">Save to apply these across the entire site (buttons, links, highlights, logo).</p>
+          </div>
+        </div>
+
+        {/* Social profiles */}
+        <div className="card p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 font-bold"><Share2 className="h-5 w-5 text-brand-600" /> Social Profiles</h3>
+            <button type="button" onClick={addSocial} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add</button>
+          </div>
+          <div className="space-y-3">
+            {form.socialLinks.length === 0 && <p className="text-sm text-slate-400">No social profiles. Click “Add”.</p>}
+            {form.socialLinks.map((s, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <select value={s.platform} onChange={(e) => updateSocial(i, "platform", e.target.value)} className="input w-36 capitalize">
+                  {SOCIAL_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <input value={s.url} onChange={(e) => updateSocial(i, "url", e.target.value)} className="input flex-1" placeholder="https://..." />
+                <button type="button" onClick={() => removeSocial(i)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Contact details */}
+        <div className="card p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 font-bold"><Phone className="h-5 w-5 text-accent-500" /> Contact Details</h3>
+            <button type="button" onClick={addContact} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add</button>
+          </div>
+          <div className="space-y-3">
+            {form.contacts.length === 0 && <p className="text-sm text-slate-400">No contact details. Click “Add”.</p>}
+            {form.contacts.map((c, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <select value={c.type} onChange={(e) => updateContact(i, "type", e.target.value)} className="input w-32 capitalize">
+                  {CONTACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <input value={c.value} onChange={(e) => updateContact(i, "value", e.target.value)} className="input flex-1" placeholder={c.type === "email" ? "you@example.com" : c.type === "phone" ? "+91 ..." : "Address"} />
+                <button type="button" onClick={() => removeContact(i)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            ))}
           </div>
         </div>
       </div>

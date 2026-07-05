@@ -72,6 +72,8 @@ export const settingsService = {
 // ---- Users (admin) ----
 export const userService = {
   list: (search = "") => api.get(`/users${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  create: (data) => api.post("/users", data),
+  remove: (id) => api.del(`/users/${id}`),
   toggleStatus: (id) => api.patch(`/users/${id}/status`),
   updatePlan: (id, plan) => api.patch(`/users/${id}/plan`, { plan }),
   resetPassword: (id) => api.post(`/users/${id}/reset-password`),

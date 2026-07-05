@@ -13,7 +13,10 @@ export async function getSettings(req, res) {
 
 // PUT /api/settings — admin only
 export async function updateSettings(req, res) {
-  const allowed = ["siteName", "tagline", "logoUrl", "primaryColor", "accentColor", "fontFamily"];
+  const allowed = [
+    "siteName", "tagline", "logoUrl", "primaryColor", "accentColor",
+    "fontFamily", "socialLinks", "contacts",
+  ];
   const update = {};
   for (const k of allowed) if (k in req.body) update[k] = req.body[k];
   const s = await Settings.findOneAndUpdate({ key: "site" }, update, {

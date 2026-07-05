@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { Mail, Phone, MapPin, Send, CheckCircle2 } from "lucide-react";
+import { useSettings } from "../context/SettingsContext";
 
-const info = [
-  { icon: Mail, label: "Email", value: "hello@mystudyguide.com" },
-  { icon: Phone, label: "Phone", value: "+91 98765 43210" },
-  { icon: MapPin, label: "Address", value: "Knowledge Park, New Delhi, India" },
-];
+const ICONS = { email: Mail, phone: Phone, address: MapPin };
+const LABELS = { email: "Email", phone: "Phone", address: "Address" };
 
 export default function Contact() {
+  const { settings } = useSettings();
   const [sent, setSent] = useState(false);
+
+  const info = (settings.contacts || []).map((c) => ({
+    icon: ICONS[c.type] || Mail,
+    label: LABELS[c.type] || "Contact",
+    value: c.value,
+  }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -27,8 +32,8 @@ export default function Contact() {
 
       <div className="mt-12 grid gap-8 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-1">
-          {info.map((i) => (
-            <div key={i.label} className="card flex items-center gap-4 p-5">
+          {info.map((i, idx) => (
+            <div key={idx} className="card flex items-center gap-4 p-5">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
                 <i.icon className="h-5 w-5" />
               </span>
