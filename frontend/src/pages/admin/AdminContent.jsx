@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, Image as ImageIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, Image as ImageIcon, ListChecks, Upload } from "lucide-react";
 import { contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
+import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -34,24 +35,30 @@ const emptyQuestion = {
   image: "",
 };
 
+// Singular type name for each drill-down level (used by the form modal).
+const VIEW_TYPE = { subjects: "subject", topics: "topic", sessions: "session", quizzes: "quiz", questions: "question" };
+
 export default function AdminContent() {
   // Drill-down context
-  const [view, setView] = useState("subjects"); // subjects | topics | sessions | questions
+  const [view, setView] = useState("subjects"); // subjects | topics | sessions | quizzes | questions
   const [subject, setSubject] = useState(null);
   const [topic, setTopic] = useState(null);
   const [session, setSession] = useState(null);
+  const [quiz, setQuiz] = useState(null);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modal, setModal] = useState(null); // { type, mode, data }
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const loaders = {
     subjects: () => contentService.subjects(),
     topics: () => contentService.topics(subject._id),
     sessions: () => contentService.sessions(topic._id),
-    questions: () => contentService.questions(session._id),
+    quizzes: () => contentService.quizzes(session._id),
+    questions: () => contentService.quizQuestions(quiz._id),
   };
 
   const load = useCallback((which) => {
@@ -62,14 +69,15 @@ export default function AdminContent() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subject, topic, session]);
+  }, [subject, topic, session, quiz]);
 
   useEffect(() => { load(view); /* eslint-disable-next-line */ }, [view]);
 
   // Navigation
-  const openSubject = (s) => { setSubject(s); setTopic(null); setSession(null); setView("topics"); };
-  const openTopic = (t) => { setTopic(t); setSession(null); setView("sessions"); };
-  const openSession = (s) => { setSession(s); setView("questions"); };
+  const openSubject = (s) => { setSubject(s); setTopic(null); setSession(null); setQuiz(null); setView("topics"); };
+  const openTopic = (t) => { setTopic(t); setSession(null); setQuiz(null); setView("sessions"); };
+  const openSession = (s) => { setSession(s); setQuiz(null); setView("quizzes"); };
+  const openQuiz = (q) => { setQuiz(q); setView("questions"); };
   const goTo = (level) => setView(level);
 
   // ---- Save handlers ----
@@ -87,6 +95,9 @@ export default function AdminContent() {
       } else if (type === "session") {
         if (mode === "add") await contentService.createSession({ ...form, subject: subject._id, topic: topic._id });
         else await contentService.updateSession(data._id, form);
+      } else if (type === "quiz") {
+        if (mode === "add") await contentService.createQuiz({ ...form, subject: subject._id, session: session._id });
+        else await contentService.updateQuiz(data._id, form);
       } else if (type === "question") {
         // Build a clean payload depending on the question type.
         const base = {
@@ -107,7 +118,7 @@ export default function AdminContent() {
                 correct: form.correct,
               }
             : { ...base, options: form.options, correct: form.correct };
-        if (mode === "add") await contentService.createQuestion({ ...payload, subject: subject._id, session: session._id });
+        if (mode === "add") await contentService.createQuestion({ ...payload, subject: subject._id, session: session._id, quiz: quiz._id });
         else await contentService.updateQuestion(data._id, payload);
       }
       setModal(null);
@@ -125,6 +136,7 @@ export default function AdminContent() {
       if (type === "subject") await contentService.deleteSubject(id);
       else if (type === "topic") await contentService.deleteTopic(id);
       else if (type === "session") await contentService.deleteSession(id);
+      else if (type === "quiz") await contentService.deleteQuiz(id);
       else if (type === "question") await contentService.deleteQuestion(id);
       load(view);
     } catch (e) {
@@ -140,13 +152,17 @@ export default function AdminContent() {
         <ChevronRight className="h-4 w-4 text-slate-400" />
         <button onClick={() => goTo("topics")} className={`rounded px-2 py-1 font-medium ${view === "topics" ? "text-brand-600" : "text-slate-500 hover:text-brand-600"}`}>{subject.name}</button>
       </>)}
-      {topic && (view === "sessions" || view === "questions") && (<>
+      {topic && view !== "subjects" && view !== "topics" && (<>
         <ChevronRight className="h-4 w-4 text-slate-400" />
         <button onClick={() => goTo("sessions")} className={`rounded px-2 py-1 font-medium ${view === "sessions" ? "text-brand-600" : "text-slate-500 hover:text-brand-600"}`}>{topic.title}</button>
       </>)}
-      {session && view === "questions" && (<>
+      {session && (view === "quizzes" || view === "questions") && (<>
         <ChevronRight className="h-4 w-4 text-slate-400" />
-        <span className="rounded px-2 py-1 font-medium text-brand-600">{session.title}</span>
+        <button onClick={() => goTo("quizzes")} className={`rounded px-2 py-1 font-medium ${view === "quizzes" ? "text-brand-600" : "text-slate-500 hover:text-brand-600"}`}>{session.title}</button>
+      </>)}
+      {quiz && view === "questions" && (<>
+        <ChevronRight className="h-4 w-4 text-slate-400" />
+        <span className="rounded px-2 py-1 font-medium text-brand-600">{quiz.title}</span>
       </>)}
     </nav>
   );
@@ -155,12 +171,13 @@ export default function AdminContent() {
     subjects: { title: "Subjects", add: "Add Subject", icon: FolderOpen },
     topics: { title: `Topics in ${subject?.name || ""}`, add: "Add Topic", icon: Layers },
     sessions: { title: `Sessions in ${topic?.title || ""}`, add: "Add Session", icon: BookOpen },
-    questions: { title: `Questions in ${session?.title || ""}`, add: "Add Question", icon: HelpCircle },
+    quizzes: { title: `Quizzes in ${session?.title || ""}`, add: "Add Quiz", icon: ListChecks },
+    questions: { title: `Questions in ${quiz?.title || ""}`, add: "Add Question", icon: HelpCircle },
   };
   const H = headings[view];
 
-  const openAdd = () => setModal({ type: view.slice(0, -1), mode: "add", data: view === "question" ? emptyQuestion : {} });
-  const openEdit = (item) => setModal({ type: view.slice(0, -1), mode: "edit", data: item });
+  const openAdd = () => setModal({ type: VIEW_TYPE[view], mode: "add", data: view === "questions" ? emptyQuestion : {} });
+  const openEdit = (item) => setModal({ type: VIEW_TYPE[view], mode: "edit", data: item });
 
   return (
     <div className="space-y-5">
@@ -169,9 +186,16 @@ export default function AdminContent() {
           <h1 className="text-2xl font-extrabold">Content Management</h1>
           <p className="text-slate-500 dark:text-slate-400">Subject → Topic → Session → Questions. Add, edit or delete at any level.</p>
         </div>
-        <button onClick={openAdd} className="btn-primary">
-          <Plus className="h-4 w-4" /> {H.add}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {view === "questions" && (
+            <button onClick={() => setBulkOpen(true)} className="btn-outline">
+              <Upload className="h-4 w-4" /> Bulk Upload
+            </button>
+          )}
+          <button onClick={openAdd} className="btn-primary">
+            <Plus className="h-4 w-4" /> {H.add}
+          </button>
+        </div>
       </div>
 
       <div className="card px-4 py-3"><Crumb /></div>
@@ -210,7 +234,8 @@ export default function AdminContent() {
                     <p className="mt-0.5 text-xs text-slate-400">
                       {view === "subjects" && `${item.topics ?? 0} topics`}
                       {view === "topics" && `${item.sessions ?? 0} sessions`}
-                      {view === "sessions" && `${item.questions ?? 0} questions · ${item.difficulty}`}
+                      {view === "sessions" && `${item.quizzes ?? 0} quizzes · ${item.difficulty}`}
+                      {view === "quizzes" && `${item.questions ?? 0} questions · ${item.difficulty}`}
                     </p>
                   </>
                 )}
@@ -218,7 +243,15 @@ export default function AdminContent() {
               <div className="flex flex-shrink-0 items-center gap-1">
                 {view !== "questions" && (
                   <button
-                    onClick={() => (view === "subjects" ? openSubject(item) : view === "topics" ? openTopic(item) : openSession(item))}
+                    onClick={() =>
+                      view === "subjects"
+                        ? openSubject(item)
+                        : view === "topics"
+                        ? openTopic(item)
+                        : view === "sessions"
+                        ? openSession(item)
+                        : openQuiz(item)
+                    }
                     className="btn-outline py-2"
                   >
                     Manage <ChevronRight className="h-4 w-4" />
@@ -227,7 +260,7 @@ export default function AdminContent() {
                 <button onClick={() => openEdit(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button onClick={() => remove(view.slice(0, -1), item._id, item.name || item.title || "this question")} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
+                <button onClick={() => remove(VIEW_TYPE[view], item._id, item.name || item.title || "this question")} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -244,6 +277,21 @@ export default function AdminContent() {
           onSave={save}
         />
       )}
+
+      <BulkUploadQuestions
+        open={bulkOpen}
+        title={`Bulk Upload Questions${quiz ? ` — ${quiz.title}` : ""}`}
+        onClose={() => setBulkOpen(false)}
+        onUpload={async (questions) => {
+          const res = await contentService.bulkQuestions(questions, {
+            subject: subject._id,
+            session: session._id,
+            quiz: quiz._id,
+          });
+          load("questions");
+          return res;
+        }}
+      />
     </div>
   );
 }
@@ -255,6 +303,7 @@ function FormModal({ modal, saving, onClose, onSave }) {
     if (type === "subject") return { name: data.name || "", description: data.description || "", icon: data.icon || "BookOpen", color: data.color || COLORS[0] };
     if (type === "topic") return { title: data.title || "", description: data.description || "", index: data.index || 1 };
     if (type === "session") return { title: data.title || "", difficulty: data.difficulty || "Medium", index: data.index || 1 };
+    if (type === "quiz") return { title: data.title || "", difficulty: data.difficulty || "Medium", index: data.index || 1 };
     return {
       type: data.type || "mcq",
       text: data.text || "",
@@ -269,7 +318,7 @@ function FormModal({ modal, saving, onClose, onSave }) {
     };
   });
 
-  const titleMap = { subject: "Subject", topic: "Topic", session: "Session", question: "Question" };
+  const titleMap = { subject: "Subject", topic: "Topic", session: "Session", quiz: "Quiz", question: "Question" };
   const submit = (e) => { e.preventDefault(); onSave(form); };
 
   return (
@@ -307,6 +356,20 @@ function FormModal({ modal, saving, onClose, onSave }) {
           {type === "session" && (
             <>
               <Field label="Session Title"><input required className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Laws of Motion" /></Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Difficulty">
+                  <select className="input" value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: e.target.value })}>
+                    <option>Easy</option><option>Medium</option><option>Hard</option>
+                  </select>
+                </Field>
+                <Field label="Order (index)"><input type="number" className="input" value={form.index} onChange={(e) => setForm({ ...form, index: +e.target.value })} /></Field>
+              </div>
+            </>
+          )}
+
+          {type === "quiz" && (
+            <>
+              <Field label="Quiz Title"><input required className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Practice Set 1" /></Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Difficulty">
                   <select className="input" value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: e.target.value })}>

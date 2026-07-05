@@ -18,6 +18,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const QuizHome = lazy(() => import("./pages/quiz/QuizHome"));
 const SubjectTopics = lazy(() => import("./pages/quiz/SubjectTopics"));
 const TopicSessions = lazy(() => import("./pages/quiz/TopicSessions"));
+const SessionQuizzes = lazy(() => import("./pages/quiz/SessionQuizzes"));
 const QuizPlay = lazy(() => import("./pages/quiz/QuizPlay"));
 const QuizResult = lazy(() => import("./pages/quiz/QuizResult"));
 
@@ -55,8 +56,9 @@ const router = createBrowserRouter([
       { path: "/quiz", element: S(QuizHome) },
       { path: "/quiz/:subjectId", element: S(SubjectTopics) },
       { path: "/quiz/:subjectId/:topicId", element: S(TopicSessions) },
-      { path: "/quiz/:subjectId/:topicId/:sessionId", element: S(QuizPlay) },
-      { path: "/quiz/:subjectId/:topicId/:sessionId/result", element: S(QuizResult) },
+      { path: "/quiz/:subjectId/:topicId/:sessionId", element: S(SessionQuizzes) },
+      { path: "/quiz/:subjectId/:topicId/:sessionId/:quizId", element: S(QuizPlay) },
+      { path: "/quiz/:subjectId/:topicId/:sessionId/:quizId/result", element: S(QuizResult) },
 
       { path: "/test-series", element: S(TestSeries) },
 

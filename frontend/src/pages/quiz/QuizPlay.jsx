@@ -46,9 +46,9 @@ const TIMER_OPTIONS = [
 ];
 
 export default function QuizPlay() {
-  const { subjectId, topicId, sessionId } = useParams();
+  const { subjectId, topicId, sessionId, quizId } = useParams();
   const navigate = useNavigate();
-  const storageKey = `mpm-quiz-${sessionId}`;
+  const storageKey = `mpm-quiz-${quizId}`;
 
   // Read any saved progress once (so refresh resumes, including timer choice).
   const saved = (() => {
@@ -82,7 +82,7 @@ export default function QuizPlay() {
     setLoading(true);
     setError("");
     Promise.all([
-      contentService.questions(sessionId),
+      contentService.quizQuestions(quizId),
       contentService.subjects().catch(() => []),
     ])
       .then(([qs, subjects]) => {
@@ -92,7 +92,7 @@ export default function QuizPlay() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [sessionId, subjectId]);
+  }, [quizId, subjectId]);
 
   useEffect(load, [load]);
 
@@ -184,14 +184,14 @@ export default function QuizPlay() {
       if (answers[i] !== undefined) byId[qq._id] = answers[i];
     });
     try {
-      await quizService.submit(sessionId, byId, seconds);
+      await quizService.submit(quizId, byId, seconds);
     } catch {
       /* practice still works even if recording fails */
     }
 
     localStorage.removeItem(storageKey);
-    navigate(`/quiz/${subjectId}/${topicId}/${sessionId}/result`, { state: result });
-  }, [answers, questions, seconds, subjectId, topicId, sessionId, subjectName, navigate, storageKey]);
+    navigate(`/quiz/${subjectId}/${topicId}/${sessionId}/${quizId}/result`, { state: result });
+  }, [answers, questions, seconds, subjectId, topicId, sessionId, quizId, subjectName, navigate, storageKey]);
 
   if (loading) return <div className="container-page"><Loading label="Loading quiz..." /></div>;
   if (error) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;

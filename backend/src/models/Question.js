@@ -7,8 +7,10 @@ import mongoose from "mongoose";
 // Text/options/columns may contain LaTeX between $...$ for equation rendering.
 const questionSchema = new mongoose.Schema(
   {
-    subject: { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true },
+    // Optional: test-series questions may not belong to a subject.
+    subject: { type: mongoose.Schema.Types.ObjectId, ref: "Subject" },
     session: { type: mongoose.Schema.Types.ObjectId, ref: "Session" },
+    quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
     testSeries: { type: mongoose.Schema.Types.ObjectId, ref: "TestSeries" },
     type: { type: String, enum: ["mcq", "matching"], default: "mcq" },
     text: { type: String, required: true },

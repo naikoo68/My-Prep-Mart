@@ -12,9 +12,10 @@ export async function submitQuiz(req, res) {
   }
 
   const { answers = {}, timeTaken = 0 } = req.body;
-  const questions = await Question.find({ session: req.params.sessionId });
+  const quizId = req.params.quizId;
+  const questions = await Question.find({ quiz: quizId });
   if (!questions.length) {
-    return res.status(404).json({ message: "No questions for this session" });
+    return res.status(404).json({ message: "No questions for this quiz" });
   }
 
   let correct = 0;
@@ -49,11 +50,13 @@ export async function submitQuiz(req, res) {
 
   // Persist only for authenticated users.
   if (req.user) {
-    const session = await Session.findById(req.params.sessionId);
+    // Derive the session from the first question (they all share the same quiz).
+    const sessionId = questions[0]?.session || null;
     await Attempt.create({
       user: req.user._id,
       type: "quiz",
-      session: req.params.sessionId,
+      quiz: quizId,
+      session: sessionId,
       responses,
       ...payload,
     });

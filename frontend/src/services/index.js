@@ -18,6 +18,8 @@ export const contentService = {
   subjects: () => api.get("/subjects"),
   topics: (subjectId) => api.get(`/subjects/${subjectId}/topics`),
   sessions: (topicId) => api.get(`/topics/${topicId}/sessions`),
+  quizzes: (sessionId) => api.get(`/sessions/${sessionId}/quizzes`),
+  quizQuestions: (quizId) => api.get(`/quizzes/${quizId}/questions`),
   questions: (sessionId) => api.get(`/sessions/${sessionId}/questions`),
   allQuestions: () => api.get("/questions"),
   // subjects (admin)
@@ -32,17 +34,22 @@ export const contentService = {
   createSession: (data) => api.post("/sessions", data),
   updateSession: (id, data) => api.put(`/sessions/${id}`, data),
   deleteSession: (id) => api.del(`/sessions/${id}`),
+  // quizzes (admin)
+  createQuiz: (data) => api.post("/quizzes", data),
+  updateQuiz: (id, data) => api.put(`/quizzes/${id}`, data),
+  deleteQuiz: (id) => api.del(`/quizzes/${id}`),
   // questions (admin)
   createQuestion: (data) => api.post("/questions", data),
   updateQuestion: (id, data) => api.put(`/questions/${id}`, data),
   deleteQuestion: (id) => api.del(`/questions/${id}`),
-  bulkQuestions: (questions) => api.post("/questions/bulk", { questions }),
+  // bulk upload: context merged into each question (subject/session/quiz/testSeries)
+  bulkQuestions: (questions, context) => api.post("/questions/bulk", { questions, context }),
 };
 
 // ---- Quiz ----
 export const quizService = {
-  submit: (sessionId, answers, timeTaken) =>
-    api.post(`/quiz/${sessionId}/submit`, { answers, timeTaken }),
+  submit: (quizId, answers, timeTaken) =>
+    api.post(`/quiz/${quizId}/submit`, { answers, timeTaken }),
 };
 
 // ---- Test series ----

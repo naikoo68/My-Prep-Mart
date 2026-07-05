@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search } from "lucide-react";
-import { testService } from "../../services";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload } from "lucide-react";
+import { testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
+import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -22,6 +23,9 @@ export default function AdminTests() {
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessSaving, setAccessSaving] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+
+  // Bulk-upload-questions-to-a-test state
+  const [bulkTest, setBulkTest] = useState(null);
 
   const openAccess = async (t) => {
     setAccessTest(t);
@@ -180,6 +184,9 @@ export default function AdminTests() {
                         className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
                       >
                         {t.status === "published" ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                      <button onClick={() => setBulkTest(t)} title="Bulk upload questions" className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">
+                        <Upload className="h-4 w-4" />
                       </button>
                       <button onClick={() => openAccess(t)} title="Manage user access" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/30">
                         <Users className="h-4 w-4" />
@@ -349,6 +356,17 @@ export default function AdminTests() {
           </div>
         </div>
       )}
+
+      <BulkUploadQuestions
+        open={!!bulkTest}
+        title={`Bulk Upload Questions${bulkTest ? ` — ${bulkTest.name}` : ""}`}
+        onClose={() => setBulkTest(null)}
+        onUpload={async (questions) => {
+          const res = await contentService.bulkQuestions(questions, { testSeries: bulkTest._id });
+          load(); // refresh question counts
+          return res;
+        }}
+      />
     </div>
   );
 }

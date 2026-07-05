@@ -12,6 +12,11 @@ import {
   createSession,
   updateSession,
   deleteSession,
+  listQuizzes,
+  createQuiz,
+  updateQuiz,
+  deleteQuiz,
+  listQuizQuestions,
   listQuestions,
   listAllQuestions,
   createQuestion,
@@ -19,7 +24,7 @@ import {
   updateQuestion,
   deleteQuestion,
 } from "../controllers/contentController.js";
-import { protect, authorize } from "../middleware/auth.js";
+import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
 const router = Router();
 const admin = [protect, authorize("admin")];
@@ -41,6 +46,13 @@ router.get("/topics/:topicId/sessions", listSessions);
 router.post("/sessions", ...admin, createSession);
 router.put("/sessions/:id", ...admin, updateSession);
 router.delete("/sessions/:id", ...admin, deleteSession);
+
+// Quizzes (within a session)
+router.get("/sessions/:sessionId/quizzes", listQuizzes);
+router.post("/quizzes", ...admin, createQuiz);
+router.put("/quizzes/:id", ...admin, updateQuiz);
+router.delete("/quizzes/:id", ...admin, deleteQuiz);
+router.get("/quizzes/:quizId/questions", optionalAuth, listQuizQuestions);
 
 // Questions
 router.get("/questions", ...admin, listAllQuestions);

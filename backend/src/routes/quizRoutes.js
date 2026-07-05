@@ -5,6 +5,6 @@ import { optionalAuth } from "../middleware/auth.js";
 const router = Router();
 
 // Optional auth: anyone can practice; the attempt is saved if logged in.
-router.post("/:sessionId/submit", optionalAuth, submitQuiz);
+router.post("/:quizId/submit", optionalAuth, submitQuiz);
 
 export default router;

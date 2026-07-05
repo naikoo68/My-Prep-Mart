@@ -6,6 +6,7 @@ const attemptSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     type: { type: String, enum: ["quiz", "test"], required: true },
     session: { type: mongoose.Schema.Types.ObjectId, ref: "Session" },
+    quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
     testSeries: { type: mongoose.Schema.Types.ObjectId, ref: "TestSeries" },
     responses: [
       {

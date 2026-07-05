@@ -1,7 +1,9 @@
 import Subject from "../models/Subject.js";
 import Topic from "../models/Topic.js";
 import Session from "../models/Session.js";
+import Quiz from "../models/Quiz.js";
 import Question from "../models/Question.js";
+import TestSeries from "../models/TestSeries.js";
 
 const slugify = (s) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -38,18 +40,18 @@ export async function updateSubject(req, res) {
   res.json(subject);
 }
 
-// Cascade delete: subject → its topics → sessions → questions
+// Cascade delete: subject → its topics → sessions → quizzes → questions
 export async function deleteSubject(req, res) {
   const id = req.params.id;
   const topicIds = (await Topic.find({ subject: id }).select("_id")).map((t) => t._id);
-  const sessionIds = (await Session.find({ subject: id }).select("_id")).map((s) => s._id);
   await Promise.all([
-    Question.deleteMany({ session: { $in: sessionIds } }),
+    Question.deleteMany({ subject: id }),
+    Quiz.deleteMany({ subject: id }),
     Session.deleteMany({ subject: id }),
     Topic.deleteMany({ subject: id }),
     Subject.findByIdAndDelete(id),
   ]);
-  res.json({ message: "Subject and all its topics, sessions and questions deleted", topics: topicIds.length });
+  res.json({ message: "Subject and all its topics, sessions, quizzes and questions deleted", topics: topicIds.length });
 }
 
 /* ---------------- Topics ---------------- */
@@ -72,25 +74,26 @@ export async function updateTopic(req, res) {
   res.json(topic);
 }
 
-// Cascade delete: topic → sessions → questions
+// Cascade delete: topic → sessions → quizzes → questions
 export async function deleteTopic(req, res) {
   const id = req.params.id;
   const sessionIds = (await Session.find({ topic: id }).select("_id")).map((s) => s._id);
   await Promise.all([
     Question.deleteMany({ session: { $in: sessionIds } }),
+    Quiz.deleteMany({ session: { $in: sessionIds } }),
     Session.deleteMany({ topic: id }),
     Topic.findByIdAndDelete(id),
   ]);
-  res.json({ message: "Topic and its sessions and questions deleted" });
+  res.json({ message: "Topic and its sessions, quizzes and questions deleted" });
 }
 
 /* ---------------- Sessions ---------------- */
 
-// GET /api/topics/:topicId/sessions — includes question count per session
+// GET /api/topics/:topicId/sessions — includes quiz count per session
 export async function listSessions(req, res) {
   const sessions = await Session.find({ topic: req.params.topicId }).sort("index").lean();
-  const qMap = await countMap(Question, sessions.map((s) => s._id), "session");
-  res.json(sessions.map((s) => ({ ...s, questions: qMap[String(s._id)] || 0 })));
+  const qMap = await countMap(Quiz, sessions.map((s) => s._id), "session");
+  res.json(sessions.map((s) => ({ ...s, quizzes: qMap[String(s._id)] || 0 })));
 }
 
 export async function createSession(req, res) {
@@ -103,11 +106,51 @@ export async function updateSession(req, res) {
   res.json(session);
 }
 
-// Cascade delete: session → questions
+// Cascade delete: session → quizzes → questions
 export async function deleteSession(req, res) {
-  await Question.deleteMany({ session: req.params.id });
+  await Promise.all([
+    Question.deleteMany({ session: req.params.id }),
+    Quiz.deleteMany({ session: req.params.id }),
+  ]);
   await Session.findByIdAndDelete(req.params.id);
-  res.json({ message: "Session and its questions deleted" });
+  res.json({ message: "Session and its quizzes and questions deleted" });
+}
+
+/* ---------------- Quizzes (within a session) ---------------- */
+
+// GET /api/sessions/:sessionId/quizzes — includes question count per quiz
+export async function listQuizzes(req, res) {
+  const quizzes = await Quiz.find({ session: req.params.sessionId }).sort("index").lean();
+  const qMap = await countMap(Question, quizzes.map((q) => q._id), "quiz");
+  res.json(quizzes.map((q) => ({ ...q, questions: qMap[String(q._id)] || 0 })));
+}
+
+export async function createQuiz(req, res) {
+  const quiz = await Quiz.create(req.body);
+  res.status(201).json(quiz);
+}
+
+export async function updateQuiz(req, res) {
+  const quiz = await Quiz.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+  res.json(quiz);
+}
+
+// Cascade delete: quiz → questions
+export async function deleteQuiz(req, res) {
+  await Question.deleteMany({ quiz: req.params.id });
+  await Quiz.findByIdAndDelete(req.params.id);
+  res.json({ message: "Quiz and its questions deleted" });
+}
+
+// GET /api/quizzes/:quizId/questions — practice questions (with answers)
+export async function listQuizQuestions(req, res) {
+  const isAdmin = req.user?.role === "admin";
+  const questions = await Question.find({
+    quiz: req.params.quizId,
+    ...(isAdmin ? {} : { status: "published" }),
+  });
+  res.json(questions);
 }
 
 /* ---------------- Questions ---------------- */
@@ -131,12 +174,14 @@ export async function listAllQuestions(req, res) {
     .limit(500)
     .populate("subject", "name")
     .populate("session", "title")
+    .populate("quiz", "title")
     .lean();
   res.json(
     questions.map((q) => ({
       ...q,
       subject: q.subject?.name || "—",
       session: q.session?.title || "—",
+      quiz: q.quiz?.title || "—",
     }))
   );
 }
@@ -146,12 +191,25 @@ export async function createQuestion(req, res) {
   res.status(201).json(question);
 }
 
+// POST /api/questions/bulk
+// Body: { questions: [...], context: { subject, session, quiz, testSeries, status } }
+// The context is merged into every question so the client only sends the
+// per-question fields (text, options, correct, …). Test-series questions are
+// also linked into that test's question list.
 export async function bulkCreateQuestions(req, res) {
-  const { questions } = req.body;
+  const { questions, context = {} } = req.body;
   if (!Array.isArray(questions) || !questions.length) {
     return res.status(400).json({ message: "questions array is required" });
   }
-  const created = await Question.insertMany(questions, { ordered: false });
+  const docs = questions.map((q) => ({ status: "published", ...q, ...context }));
+  const created = await Question.insertMany(docs, { ordered: false });
+
+  // Attach to the test series' question list when uploading test questions.
+  if (context.testSeries) {
+    await TestSeries.findByIdAndUpdate(context.testSeries, {
+      $push: { questions: { $each: created.map((c) => c._id) } },
+    });
+  }
   res.status(201).json({ inserted: created.length });
 }
 

@@ -60,10 +60,10 @@ export default function TopicSessions() {
               </div>
               <h3 className="mt-3 text-lg font-bold">{s.title}</h3>
               <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-                <HelpCircle className="h-4 w-4" /> {s.questions} questions
+                <HelpCircle className="h-4 w-4" /> {s.quizzes ?? 0} quizzes
               </p>
               <Link to={`/quiz/${subjectId}/${topicId}/${s._id}`} className="btn-primary mt-auto w-full">
-                <Play className="h-4 w-4" /> Start Quiz
+                <Play className="h-4 w-4" /> View Quizzes
               </Link>
             </div>
           ))}
