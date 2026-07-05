@@ -9,6 +9,7 @@ import {
   Flag,
   Save,
   CheckCircle2,
+  XCircle,
   AlertTriangle,
   X,
   Trophy,
@@ -16,6 +17,14 @@ import {
 import { testService } from "../../services";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
+
+// Roman numerals for Column B labels (I, II, III, IV…)
+function toRoman(n) {
+  const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]];
+  let r = "";
+  for (const [s, v] of m) while (n >= v) { r += s; n -= v; }
+  return r;
+}
 
 const STATUS = {
   NOT_VISITED: "not_visited",
@@ -42,6 +51,7 @@ export default function TestAttempt() {
   const [fullscreen, setFullscreen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState(null);
+  const [showReview, setShowReview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const containerRef = useRef(null);
 
@@ -163,29 +173,107 @@ export default function TestAttempt() {
 
   // ---- Result screen (uses backend-graded data) ----
   if (result) {
+    const review = result.review || [];
+    const stats = [
+      { l: "Score", v: `${result.score}/${result.maxScore ?? test.marks}`, c: "text-brand-600 dark:text-brand-400" },
+      { l: "Percentage", v: `${result.percentage}%`, c: "text-brand-600 dark:text-brand-400" },
+      { l: "Total", v: result.total, c: "text-slate-700 dark:text-slate-200" },
+      { l: "Attempted", v: result.attempted, c: "text-slate-700 dark:text-slate-200" },
+      { l: "Correct", v: result.correct, c: "text-emerald-600 dark:text-emerald-400" },
+      { l: "Wrong", v: result.incorrect, c: "text-rose-600 dark:text-rose-400" },
+      { l: "Skipped", v: result.skipped, c: "text-amber-600 dark:text-amber-400" },
+    ];
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
-        <div className="card w-full max-w-lg p-8 text-center">
-          <Trophy className="mx-auto h-14 w-14 text-accent-500" />
-          <h1 className="mt-4 text-2xl font-extrabold">Test Submitted</h1>
-          <p className="mt-1 text-slate-500 dark:text-slate-400">{test.name}</p>
-          <div className="mt-6 grid grid-cols-2 gap-4">
-            {[
-              { l: "Score", v: `${result.score}/${test.marks}` },
-              { l: "Correct", v: result.correct },
-              { l: "Attempted", v: `${result.attempted}/${result.total}` },
-              { l: "Percentage", v: `${result.percentage}%` },
-            ].map((s) => (
-              <div key={s.l} className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60">
-                <p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{s.v}</p>
-                <p className="text-sm text-slate-500">{s.l}</p>
-              </div>
-            ))}
+      <div className="min-h-screen bg-slate-50 py-10 dark:bg-slate-950">
+        <div className="container-page">
+          <div className="card p-8 text-center">
+            <Trophy className="mx-auto h-14 w-14 text-accent-500" />
+            <h1 className="mt-4 text-2xl font-extrabold">Test Submitted</h1>
+            <p className="mt-1 text-slate-500 dark:text-slate-400">{test.name}</p>
+
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+              {stats.map((s) => (
+                <div key={s.l} className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60">
+                  <p className={`text-2xl font-bold ${s.c}`}>{s.v}</p>
+                  <p className="text-xs text-slate-500">{s.l}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              {review.length > 0 && (
+                <button onClick={() => setShowReview((v) => !v)} className="btn-accent">
+                  {showReview ? "Hide" : "Review"} Answers
+                </button>
+              )}
+              <button onClick={() => navigate("/dashboard")} className="btn-primary">Go to Dashboard</button>
+              <button onClick={() => navigate("/test-series")} className="btn-outline">More Tests</button>
+            </div>
           </div>
-          <div className="mt-6 flex gap-3">
-            <button onClick={() => navigate("/dashboard")} className="btn-primary flex-1">Go to Dashboard</button>
-            <button onClick={() => navigate("/test-series")} className="btn-outline flex-1">More Tests</button>
-          </div>
+
+          {/* Answer review */}
+          {showReview && (
+            <div className="mt-6 space-y-4">
+              {review.map((r, i) => (
+                <div key={r._id || i} className="card p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold">
+                      <span className="mr-2 text-slate-400">Q{i + 1}.</span>
+                      <MathText>{r.text}</MathText>
+                    </p>
+                    <span className={`flex-shrink-0 text-xs font-semibold ${
+                      r.chosen === null ? "text-amber-600" : r.isCorrect ? "text-emerald-600" : "text-rose-600"
+                    }`}>
+                      {r.chosen === null ? "Skipped" : r.isCorrect ? "Correct" : "Wrong"}
+                    </span>
+                  </div>
+                  {r.image && <img src={r.image} alt="" className="mt-3 max-h-52 rounded-lg object-contain" />}
+
+                  {r.type === "matching" && (
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                        <p className="mb-1 text-xs font-semibold uppercase text-brand-600 dark:text-brand-400">Column A</p>
+                        {(r.columnA || []).map((item, k) => (
+                          <div key={k} className="flex items-start gap-1.5 text-sm"><span className="font-bold text-brand-700 dark:text-brand-300">{k + 1}.</span> <MathText>{item}</MathText></div>
+                        ))}
+                      </div>
+                      <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                        <p className="mb-1 text-xs font-semibold uppercase text-accent-600 dark:text-accent-400">Column B</p>
+                        {(r.columnB || []).map((item, k) => (
+                          <div key={k} className="flex items-start gap-1.5 text-sm"><span className="font-bold text-accent-700 dark:text-accent-300">{toRoman(k + 1)}.</span> <MathText>{item}</MathText></div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 space-y-2">
+                    {(r.options || []).map((opt, idx) => {
+                      const isCorrect = idx === r.correct;
+                      const isChosen = idx === r.chosen;
+                      let cls = "flex items-center gap-2 rounded-lg px-3 py-2 text-sm ";
+                      if (isCorrect) cls += "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+                      else if (isChosen) cls += "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300";
+                      else cls += "text-slate-500 dark:text-slate-400";
+                      return (
+                        <div key={idx} className={cls}>
+                          {isCorrect ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : isChosen ? <XCircle className="h-4 w-4 flex-shrink-0" /> : <span className="h-4 w-4" />}
+                          {r.type === "matching" && <span className="font-bold">({String.fromCharCode(97 + idx)})</span>}
+                          <MathText>{opt}</MathText>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {r.explanation && (
+                    <div className="mt-3 rounded-lg bg-brand-50 p-3 text-sm dark:bg-brand-900/20">
+                      <span className="font-semibold text-brand-700 dark:text-brand-300">Explanation: </span>
+                      <MathText>{r.explanation}</MathText>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -233,8 +321,27 @@ export default function TestAttempt() {
           {q.image && <img src={q.image} alt="" className="mt-4 max-h-64 rounded-xl object-contain" />}
           <h2 className="mt-5 text-lg font-semibold leading-relaxed"><MathText>{q.text}</MathText></h2>
 
+          {/* Matching questions show the two columns before the answer options. */}
+          {q.type === "matching" && (
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <p className="mb-1 text-xs font-semibold uppercase text-brand-600 dark:text-brand-400">Column A</p>
+                {(q.columnA || []).map((item, k) => (
+                  <div key={k} className="flex items-start gap-1.5 py-0.5 text-sm"><span className="font-bold text-brand-700 dark:text-brand-300">{k + 1}.</span> <MathText>{item}</MathText></div>
+                ))}
+              </div>
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <p className="mb-1 text-xs font-semibold uppercase text-accent-600 dark:text-accent-400">Column B</p>
+                {(q.columnB || []).map((item, k) => (
+                  <div key={k} className="flex items-start gap-1.5 py-0.5 text-sm"><span className="font-bold text-accent-700 dark:text-accent-300">{toRoman(k + 1)}.</span> <MathText>{item}</MathText></div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-5 space-y-3">
-            {q.options.map((opt, idx) => (
+            {q.type === "matching" && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Choose the correct matching sequence:</p>}
+            {(q.options || []).map((opt, idx) => (
               <label
                 key={idx}
                 className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3.5 text-sm font-medium transition ${
@@ -250,6 +357,7 @@ export default function TestAttempt() {
                   onChange={() => select(idx)}
                   className="h-4 w-4 text-brand-600"
                 />
+                {q.type === "matching" && <span className="font-bold">({String.fromCharCode(97 + idx)})</span>}
                 <MathText>{opt}</MathText>
               </label>
             ))}

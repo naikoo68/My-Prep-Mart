@@ -65,6 +65,10 @@ export const testService = {
   remove: (id) => api.del(`/tests/${id}`),
   getAccess: (id) => api.get(`/tests/${id}/access`),
   updateAccess: (id, data) => api.put(`/tests/${id}/access`, data),
+  // manual question management for a test series
+  getQuestions: (id) => api.get(`/tests/${id}/questions`),
+  addQuestion: (id, data) => api.post(`/tests/${id}/questions`, data),
+  deleteQuestion: (id, qid) => api.del(`/tests/${id}/questions/${qid}`),
 };
 
 // ---- Dashboard / analytics ----

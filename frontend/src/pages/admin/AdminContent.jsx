@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, Image as ImageIcon, ListChecks, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload } from "lucide-react";
 import { contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
+import QuestionFormModal from "../../components/admin/QuestionFormModal";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -13,27 +14,6 @@ const COLORS = [
   "from-rose-500 to-pink-600",
   "from-cyan-500 to-teal-600",
 ];
-
-// Roman numerals for Column B labels (I, II, III, IV…)
-function toRomanLite(n) {
-  const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]];
-  let r = "";
-  for (const [s, v] of m) while (n >= v) { r += s; n -= v; }
-  return r;
-}
-
-const emptyQuestion = {
-  type: "mcq",
-  text: "",
-  options: ["", "", "", ""],
-  correct: 0,
-  columnA: ["", "", "", ""],
-  columnB: ["", "", "", ""],
-  difficulty: "Easy",
-  explanation: "",
-  status: "published",
-  image: "",
-};
 
 // Singular type name for each drill-down level (used by the form modal).
 const VIEW_TYPE = { subjects: "subject", topics: "topic", sessions: "session", quizzes: "quiz", questions: "question" };
@@ -98,28 +78,25 @@ export default function AdminContent() {
       } else if (type === "quiz") {
         if (mode === "add") await contentService.createQuiz({ ...form, subject: subject._id, session: session._id });
         else await contentService.updateQuiz(data._id, form);
-      } else if (type === "question") {
-        // Build a clean payload depending on the question type.
-        const base = {
-          type: form.type || "mcq",
-          text: form.text,
-          image: form.image,
-          difficulty: form.difficulty,
-          explanation: form.explanation,
-          status: form.status,
-        };
-        const payload =
-          form.type === "matching"
-            ? {
-                ...base,
-                columnA: (form.columnA || []).filter((x) => x.trim()),
-                columnB: (form.columnB || []).filter((x) => x.trim()),
-                options: form.options,
-                correct: form.correct,
-              }
-            : { ...base, options: form.options, correct: form.correct };
-        if (mode === "add") await contentService.createQuestion({ ...payload, subject: subject._id, session: session._id, quiz: quiz._id });
-        else await contentService.updateQuestion(data._id, payload);
+      }
+      setModal(null);
+      load(view);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Question add/edit uses the shared QuestionFormModal, which passes a clean payload.
+  const saveQuestion = async (payload) => {
+    setSaving(true);
+    setError("");
+    try {
+      if (modal.mode === "add") {
+        await contentService.createQuestion({ ...payload, subject: subject._id, session: session._id, quiz: quiz._id });
+      } else {
+        await contentService.updateQuestion(modal.data._id, payload);
       }
       setModal(null);
       load(view);
@@ -176,7 +153,7 @@ export default function AdminContent() {
   };
   const H = headings[view];
 
-  const openAdd = () => setModal({ type: VIEW_TYPE[view], mode: "add", data: view === "questions" ? emptyQuestion : {} });
+  const openAdd = () => setModal({ type: VIEW_TYPE[view], mode: "add", data: {} });
   const openEdit = (item) => setModal({ type: VIEW_TYPE[view], mode: "edit", data: item });
 
   return (
@@ -269,14 +246,21 @@ export default function AdminContent() {
         </div>
       )}
 
-      {modal && (
+      {modal && (modal.type === "question" ? (
+        <QuestionFormModal
+          question={modal.mode === "edit" ? modal.data : null}
+          saving={saving}
+          onClose={() => setModal(null)}
+          onSave={saveQuestion}
+        />
+      ) : (
         <FormModal
           modal={modal}
           saving={saving}
           onClose={() => setModal(null)}
           onSave={save}
         />
-      )}
+      ))}
 
       <BulkUploadQuestions
         open={bulkOpen}
@@ -304,21 +288,10 @@ function FormModal({ modal, saving, onClose, onSave }) {
     if (type === "topic") return { title: data.title || "", description: data.description || "", index: data.index || 1 };
     if (type === "session") return { title: data.title || "", difficulty: data.difficulty || "Medium", index: data.index || 1 };
     if (type === "quiz") return { title: data.title || "", difficulty: data.difficulty || "Medium", index: data.index || 1 };
-    return {
-      type: data.type || "mcq",
-      text: data.text || "",
-      options: data.options && data.options.length ? [...data.options] : ["", "", "", ""],
-      correct: data.correct ?? 0,
-      columnA: data.columnA && data.columnA.length ? [...data.columnA] : ["", "", "", ""],
-      columnB: data.columnB && data.columnB.length ? [...data.columnB] : ["", "", "", ""],
-      difficulty: data.difficulty || "Easy",
-      explanation: data.explanation || "",
-      status: data.status || "published",
-      image: data.image || "",
-    };
+    return {};
   });
 
-  const titleMap = { subject: "Subject", topic: "Topic", session: "Session", quiz: "Quiz", question: "Question" };
+  const titleMap = { subject: "Subject", topic: "Topic", session: "Session", quiz: "Quiz" };
   const submit = (e) => { e.preventDefault(); onSave(form); };
 
   return (
@@ -381,82 +354,6 @@ function FormModal({ modal, saving, onClose, onSave }) {
             </>
           )}
 
-          {type === "question" && (
-            <>
-              <Field label="Question Type">
-                <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                  <option value="mcq">Multiple Choice (4 options)</option>
-                  <option value="matching">Matching (left ↔ right)</option>
-                </select>
-              </Field>
-              <Field label="Question Text">
-                <textarea required rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="Use $...$ for equations, e.g. Solve $x^2+2x-3=0$" />
-                <p className="mt-1 text-xs text-slate-400">Tip: wrap maths in dollar signs to render equations, e.g. <code>$\\frac{"{a}"}{"{b}"}$</code>.</p>
-              </Field>
-              <Field label="Image URL (optional)">
-                <div className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 dark:border-slate-700">
-                  <ImageIcon className="h-4 w-4 text-slate-400" />
-                  <input className="w-full bg-transparent py-2.5 text-sm focus:outline-none" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://res.cloudinary.com/..." />
-                </div>
-              </Field>
-
-              {form.type === "matching" && (
-                <>
-                  <Field label="Column A (items — shown numbered 1, 2, 3…)">
-                    <div className="space-y-2">
-                      {form.columnA.map((item, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{i + 1}</span>
-                          <input className="input" value={item} onChange={(e) => setForm({ ...form, columnA: form.columnA.map((x, xi) => xi === i ? e.target.value : x) })} placeholder={`Column A item ${i + 1}`} />
-                          <button type="button" onClick={() => setForm({ ...form, columnA: form.columnA.filter((_, xi) => xi !== i) })} className="flex-shrink-0 rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/30" disabled={form.columnA.length <= 2}><Trash2 className="h-4 w-4" /></button>
-                        </div>
-                      ))}
-                      <button type="button" onClick={() => setForm({ ...form, columnA: [...form.columnA, ""] })} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add to Column A</button>
-                    </div>
-                  </Field>
-                  <Field label="Column B (items — shown as Roman numerals I, II, III…)">
-                    <div className="space-y-2">
-                      {form.columnB.map((item, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-accent-100 text-xs font-bold text-accent-700 dark:bg-accent-900/40 dark:text-accent-300">{toRomanLite(i + 1)}</span>
-                          <input className="input" value={item} onChange={(e) => setForm({ ...form, columnB: form.columnB.map((x, xi) => xi === i ? e.target.value : x) })} placeholder={`Column B item ${toRomanLite(i + 1)}`} />
-                          <button type="button" onClick={() => setForm({ ...form, columnB: form.columnB.filter((_, xi) => xi !== i) })} className="flex-shrink-0 rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/30" disabled={form.columnB.length <= 2}><Trash2 className="h-4 w-4" /></button>
-                        </div>
-                      ))}
-                      <button type="button" onClick={() => setForm({ ...form, columnB: [...form.columnB, ""] })} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add to Column B</button>
-                    </div>
-                  </Field>
-                </>
-              )}
-
-              <Field label={form.type === "matching" ? "Answer options (a–d) — select the correct sequence" : "Options (select the correct one)"}>
-                {form.type === "matching" && (
-                  <p className="mb-2 text-xs text-slate-400">Write each option as a sequence, e.g. <b>1-III, 2-I, 3-IV, 4-II</b>. Tick the correct one.</p>
-                )}
-                <div className="space-y-2">
-                  {form.options.map((opt, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <input type="radio" name="correct" checked={form.correct === i} onChange={() => setForm({ ...form, correct: i })} className="h-4 w-4 text-brand-600" />
-                      <input required className="input" value={opt} onChange={(e) => { const o = [...form.options]; o[i] = e.target.value; setForm({ ...form, options: o }); }} placeholder={form.type === "matching" ? `Option ${String.fromCharCode(97 + i)}  (e.g. 1-III, 2-I, 3-IV, 4-II)` : `Option ${String.fromCharCode(65 + i)}`} />
-                    </div>
-                  ))}
-                </div>
-              </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Difficulty">
-                  <select className="input" value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: e.target.value })}>
-                    <option>Easy</option><option>Medium</option><option>Hard</option>
-                  </select>
-                </Field>
-                <Field label="Status">
-                  <select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                    <option value="published">Published</option><option value="draft">Draft</option>
-                  </select>
-                </Field>
-              </div>
-              <Field label="Explanation / Solution"><textarea rows={2} className="input resize-none" value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} /></Field>
-            </>
-          )}
         </div>
 
         <div className="mt-6 flex justify-end gap-3">

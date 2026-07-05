@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle } from "lucide-react";
 import { testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
+import QuestionFormModal from "../../components/admin/QuestionFormModal";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -26,6 +27,57 @@ export default function AdminTests() {
 
   // Bulk-upload-questions-to-a-test state
   const [bulkTest, setBulkTest] = useState(null);
+
+  // Manage-questions state
+  const [qTest, setQTest] = useState(null); // test whose questions we're editing
+  const [tq, setTq] = useState([]); // its questions
+  const [tqLoading, setTqLoading] = useState(false);
+  const [tqModal, setTqModal] = useState(null); // { mode, data }
+  const [tqSaving, setTqSaving] = useState(false);
+
+  const openQuestions = async (t) => {
+    setQTest(t);
+    setTq([]);
+    setTqLoading(true);
+    try {
+      setTq(await testService.getQuestions(t._id));
+    } catch (e) {
+      setError(e.message);
+      setQTest(null);
+    } finally {
+      setTqLoading(false);
+    }
+  };
+
+  const reloadTq = async () => {
+    try { setTq(await testService.getQuestions(qTest._id)); } catch { /* ignore */ }
+  };
+
+  const saveTestQuestion = async (payload) => {
+    setTqSaving(true);
+    try {
+      if (tqModal.mode === "add") await testService.addQuestion(qTest._id, payload);
+      else await contentService.updateQuestion(tqModal.data._id, payload);
+      await reloadTq();
+      load(); // refresh question counts in the table
+      setTqModal(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTqSaving(false);
+    }
+  };
+
+  const removeTq = async (qid) => {
+    if (!window.confirm("Delete this question from the test?")) return;
+    try {
+      await testService.deleteQuestion(qTest._id, qid);
+      await reloadTq();
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   const openAccess = async (t) => {
     setAccessTest(t);
@@ -184,6 +236,9 @@ export default function AdminTests() {
                         className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
                       >
                         {t.status === "published" ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                      <button onClick={() => openQuestions(t)} title="Manage questions" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
+                        <HelpCircle className="h-4 w-4" />
                       </button>
                       <button onClick={() => setBulkTest(t)} title="Bulk upload questions" className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">
                         <Upload className="h-4 w-4" />
@@ -367,6 +422,69 @@ export default function AdminTests() {
           return res;
         }}
       />
+
+      {/* Manage questions modal */}
+      {qTest && (
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="my-8 w-full max-w-2xl animate-scale-in card p-6">
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Questions</h3>
+              <button onClick={() => setQTest(null)}><X className="h-5 w-5" /></button>
+            </div>
+            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{qTest.name}</p>
+
+            <div className="mb-4 flex justify-end">
+              <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary">
+                <Plus className="h-4 w-4" /> Add Question
+              </button>
+            </div>
+
+            {tqLoading ? (
+              <Loading label="Loading questions..." />
+            ) : tq.length === 0 ? (
+              <EmptyState message="No questions yet. Add one, or use Bulk Upload." />
+            ) : (
+              <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+                {tq.map((item) => (
+                  <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{item.text}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : "MCQ"}</Badge>
+                        <Badge variant={item.difficulty}>{item.difficulty}</Badge>
+                        {item.type !== "matching" && item.correct !== undefined && (
+                          <span className="text-xs text-slate-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-shrink-0 gap-1">
+                      <button onClick={() => setTqModal({ mode: "edit", data: item })} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => removeTq(item._id)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button onClick={() => setQTest(null)} className="btn-outline">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tqModal && (
+        <QuestionFormModal
+          question={tqModal.mode === "edit" ? tqModal.data : null}
+          saving={tqSaving}
+          onClose={() => setTqModal(null)}
+          onSave={saveTestQuestion}
+        />
+      )}
     </div>
   );
 }

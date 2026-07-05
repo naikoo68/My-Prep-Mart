@@ -10,6 +10,9 @@ import {
   submitTest,
   getTestAccess,
   updateTestAccess,
+  getTestQuestions,
+  addTestQuestion,
+  deleteTestQuestion,
 } from "../controllers/testController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -20,6 +23,9 @@ router.get("/", optionalAuth, listTests);
 router.get("/admin/all", ...admin, listAllTests);
 router.get("/:id/access", ...admin, getTestAccess);
 router.put("/:id/access", ...admin, updateTestAccess);
+router.get("/:id/questions", ...admin, getTestQuestions);
+router.post("/:id/questions", ...admin, addTestQuestion);
+router.delete("/:id/questions/:qid", ...admin, deleteTestQuestion);
 router.get("/:id", protect, getTest);
 router.post("/:id/submit", protect, submitTest);
 

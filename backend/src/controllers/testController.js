@@ -132,34 +132,92 @@ export async function submitTest(req, res) {
   const test = await TestSeries.findById(req.params.id).populate("questions");
   if (!test) return res.status(404).json({ message: "Test not found" });
 
+  const total = test.questions.length;
   let correct = 0;
-  const responses = test.questions.map((q) => {
-    const chosen = answers[q._id] ?? null;
-    const isCorrect = chosen === q.correct;
+  let attempted = 0;
+
+  // Build both the stored responses and a rich review for the result screen.
+  const responses = [];
+  const review = test.questions.map((q) => {
+    const raw = answers[q._id];
+    const provided = raw !== undefined && raw !== null;
+    // Both MCQ and matching are answered by picking one option index.
+    const isCorrect = provided && raw === q.correct;
+    if (provided) attempted += 1;
     if (isCorrect) correct += 1;
-    return { question: q._id, chosen, isCorrect };
+    responses.push({ question: q._id, chosen: provided ? raw : null, isCorrect });
+    return {
+      _id: q._id,
+      type: q.type,
+      text: q.text,
+      image: q.image,
+      options: q.options,
+      columnA: q.columnA,
+      columnB: q.columnB,
+      correct: q.correct,
+      explanation: q.explanation,
+      chosen: provided ? raw : null,
+      isCorrect,
+    };
   });
 
-  const attempted = Object.keys(answers).length;
+  const skipped = total - attempted;
   const incorrect = attempted - correct;
-  const perQuestion = test.marks / test.questions.length;
-  const score = correct * perQuestion - incorrect * test.negativeMarking;
-  const percentage = Math.round((correct / test.questions.length) * 100);
+  const perQuestion = total ? test.marks / total : 0;
+  const score = Math.round(correct * perQuestion - incorrect * (test.negativeMarking || 0));
+  const percentage = total ? Math.round((correct / total) * 100) : 0;
 
   const attempt = await Attempt.create({
     user: req.user._id,
     type: "test",
     testSeries: test._id,
     responses,
-    total: test.questions.length,
+    total,
     attempted,
     correct,
     incorrect,
-    score: Math.round(score),
+    score,
     percentage,
     timeTaken,
   });
 
   await TestSeries.findByIdAndUpdate(test._id, { $inc: { attempts: 1 } });
-  res.status(201).json(attempt);
+  // Return the graded summary + full review (with correct answers) for the UI.
+  res.status(201).json({
+    _id: attempt._id,
+    total,
+    attempted,
+    skipped,
+    correct,
+    incorrect,
+    score,
+    maxScore: test.marks,
+    percentage,
+    timeTaken,
+    review,
+  });
+}
+
+/* ---------------- Test questions (admin) ---------------- */
+
+// GET /api/tests/:id/questions  (admin) — full questions incl. correct answers
+export async function getTestQuestions(req, res) {
+  const questions = await Question.find({ testSeries: req.params.id }).sort("createdAt");
+  res.json(questions);
+}
+
+// POST /api/tests/:id/questions  (admin) — add one question to a test
+export async function addTestQuestion(req, res) {
+  const test = await TestSeries.findById(req.params.id);
+  if (!test) return res.status(404).json({ message: "Test not found" });
+  const question = await Question.create({ ...req.body, testSeries: test._id });
+  await TestSeries.findByIdAndUpdate(test._id, { $push: { questions: question._id } });
+  res.status(201).json(question);
+}
+
+// DELETE /api/tests/:id/questions/:qid  (admin) — remove a question from a test
+export async function deleteTestQuestion(req, res) {
+  await TestSeries.findByIdAndUpdate(req.params.id, { $pull: { questions: req.params.qid } });
+  await Question.findByIdAndDelete(req.params.qid);
+  res.json({ message: "Question removed from test" });
 }
