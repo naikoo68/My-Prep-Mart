@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import User from "../models/User.js";
 import generateToken from "../utils/generateToken.js";
+import { sendMail } from "../config/mailer.js";
 
 // Normalise emails so case/whitespace never causes a login mismatch
 // (phone keyboards often auto-capitalise the first letter).
@@ -28,11 +29,21 @@ export async function register(req, res) {
   if (exists) return res.status(409).json({ message: "Email already registered" });
 
   const emailVerificationToken = crypto.randomBytes(20).toString("hex");
-  const user = await User.create({ name, email, password, emailVerificationToken });
+  // Accounts are active immediately (no verification gate), so mark verified.
+  const user = await User.create({ name, email, password, emailVerificationToken, isEmailVerified: true });
 
-  // In production: send verification email containing emailVerificationToken.
+  // Best-effort welcome email (only sends if SMTP is configured; never blocks signup).
+  sendMail({
+    to: email,
+    subject: "Welcome to My Study Guide 🎉",
+    text: `Hi ${name},\n\nYour account is ready — start practicing quizzes and test series right away.\n\n— My Study Guide`,
+    html: `<h2>Welcome, ${name}! 🎉</h2>
+           <p>Your account is ready. Start practicing quizzes and full-length test series right away.</p>
+           <p>Happy studying,<br/>The My Study Guide team</p>`,
+  }).catch((e) => console.error("Welcome email failed:", e.message));
+
   res.status(201).json({
-    message: "Registered. Please verify your email.",
+    message: "Account created successfully.",
     user: sanitize(user),
     token: generateToken(user._id),
   });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { User, Mail, Lock, Eye, EyeOff, UserPlus, MailCheck, Loader2, AlertCircle } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, UserPlus, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
 import { useAuth } from "../../context/AuthContext";
 
@@ -30,14 +30,14 @@ export default function Register() {
 
   if (verifySent) {
     return (
-      <AuthShell title="Account created">
+      <AuthShell title="Welcome aboard!">
         <div className="card p-6 text-center">
-          <MailCheck className="mx-auto h-14 w-14 text-brand-600" />
-          <h3 className="mt-4 text-lg font-bold">You're all set!</h3>
+          <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
+          <h3 className="mt-4 text-lg font-bold">Your account is ready 🎉</h3>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            A verification email was sent to{" "}
+            You're signed in as{" "}
             <span className="font-semibold text-slate-800 dark:text-slate-200">{form.email}</span>.
-            You can verify anytime — your account is ready to use now.
+            No email verification needed — jump right in and start learning!
           </p>
           <button onClick={() => navigate("/dashboard")} className="btn-primary mt-6 w-full">
             Continue to Dashboard
