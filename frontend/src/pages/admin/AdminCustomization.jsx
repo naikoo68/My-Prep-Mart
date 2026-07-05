@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Palette, Type, ImagePlus, Save, RotateCcw, CheckCircle2, Eye,
-  Share2, Phone, Plus, Trash2, Upload, X,
+  Share2, Phone, Plus, Trash2, Upload, X, Info, BarChart3,
 } from "lucide-react";
 import { useSettings } from "../../context/SettingsContext";
 import { FONT_OPTIONS } from "../../lib/theme";
@@ -30,6 +30,19 @@ const DEFAULTS = {
     { type: "phone", value: "+91 98765 43210" },
     { type: "address", value: "Knowledge Park, New Delhi, India" },
   ],
+  aboutHeading: "Built by educators, loved by toppers",
+  aboutIntro:
+    "My Study Guide started with one belief — that smart, structured practice beats endless cramming. We combine curated question banks with real-time analytics to help you study exactly what matters.",
+  aboutValues: [
+    { title: "Our Mission", desc: "Make high-quality exam preparation accessible and affordable for every student." },
+    { title: "Our Vision", desc: "Become the most trusted self-study companion powered by data-driven learning." },
+    { title: "Our Promise", desc: "Honest content, transparent analytics and relentless focus on student outcomes." },
+  ],
+  aboutStats: [
+    { value: "1,20,000+", label: "Students" },
+    { value: "8,500+", label: "Quizzes" },
+    { value: "640+", label: "Test Series" },
+  ],
 };
 
 export default function AdminCustomization() {
@@ -39,6 +52,8 @@ export default function AdminCustomization() {
     ...settings,
     socialLinks: settings.socialLinks?.length ? settings.socialLinks : DEFAULTS.socialLinks,
     contacts: settings.contacts?.length ? settings.contacts : DEFAULTS.contacts,
+    aboutValues: settings.aboutValues?.length ? settings.aboutValues : DEFAULTS.aboutValues,
+    aboutStats: settings.aboutStats?.length ? settings.aboutStats : DEFAULTS.aboutStats,
   });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
@@ -58,6 +73,18 @@ export default function AdminCustomization() {
   const updateContact = (i, key, val) =>
     set("contacts", form.contacts.map((c, idx) => (idx === i ? { ...c, [key]: val } : c)));
   const removeContact = (i) => set("contacts", form.contacts.filter((_, idx) => idx !== i));
+
+  // ---- About: value cards ----
+  const addValue = () => set("aboutValues", [...form.aboutValues, { title: "", desc: "" }]);
+  const updateValue = (i, key, val) =>
+    set("aboutValues", form.aboutValues.map((v, idx) => (idx === i ? { ...v, [key]: val } : v)));
+  const removeValue = (i) => set("aboutValues", form.aboutValues.filter((_, idx) => idx !== i));
+
+  // ---- About: stats ----
+  const addStat = () => set("aboutStats", [...form.aboutStats, { value: "", label: "" }]);
+  const updateStat = (i, key, val) =>
+    set("aboutStats", form.aboutStats.map((s, idx) => (idx === i ? { ...s, [key]: val } : s)));
+  const removeStat = (i) => set("aboutStats", form.aboutStats.filter((_, idx) => idx !== i));
 
   // ---- Logo file → base64 ----
   const onLogoFile = (e) => {
@@ -80,6 +107,8 @@ export default function AdminCustomization() {
         ...form,
         socialLinks: form.socialLinks.filter((s) => s.url && s.url.trim() && s.url !== "#"),
         contacts: form.contacts.filter((c) => c.value && c.value.trim()),
+        aboutValues: form.aboutValues.filter((v) => v.title?.trim() || v.desc?.trim()),
+        aboutStats: form.aboutStats.filter((s) => s.value?.trim() || s.label?.trim()),
       };
       await save(payload);
       flash("Saved! Your changes are now live across the site.");
@@ -238,6 +267,57 @@ export default function AdminCustomization() {
                 <button type="button" onClick={() => removeContact(i)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* About page content */}
+        <div className="card p-6 lg:col-span-2">
+          <h3 className="mb-4 flex items-center gap-2 font-bold"><Info className="h-5 w-5 text-brand-600" /> About Us Page</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Heading</label>
+              <input className="input" value={form.aboutHeading} onChange={(e) => set("aboutHeading", e.target.value)} placeholder="Built by educators, loved by toppers" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Intro paragraph</label>
+              <textarea rows={3} className="input resize-none" value={form.aboutIntro} onChange={(e) => set("aboutIntro", e.target.value)} />
+            </div>
+
+            {/* Value cards */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium">Value cards (Mission / Vision / Promise…)</label>
+                <button type="button" onClick={addValue} className="btn-outline py-1.5"><Plus className="h-4 w-4" /> Add</button>
+              </div>
+              <div className="space-y-3">
+                {form.aboutValues.map((v, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                    <div className="flex-1 space-y-2">
+                      <input className="input" value={v.title} onChange={(e) => updateValue(i, "title", e.target.value)} placeholder="Card title (e.g. Our Mission)" />
+                      <textarea rows={2} className="input resize-none" value={v.desc} onChange={(e) => updateValue(i, "desc", e.target.value)} placeholder="Short description" />
+                    </div>
+                    <button type="button" onClick={() => removeValue(i)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-sm font-medium"><BarChart3 className="h-4 w-4" /> Statistics band</label>
+                <button type="button" onClick={addStat} className="btn-outline py-1.5"><Plus className="h-4 w-4" /> Add</button>
+              </div>
+              <div className="space-y-2">
+                {form.aboutStats.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input className="input w-40" value={s.value} onChange={(e) => updateStat(i, "value", e.target.value)} placeholder="Value (e.g. 1,20,000+)" />
+                    <input className="input flex-1" value={s.label} onChange={(e) => updateStat(i, "label", e.target.value)} placeholder="Label (e.g. Students)" />
+                    <button type="button" onClick={() => removeStat(i)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

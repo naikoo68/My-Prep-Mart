@@ -16,6 +16,7 @@ export async function updateSettings(req, res) {
   const allowed = [
     "siteName", "tagline", "logoUrl", "primaryColor", "accentColor",
     "fontFamily", "socialLinks", "contacts",
+    "aboutHeading", "aboutIntro", "aboutValues", "aboutStats",
   ];
   const update = {};
   for (const k of allowed) if (k in req.body) update[k] = req.body[k];

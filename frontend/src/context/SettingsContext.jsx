@@ -13,6 +13,19 @@ const DEFAULTS = {
   fontFamily: "Inter",
   socialLinks: [],
   contacts: [],
+  aboutHeading: "Built by educators, loved by toppers",
+  aboutIntro:
+    "My Study Guide started with one belief — that smart, structured practice beats endless cramming. We combine curated question banks with real-time analytics to help you study exactly what matters.",
+  aboutValues: [
+    { title: "Our Mission", desc: "Make high-quality exam preparation accessible and affordable for every student." },
+    { title: "Our Vision", desc: "Become the most trusted self-study companion powered by data-driven learning." },
+    { title: "Our Promise", desc: "Honest content, transparent analytics and relentless focus on student outcomes." },
+  ],
+  aboutStats: [
+    { value: "1,20,000+", label: "Students" },
+    { value: "8,500+", label: "Quizzes" },
+    { value: "640+", label: "Test Series" },
+  ],
 };
 
 export function SettingsProvider({ children }) {
