@@ -6,12 +6,15 @@ import {
   Bookmark,
   BookmarkCheck,
   Clock,
+  Timer,
   CheckCircle2,
   XCircle,
   Lightbulb,
   Flag,
   Grid3x3,
   X,
+  Hourglass,
+  Play,
 } from "lucide-react";
 import { contentService, quizService } from "../../services";
 import ProgressBar from "../../components/ui/ProgressBar";
@@ -20,22 +23,45 @@ import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState"
 
 const optionLabels = ["A", "B", "C", "D"];
 
+const TIMER_OPTIONS = [
+  { label: "No timer", sub: "Practice at your own pace", value: "off" },
+  { label: "10 seconds", sub: "per question", value: 10 },
+  { label: "30 seconds", sub: "per question", value: 30 },
+  { label: "45 seconds", sub: "per question", value: 45 },
+  { label: "1 minute", sub: "per question", value: 60 },
+];
+
 export default function QuizPlay() {
   const { subjectId, topicId, sessionId } = useParams();
   const navigate = useNavigate();
   const storageKey = `mpm-quiz-${sessionId}`;
+
+  // Read any saved progress once (so refresh resumes, including timer choice).
+  const saved = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey)) || {};
+    } catch {
+      return {};
+    }
+  })();
 
   const [questions, setQuestions] = useState([]);
   const [subjectName, setSubjectName] = useState("Quiz");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [current, setCurrent] = useState(0);
-  const [answers, setAnswers] = useState({}); // answers[i] = option index (locked)
-  const [bookmarks, setBookmarks] = useState({});
-  const [seconds, setSeconds] = useState(0);
+  const [current, setCurrent] = useState(saved.current || 0);
+  const [answers, setAnswers] = useState(saved.answers || {});
+  const [timedOut, setTimedOut] = useState(saved.timedOut || {});
+  const [bookmarks, setBookmarks] = useState(saved.bookmarks || {});
+  const [seconds, setSeconds] = useState(saved.seconds || 0); // total elapsed
+  const [timerMode, setTimerMode] = useState(saved.timerMode ?? null); // null=not chosen, "off", or seconds
+  const [qTime, setQTime] = useState(saved.qTime ?? 0); // remaining for current question
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const isTimed = typeof timerMode === "number";
+  const started = timerMode !== null;
 
   // Fetch questions + subject name
   const load = useCallback(() => {
@@ -56,34 +82,43 @@ export default function QuizPlay() {
 
   useEffect(load, [load]);
 
-  // Restore auto-saved progress
+  // Total elapsed timer (runs once the quiz has started)
   useEffect(() => {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      try {
-        const data = JSON.parse(raw);
-        setAnswers(data.answers || {});
-        setBookmarks(data.bookmarks || {});
-        setSeconds(data.seconds || 0);
-        setCurrent(data.current || 0);
-      } catch {
-        /* ignore corrupt save */
-      }
-    }
-  }, [storageKey]);
-
-  // Timer
-  useEffect(() => {
+    if (!started) return;
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [started]);
+
+  const lockedAt = (i) => answers[i] !== undefined || !!timedOut[i];
+
+  // Reset the per-question countdown whenever the question (or mode) changes.
+  useEffect(() => {
+    if (!isTimed) return;
+    setQTime(lockedAt(current) ? 0 : timerMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, timerMode]);
+
+  // Per-question countdown → when it hits 0, lock the question (reveal answer).
+  useEffect(() => {
+    if (!isTimed || lockedAt(current)) return;
+    if (qTime <= 0) {
+      setTimedOut((t) => ({ ...t, [current]: true }));
+      return;
+    }
+    const id = setTimeout(() => setQTime((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qTime, isTimed, current, answers, timedOut]);
 
   // Auto-save
   useEffect(() => {
-    if (!loading) {
-      localStorage.setItem(storageKey, JSON.stringify({ answers, bookmarks, seconds, current }));
+    if (!loading && started) {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ answers, timedOut, bookmarks, seconds, current, timerMode, qTime })
+      );
     }
-  }, [answers, bookmarks, seconds, current, storageKey, loading]);
+  }, [answers, timedOut, bookmarks, seconds, current, timerMode, qTime, storageKey, loading, started]);
 
   const submit = useCallback(async () => {
     setSubmitting(true);
@@ -121,7 +156,6 @@ export default function QuizPlay() {
       })),
     };
 
-    // Record the attempt on the backend (saved only if logged in).
     const byId = {};
     questions.forEach((qq, i) => {
       if (answers[i] !== undefined) byId[qq._id] = answers[i];
@@ -141,11 +175,59 @@ export default function QuizPlay() {
   if (!questions.length)
     return <div className="container-page"><EmptyState message="No questions in this session yet." /></div>;
 
+  // ---- Timer setup screen (shown before the quiz starts) ----
+  if (!started) {
+    return (
+      <div className="container-page py-10">
+        <button onClick={() => navigate(`/quiz/${subjectId}/${topicId}`)} className="btn-ghost -ml-2 mb-6">
+          <ChevronLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="mx-auto max-w-lg card p-8 text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+            <Hourglass className="h-7 w-7" />
+          </span>
+          <h1 className="mt-4 text-2xl font-extrabold">{subjectName} Quiz</h1>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            {questions.length} questions · Choose your timer to begin
+          </p>
+
+          <div className="mt-6 space-y-2.5 text-left">
+            {TIMER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  setTimerMode(opt.value);
+                  if (typeof opt.value === "number") setQTime(opt.value);
+                }}
+                className="flex w-full items-center justify-between rounded-xl border-2 border-slate-200 px-4 py-3 text-left transition hover:border-brand-500 hover:bg-brand-50 dark:border-slate-700 dark:hover:border-brand-500 dark:hover:bg-slate-800"
+              >
+                <span className="flex items-center gap-3">
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${opt.value === "off" ? "bg-slate-100 text-slate-500 dark:bg-slate-800" : "bg-accent-100 text-accent-600 dark:bg-accent-900/40 dark:text-accent-300"}`}>
+                    {opt.value === "off" ? <Play className="h-4 w-4" /> : <Timer className="h-4 w-4" />}
+                  </span>
+                  <span>
+                    <span className="block font-semibold">{opt.label}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.sub}</span>
+                  </span>
+                </span>
+                <ChevronRight className="h-5 w-5 text-slate-400" />
+              </button>
+            ))}
+          </div>
+          <p className="mt-5 text-xs text-slate-400">
+            With a timer, each question reveals its answer when time runs out. You can still review and continue.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const q = questions[current];
-  const answered = answers[current] !== undefined;
+  const locked = answers[current] !== undefined || !!timedOut[current];
+  const wasTimedOut = !!timedOut[current] && answers[current] === undefined;
 
   const selectOption = (idx) => {
-    if (answered) return;
+    if (locked) return;
     setAnswers((a) => ({ ...a, [current]: idx }));
   };
   const toggleBookmark = () => setBookmarks((b) => ({ ...b, [current]: !b[current] }));
@@ -157,11 +239,12 @@ export default function QuizPlay() {
   const prev = () => current > 0 && setCurrent((c) => c - 1);
 
   const mmss = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const lowTime = isTimed && !locked && qTime <= 5;
 
   const optionClass = (idx) => {
     const base =
       "flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3.5 text-left text-sm font-medium transition-all duration-200";
-    if (!answered) {
+    if (!locked) {
       return `${base} border-slate-200 bg-white hover:border-brand-400 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-brand-600 dark:hover:bg-slate-800`;
     }
     if (idx === q.correct) {
@@ -182,6 +265,7 @@ export default function QuizPlay() {
         let cls = "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold transition";
         if (i === current) cls += " ring-2 ring-brand-500 ring-offset-1 dark:ring-offset-slate-900";
         if (isAnswered) cls += isCorrect ? " bg-emerald-500 text-white" : " bg-rose-500 text-white";
+        else if (timedOut[i]) cls += " bg-amber-500 text-white";
         else cls += " bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
         return (
           <button key={i} onClick={() => goTo(i)} className={cls}>
@@ -199,7 +283,16 @@ export default function QuizPlay() {
         <button onClick={() => navigate(`/quiz/${subjectId}/${topicId}`)} className="btn-ghost -ml-2">
           <ChevronLeft className="h-4 w-4" /> Exit
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {isTimed && !locked && (
+            <span
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 font-bold tabular-nums text-white ${
+                lowTime ? "animate-pulse bg-rose-500" : "bg-accent-500"
+              }`}
+            >
+              <Timer className="h-4 w-4" /> {qTime}s
+            </span>
+          )}
           <span className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white">
             <Clock className="h-4 w-4" /> {mmss}
           </span>
@@ -232,19 +325,17 @@ export default function QuizPlay() {
             </button>
           </div>
 
-          {q.image && (
-            <img src={q.image} alt="" className="mb-4 max-h-64 rounded-xl object-contain" />
-          )}
+          {q.image && <img src={q.image} alt="" className="mb-4 max-h-64 rounded-xl object-contain" />}
           <h2 className="text-lg font-semibold leading-relaxed">{q.text}</h2>
 
           <div className="mt-5 space-y-3">
             {q.options.map((opt, idx) => (
-              <button key={idx} onClick={() => selectOption(idx)} disabled={answered} className={optionClass(idx)}>
+              <button key={idx} onClick={() => selectOption(idx)} disabled={locked} className={optionClass(idx)}>
                 <span
                   className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border text-xs font-bold ${
-                    answered && idx === q.correct
+                    locked && idx === q.correct
                       ? "border-emerald-500 bg-emerald-500 text-white"
-                      : answered && idx === answers[current]
+                      : locked && idx === answers[current]
                       ? "border-rose-500 bg-rose-500 text-white"
                       : "border-slate-300 dark:border-slate-600"
                   }`}
@@ -252,14 +343,20 @@ export default function QuizPlay() {
                   {optionLabels[idx]}
                 </span>
                 <span className="flex-1">{opt}</span>
-                {answered && idx === q.correct && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
-                {answered && idx === answers[current] && idx !== q.correct && <XCircle className="h-5 w-5 text-rose-500" />}
+                {locked && idx === q.correct && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
+                {locked && idx === answers[current] && idx !== q.correct && <XCircle className="h-5 w-5 text-rose-500" />}
               </button>
             ))}
           </div>
 
-          {answered && (
-            <div className="mt-5 animate-fade-in rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20">
+          {wasTimedOut && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300">
+              <Timer className="h-4 w-4" /> Time's up! The correct answer is highlighted above.
+            </div>
+          )}
+
+          {locked && (
+            <div className="mt-4 animate-fade-in rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20">
               <div className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
                 <Lightbulb className="h-5 w-5" /> Explanation
               </div>
@@ -290,6 +387,7 @@ export default function QuizPlay() {
             <div className="mt-4 space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
               <p className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-emerald-500" /> Correct</p>
               <p className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-rose-500" /> Incorrect</p>
+              {isTimed && <p className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-amber-500" /> Timed out</p>}
               <p className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-slate-300 dark:bg-slate-700" /> Not attempted</p>
               <p className="flex items-center gap-2"><Flag className="h-3 w-3 fill-accent-500 text-accent-500" /> Bookmarked</p>
             </div>
