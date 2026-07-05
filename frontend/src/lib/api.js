@@ -16,8 +16,10 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Retry on network failures and gateway errors (502/503/504) — these happen
-// while a free-tier host (e.g. Render) is spinning the server back up.
-const MAX_RETRIES = 3;
+// while a free-tier host (e.g. Render) is spinning the server back up. The
+// wait schedule spans ~55s to cover a full cold start.
+const RETRY_WAITS = [2000, 4000, 6000, 8000, 12000, 15000, 15000]; // ms between attempts
+const MAX_RETRIES = RETRY_WAITS.length;
 const RETRYABLE = [502, 503, 504];
 
 async function request(path, { method = "GET", body, auth = true, headers = {} } = {}) {
@@ -43,7 +45,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
     } catch {
       lastNetworkError = true;
       if (attempt < MAX_RETRIES) {
-        await sleep(2000 * (attempt + 1)); // 2s, 4s, 6s — give the server time to wake
+        await sleep(RETRY_WAITS[attempt]); // give the server time to wake up
         continue;
       }
       break;
@@ -51,7 +53,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
 
     // Gateway/cold-start errors → wait and retry
     if (RETRYABLE.includes(res.status) && attempt < MAX_RETRIES) {
-      await sleep(2000 * (attempt + 1));
+      await sleep(RETRY_WAITS[attempt]);
       continue;
     }
 
