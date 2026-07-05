@@ -1,17 +1,9 @@
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import {
-  GraduationCap,
-  Menu,
-  X,
-  Moon,
-  Sun,
-  LayoutDashboard,
-  LogOut,
-  User,
-} from "lucide-react";
+import { Menu, X, Moon, Sun, LayoutDashboard, LogOut, User, ShieldCheck } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
+import Brand from "./Brand";
 
 const links = [
   { to: "/", label: "Home", end: true },
@@ -26,6 +18,7 @@ export default function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const isAdmin = user?.role === "admin";
 
   const handleLogout = () => {
     logout();
@@ -36,13 +29,8 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur-lg dark:border-slate-800/70 dark:bg-slate-950/80">
       <nav className="container-page flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 text-white shadow-soft">
-            <GraduationCap className="h-5 w-5" />
-          </span>
-          <span className="text-lg font-extrabold tracking-tight">
-            My Prep<span className="text-accent-500">Mart</span>
-          </span>
+        <Link to="/" onClick={() => setOpen(false)}>
+          <Brand />
         </Link>
 
         <div className="hidden items-center gap-1 lg:flex">
@@ -75,6 +63,12 @@ export default function Navbar() {
 
           {user ? (
             <div className="hidden items-center gap-2 lg:flex">
+              {/* Admin-only mode switch — students never see this */}
+              {isAdmin && (
+                <Link to="/admin" className="btn-accent py-2">
+                  <ShieldCheck className="h-4 w-4" /> Admin Mode
+                </Link>
+              )}
               <Link to="/dashboard" className="btn-ghost">
                 <LayoutDashboard className="h-4 w-4" /> Dashboard
               </Link>
@@ -124,6 +118,11 @@ export default function Navbar() {
             <div className="mt-2 flex flex-col gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
               {user ? (
                 <>
+                  {isAdmin && (
+                    <Link to="/admin" onClick={() => setOpen(false)} className="btn-accent w-full">
+                      <ShieldCheck className="h-4 w-4" /> Admin Mode
+                    </Link>
+                  )}
                   <Link to="/dashboard" onClick={() => setOpen(false)} className="btn-outline w-full">
                     <LayoutDashboard className="h-4 w-4" /> Dashboard
                   </Link>

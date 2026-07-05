@@ -229,7 +229,7 @@ export default function Dashboard() {
             <div className="flex gap-3">
               <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-accent-500" />
               <div>
-                <p className="text-sm font-semibold">Welcome to My Prep Mart</p>
+                <p className="text-sm font-semibold">Welcome to My Study Guide</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   Keep your {profile.streak}-day streak going — attempt a quiz today!
                 </p>

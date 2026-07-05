@@ -19,7 +19,7 @@ export default function About() {
         <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">About Us</span>
         <h1 className="mt-4 text-4xl font-extrabold">Built by educators, loved by toppers</h1>
         <p className="mt-4 text-lg text-slate-600 dark:text-slate-300">
-          My Prep Mart started with one belief — that smart, structured practice
+          My Study Guide started with one belief — that smart, structured practice
           beats endless cramming. We combine curated question banks with real-time
           analytics to help you study exactly what matters.
         </p>

@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
-import { GraduationCap, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
+import { useSettings } from "../../context/SettingsContext";
+import Brand from "./Brand";
 import {
   Facebook,
   Twitter,
@@ -31,7 +33,6 @@ const columns = [
     links: [
       { label: "About Us", to: "/about" },
       { label: "Contact", to: "/contact" },
-      { label: "Admin", to: "/admin" },
       { label: "Login", to: "/login" },
     ],
   },
@@ -47,22 +48,18 @@ const columns = [
 ];
 
 export default function Footer() {
+  const { settings } = useSettings();
   return (
     <footer className="mt-20 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="container-page py-12">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-5">
           <div className="lg:col-span-2">
-            <Link to="/" className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 text-white">
-                <GraduationCap className="h-5 w-5" />
-              </span>
-              <span className="text-lg font-extrabold">
-                My Prep<span className="text-accent-500">Mart</span>
-              </span>
+            <Link to="/">
+              <Brand />
             </Link>
             <p className="mt-4 max-w-sm text-sm text-slate-500 dark:text-slate-400">
-              Prepare smart, achieve more. Subject-wise quizzes, full-length test
-              series, instant results and performance analytics — all in one place.
+              {settings.tagline} Subject-wise quizzes, full-length test series,
+              instant results and performance analytics — all in one place.
             </p>
             <div className="mt-5 flex gap-3">
               {socials.map(({ Icon, label }) => (
@@ -100,12 +97,12 @@ export default function Footer() {
         </div>
 
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-slate-200 pt-6 text-sm text-slate-500 sm:flex-row dark:border-slate-800 dark:text-slate-400">
-          <p>© {new Date().getFullYear()} My Prep Mart. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} {settings.siteName}. All rights reserved.</p>
           <a
-            href="mailto:hello@myprepmart.com"
+            href="mailto:hello@mystudyguide.com"
             className="flex items-center gap-2 hover:text-brand-600 dark:hover:text-brand-400"
           >
-            <Mail className="h-4 w-4" /> hello@myprepmart.com
+            <Mail className="h-4 w-4" /> hello@mystudyguide.com
           </a>
         </div>
       </div>

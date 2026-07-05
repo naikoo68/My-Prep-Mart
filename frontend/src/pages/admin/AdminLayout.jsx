@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
+import { useSettings } from "../../context/SettingsContext";
 
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -29,6 +30,7 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -39,11 +41,15 @@ export default function AdminLayout() {
   const SidebarContent = () => (
     <div className="flex h-full flex-col">
       <Link to="/admin" className="flex items-center gap-2 px-6 py-5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 text-white">
-          <GraduationCap className="h-5 w-5" />
-        </span>
+        {settings.logoUrl ? (
+          <img src={settings.logoUrl} alt={settings.siteName} className="h-9 w-9 rounded-xl object-cover" />
+        ) : (
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-accent-500 text-white">
+            <GraduationCap className="h-5 w-5" />
+          </span>
+        )}
         <div>
-          <p className="text-sm font-extrabold leading-none">My Prep Mart</p>
+          <p className="text-sm font-extrabold leading-none">{settings.siteName}</p>
           <p className="text-xs text-slate-400">Admin Panel</p>
         </div>
       </Link>
@@ -70,7 +76,7 @@ export default function AdminLayout() {
 
       <div className="space-y-1 border-t border-slate-200 p-3 dark:border-slate-800">
         <Link to="/" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
-          <Home className="h-5 w-5" /> Back to Site
+          <Home className="h-5 w-5" /> Switch to Student Mode
         </Link>
         <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20">
           <LogOut className="h-5 w-5" /> Log out

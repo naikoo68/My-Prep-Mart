@@ -226,7 +226,7 @@ export default function Home() {
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <h2 className="text-3xl font-extrabold sm:text-4xl">Start your journey to the top rank</h2>
           <p className="mx-auto mt-3 max-w-xl text-white/90">
-            Join 1,20,000+ students preparing the smart way with My Prep Mart.
+            Join thousands of students preparing the smart way with My Study Guide.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Link to="/register" className="btn bg-white text-brand-700 hover:bg-slate-100">

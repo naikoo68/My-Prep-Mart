@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Mail, Phone, MapPin, Send, CheckCircle2 } from "lucide-react";
 
 const info = [
-  { icon: Mail, label: "Email", value: "hello@myprepmart.com" },
+  { icon: Mail, label: "Email", value: "hello@mystudyguide.com" },
   { icon: Phone, label: "Phone", value: "+91 98765 43210" },
   { icon: MapPin, label: "Address", value: "Knowledge Park, New Delhi, India" },
 ];

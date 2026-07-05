@@ -63,6 +63,12 @@ export const analyticsService = {
   adminAnalytics: () => api.get("/admin/analytics"),
 };
 
+// ---- Site settings (branding & theme) ----
+export const settingsService = {
+  get: () => api.get("/settings", { auth: false }),
+  update: (data) => api.put("/settings", data),
+};
+
 // ---- Users (admin) ----
 export const userService = {
   list: (search = "") => api.get(`/users${search ? `?search=${encodeURIComponent(search)}` : ""}`),

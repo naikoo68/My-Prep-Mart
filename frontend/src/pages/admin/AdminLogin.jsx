@@ -39,7 +39,7 @@ export default function AdminLogin() {
           </span>
           <h1 className="mt-4 text-2xl font-extrabold">Admin Login</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Secure access to the My Prep Mart admin panel.
+            Secure access to the admin panel.
           </p>
         </div>
 
