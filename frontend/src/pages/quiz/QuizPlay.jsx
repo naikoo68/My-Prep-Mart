@@ -371,12 +371,22 @@ export default function QuizPlay() {
           {isMatching ? (
             <div className="mt-5 space-y-3">
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Match each item on the left with the correct option on the right.
+                Match each item (A, B, C…) with the correct option (1, 2, 3…).
               </p>
+              <div className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/60">
+                <p className="mb-1 font-semibold text-slate-500 dark:text-slate-400">Options:</p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1">
+                  {rights.map((r, ri) => (
+                    <span key={ri}><b className="text-brand-600 dark:text-brand-400">{ri + 1}.</b> <MathText>{r}</MathText></span>
+                  ))}
+                </div>
+              </div>
               {q.pairs.map((p, k) => {
                 const chosen = locked ? answers[current]?.[k] : draft[k];
                 const rowCorrect = locked && chosen === p.right;
                 const rowWrong = locked && chosen !== p.right;
+                const leftLabel = String.fromCharCode(65 + k); // A, B, C, D...
+                const numOf = (val) => { const idx = rights.indexOf(val); return idx >= 0 ? idx + 1 : "?"; };
                 return (
                   <div
                     key={k}
@@ -388,18 +398,23 @@ export default function QuizPlay() {
                         : "border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    <div className="flex-1 font-medium"><MathText>{p.left}</MathText></div>
+                    <div className="flex flex-1 items-center gap-2 font-medium">
+                      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                        {leftLabel}
+                      </span>
+                      <MathText>{p.left}</MathText>
+                    </div>
                     <ChevronRight className="hidden h-4 w-4 flex-shrink-0 text-slate-400 sm:block" />
                     <div className="flex-1">
                       {locked ? (
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-medium ${rowCorrect ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"}`}>
                             {rowCorrect ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                            <MathText>{chosen || "—"}</MathText>
+                            {chosen ? <span className="font-bold">{numOf(chosen)}.</span> : null} <MathText>{chosen || "—"}</MathText>
                           </span>
                           {rowWrong && (
                             <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                              Correct: <MathText>{p.right}</MathText>
+                              Correct: <b>{numOf(p.right)}.</b> <MathText>{p.right}</MathText>
                             </span>
                           )}
                         </div>
@@ -407,7 +422,7 @@ export default function QuizPlay() {
                         <select value={draft[k] ?? ""} onChange={(e) => setMatch(k, e.target.value)} className="input">
                           <option value="" disabled>Choose match…</option>
                           {rights.map((r, ri) => (
-                            <option key={ri} value={r}>{r}</option>
+                            <option key={ri} value={r}>{ri + 1}. {r}</option>
                           ))}
                         </select>
                       )}

@@ -326,9 +326,11 @@ function FormModal({ modal, saving, onClose, onSave }) {
                   <div className="space-y-2">
                     {form.pairs.map((p, i) => (
                       <div key={i} className="flex items-center gap-2">
-                        <input className="input" value={p.left} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, left: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Left ${i + 1}`} />
+                        <span className="w-5 flex-shrink-0 text-sm font-bold text-brand-600">{String.fromCharCode(65 + i)}</span>
+                        <input className="input" value={p.left} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, left: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Left item ${String.fromCharCode(65 + i)}`} />
                         <span className="text-slate-400">↔</span>
-                        <input className="input" value={p.right} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, right: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Right ${i + 1}`} />
+                        <span className="w-4 flex-shrink-0 text-sm font-bold text-accent-600">{i + 1}</span>
+                        <input className="input" value={p.right} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, right: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Option ${i + 1}`} />
                         <button type="button" onClick={() => setForm({ ...form, pairs: form.pairs.filter((_, xi) => xi !== i) })} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30" disabled={form.pairs.length <= 2}>
                           <Trash2 className="h-4 w-4" />
                         </button>
