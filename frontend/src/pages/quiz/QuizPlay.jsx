@@ -103,6 +103,12 @@ export default function QuizPlay() {
     return () => clearInterval(t);
   }, [started]);
 
+  // Saved progress (from localStorage) may point past a shorter, recreated
+  // question list. Clamp it so we never index an undefined question.
+  useEffect(() => {
+    if (questions.length && current > questions.length - 1) setCurrent(0);
+  }, [questions, current]);
+
   const lockedAt = (i) => answers[i] !== undefined || !!timedOut[i];
 
   // Reset the per-question countdown whenever the question (or mode) changes.
@@ -240,6 +246,9 @@ export default function QuizPlay() {
   }
 
   const q = questions[current];
+  // Defensive: covers the single render before the clamp effect above runs.
+  if (!q) return <div className="container-page"><Loading label="Loading quiz..." /></div>;
+
   const locked = answers[current] !== undefined || !!timedOut[current];
   const wasTimedOut = !!timedOut[current] && answers[current] === undefined;
 
@@ -379,7 +388,7 @@ export default function QuizPlay() {
 
           <div className="mt-5 space-y-3">
             {isMatching && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Choose the correct matching sequence:</p>}
-            {q.options.map((opt, idx) => (
+            {(q.options || []).map((opt, idx) => (
               <button key={idx} onClick={() => selectOption(idx)} disabled={locked} className={optionClass(idx)}>
                 <span
                   className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border text-xs font-bold ${

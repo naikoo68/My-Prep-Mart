@@ -202,7 +202,7 @@ export default function QuizResult() {
                   )}
 
                   <div className="mt-3 space-y-2">
-                    {r.options.map((opt, idx) => {
+                    {(r.options || []).map((opt, idx) => {
                       const isCorrect = idx === r.correct;
                       const isChosen = idx === r.chosen;
                       let cls = "flex items-center gap-2 rounded-lg px-3 py-2 text-sm ";
