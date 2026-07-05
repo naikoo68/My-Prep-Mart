@@ -7,6 +7,31 @@ import { sendMail } from "../config/mailer.js";
 // (phone keyboards often auto-capitalise the first letter).
 const norm = (e) => String(e || "").toLowerCase().trim();
 
+// ---- OTP helpers ----
+const genOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+const hashOtp = (otp) => crypto.createHash("sha256").update(String(otp)).digest("hex");
+const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function issueOtp(user) {
+  const otp = genOtp();
+  user.otpHash = hashOtp(otp);
+  user.otpExpires = new Date(Date.now() + OTP_TTL_MS);
+  await user.save();
+  return otp;
+}
+
+async function sendOtpEmail(email, name, otp) {
+  return sendMail({
+    to: email,
+    subject: "Your My Study Guide verification code",
+    text: `Hi ${name || "there"},\n\nYour verification code is ${otp}. It expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+    html: `<p>Hi ${name || "there"},</p>
+           <p>Your verification code is:</p>
+           <p style="font-size:28px;font-weight:800;letter-spacing:6px">${otp}</p>
+           <p>It expires in 10 minutes. If you didn't request this, ignore this email.</p>`,
+  });
+}
+
 const sanitize = (u) => ({
   id: u._id,
   name: u.name,
@@ -28,25 +53,53 @@ export async function register(req, res) {
   const exists = await User.findOne({ email });
   if (exists) return res.status(409).json({ message: "Email already registered" });
 
-  const emailVerificationToken = crypto.randomBytes(20).toString("hex");
-  // Accounts are active immediately (no verification gate), so mark verified.
-  const user = await User.create({ name, email, password, emailVerificationToken, isEmailVerified: true });
-
-  // Best-effort welcome email (only sends if SMTP is configured; never blocks signup).
-  sendMail({
-    to: email,
-    subject: "Welcome to My Study Guide 🎉",
-    text: `Hi ${name},\n\nYour account is ready — start practicing quizzes and test series right away.\n\n— My Study Guide`,
-    html: `<h2>Welcome, ${name}! 🎉</h2>
-           <p>Your account is ready. Start practicing quizzes and full-length test series right away.</p>
-           <p>Happy studying,<br/>The My Study Guide team</p>`,
-  }).catch((e) => console.error("Welcome email failed:", e.message));
+  // Create the account UNVERIFIED — the user must confirm the OTP to activate it.
+  const user = await User.create({ name, email, password, isEmailVerified: false });
+  const otp = await issueOtp(user);
+  const emailSent = await sendOtpEmail(email, name, otp).catch(() => false);
 
   res.status(201).json({
-    message: "Account created successfully.",
-    user: sanitize(user),
-    token: generateToken(user._id),
+    needsVerification: true,
+    email,
+    emailSent,
+    // Fallback so signup isn't blocked before SMTP is configured (dev/testing only).
+    ...(emailSent ? {} : { devOtp: otp }),
   });
+}
+
+// POST /api/auth/verify-otp — confirm the code and activate the account
+export async function verifyOtp(req, res) {
+  const email = norm(req.body.email);
+  const { otp } = req.body;
+  const user = await User.findOne({ email }).select("+otpHash +otpExpires");
+  if (!user) return res.status(400).json({ message: "Account not found" });
+
+  if (!user.isEmailVerified) {
+    if (!user.otpHash || !user.otpExpires || user.otpExpires.getTime() < Date.now()) {
+      return res.status(400).json({ message: "Your code has expired. Please request a new one." });
+    }
+    if (hashOtp(otp) !== user.otpHash) {
+      return res.status(400).json({ message: "Incorrect code. Please try again." });
+    }
+    user.isEmailVerified = true;
+    user.otpHash = undefined;
+    user.otpExpires = undefined;
+    await user.save();
+  }
+
+  res.json({ user: sanitize(user), token: generateToken(user._id) });
+}
+
+// POST /api/auth/resend-otp — send a fresh code
+export async function resendOtp(req, res) {
+  const email = norm(req.body.email);
+  const user = await User.findOne({ email });
+  if (!user) return res.json({ emailSent: false });
+  if (user.isEmailVerified) return res.json({ verified: true });
+
+  const otp = await issueOtp(user);
+  const emailSent = await sendOtpEmail(email, user.name, otp).catch(() => false);
+  res.json({ emailSent, ...(emailSent ? {} : { devOtp: otp }) });
 }
 
 // POST /api/auth/login
@@ -59,6 +112,13 @@ export async function login(req, res) {
   }
   if (user.status === "blocked") {
     return res.status(403).json({ message: "Account blocked" });
+  }
+  if (!user.isEmailVerified) {
+    return res.status(403).json({
+      message: "Please verify your email. We can send you a new code.",
+      needsVerification: true,
+      email,
+    });
   }
   res.json({ user: sanitize(user), token: generateToken(user._id) });
 }

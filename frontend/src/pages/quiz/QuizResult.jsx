@@ -17,6 +17,7 @@ import {
   Award,
 } from "lucide-react";
 import StatCard from "../../components/ui/StatCard";
+import MathText from "../../components/ui/MathText";
 
 export default function QuizResult() {
   const { state } = useLocation();
@@ -174,35 +175,59 @@ export default function QuizResult() {
                   {i + 1}
                 </span>
                 <div className="flex-1">
-                  <p className="font-semibold">{r.text}</p>
-                  <div className="mt-3 space-y-2">
-                    {r.options.map((opt, idx) => {
-                      const isCorrect = idx === r.correct;
-                      const isChosen = idx === r.chosen;
-                      let cls = "flex items-center gap-2 rounded-lg px-3 py-2 text-sm ";
-                      if (isCorrect) cls += "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
-                      else if (isChosen) cls += "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300";
-                      else cls += "text-slate-500 dark:text-slate-400";
-                      return (
-                        <div key={idx} className={cls}>
-                          {isCorrect ? (
-                            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                          ) : isChosen ? (
-                            <XCircle className="h-4 w-4 flex-shrink-0" />
-                          ) : (
-                            <span className="h-4 w-4" />
-                          )}
-                          {opt}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <p className="font-semibold"><MathText>{r.text}</MathText></p>
+
+                  {r.type === "matching" ? (
+                    <div className="mt-3 space-y-2">
+                      {(r.pairs || []).map((p, k) => {
+                        const chosen = r.chosen?.[k];
+                        const ok = chosen === p.right;
+                        return (
+                          <div key={k} className={`flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-sm ${ok ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"}`}>
+                            {ok ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
+                            <span className="font-medium"><MathText>{p.left}</MathText></span>
+                            <span className="text-slate-400">→</span>
+                            <span><MathText>{chosen || "—"}</MathText></span>
+                            {!ok && (
+                              <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                                (correct: <MathText>{p.right}</MathText>)
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {r.options.map((opt, idx) => {
+                        const isCorrect = idx === r.correct;
+                        const isChosen = idx === r.chosen;
+                        let cls = "flex items-center gap-2 rounded-lg px-3 py-2 text-sm ";
+                        if (isCorrect) cls += "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+                        else if (isChosen) cls += "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300";
+                        else cls += "text-slate-500 dark:text-slate-400";
+                        return (
+                          <div key={idx} className={cls}>
+                            {isCorrect ? (
+                              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                            ) : isChosen ? (
+                              <XCircle className="h-4 w-4 flex-shrink-0" />
+                            ) : (
+                              <span className="h-4 w-4" />
+                            )}
+                            <MathText>{opt}</MathText>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {r.chosen === null && (
                     <p className="mt-2 text-xs font-medium text-slate-400">Not attempted</p>
                   )}
                   <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
                     <span className="font-semibold">Explanation: </span>
-                    {r.explanation}
+                    <MathText>{r.explanation}</MathText>
                   </div>
                 </div>
               </div>

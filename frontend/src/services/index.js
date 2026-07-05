@@ -5,6 +5,8 @@ export const authService = {
   login: (email, password) => api.post("/auth/login", { email, password }, { auth: false }),
   register: (name, email, password) =>
     api.post("/auth/register", { name, email, password }, { auth: false }),
+  verifyOtp: (email, otp) => api.post("/auth/verify-otp", { email, otp }, { auth: false }),
+  resendOtp: (email) => api.post("/auth/resend-otp", { email }, { auth: false }),
   google: (profile) => api.post("/auth/google", profile, { auth: false }),
   me: () => api.get("/auth/me"),
   forgotPassword: (email) => api.post("/auth/forgot-password", { email }, { auth: false }),

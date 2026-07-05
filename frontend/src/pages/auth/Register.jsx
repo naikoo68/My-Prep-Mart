@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { User, Mail, Lock, Eye, EyeOff, UserPlus, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, UserPlus, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
+import OtpVerify from "../../components/auth/OtpVerify";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [showPw, setShowPw] = useState(false);
-  const [verifySent, setVerifySent] = useState(false);
+  const [otpStep, setOtpStep] = useState(null); // { email, devOtp, emailSent }
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -18,9 +19,8 @@ export default function Register() {
     setError("");
     setBusy(true);
     try {
-      // Creates the account on the backend and signs the user in (stores JWT).
-      await register(form.name, form.email, form.password);
-      setVerifySent(true);
+      const res = await register(form.name, form.email, form.password);
+      setOtpStep({ email: res.email || form.email, devOtp: res.devOtp, emailSent: res.emailSent });
     } catch (err) {
       setError(err.message || "Registration failed");
     } finally {
@@ -28,21 +28,15 @@ export default function Register() {
     }
   };
 
-  if (verifySent) {
+  if (otpStep) {
     return (
-      <AuthShell title="Welcome aboard!">
-        <div className="card p-6 text-center">
-          <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
-          <h3 className="mt-4 text-lg font-bold">Your account is ready 🎉</h3>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            You're signed in as{" "}
-            <span className="font-semibold text-slate-800 dark:text-slate-200">{form.email}</span>.
-            No email verification needed — jump right in and start learning!
-          </p>
-          <button onClick={() => navigate("/dashboard")} className="btn-primary mt-6 w-full">
-            Continue to Dashboard
-          </button>
-        </div>
+      <AuthShell title="Almost there">
+        <OtpVerify
+          email={otpStep.email}
+          devOtp={otpStep.devOtp}
+          emailSent={otpStep.emailSent}
+          onVerified={() => navigate("/dashboard")}
+        />
       </AuthShell>
     );
   }

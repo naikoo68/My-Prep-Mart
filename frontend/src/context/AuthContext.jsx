@@ -52,11 +52,20 @@ export function AuthProvider({ children }) {
     return persist(u);
   };
 
+  // Registration now returns { needsVerification, email, emailSent, devOtp? }
+  // and does NOT sign the user in until the OTP is verified.
   const register = async (name, email, password) => {
-    const { user: u, token } = await authService.register(name, email, password);
-    if (token) setToken(token);
+    return authService.register(name, email, password);
+  };
+
+  // Confirm the OTP → signs the user in (stores JWT + profile).
+  const verifyOtp = async (email, otp) => {
+    const { user: u, token } = await authService.verifyOtp(email, otp);
+    setToken(token);
     return persist(u);
   };
+
+  const resendOtp = (email) => authService.resendOtp(email);
 
   const loginWithGoogle = async (profile) => {
     const { user: u, token } = await authService.google(profile);
@@ -71,7 +80,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, loginWithGoogle, logout, isAuthenticated: !!user }}
+      value={{ user, loading, login, register, verifyOtp, resendOtp, loginWithGoogle, logout, isAuthenticated: !!user }}
     >
       {children}
     </AuthContext.Provider>

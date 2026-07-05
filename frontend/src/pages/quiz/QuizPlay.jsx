@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ChevronLeft,
@@ -19,9 +19,32 @@ import {
 import { contentService, quizService } from "../../services";
 import ProgressBar from "../../components/ui/ProgressBar";
 import Badge from "../../components/ui/Badge";
+import MathText from "../../components/ui/MathText";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
 const optionLabels = ["A", "B", "C", "D"];
+
+// Works for both question types.
+function isQuestionCorrect(q, ans) {
+  if (ans === undefined || ans === null) return false;
+  if (q.type === "matching") {
+    return Array.isArray(q.pairs) && q.pairs.length > 0 && q.pairs.every((p, k) => ans[k] === p.right);
+  }
+  return ans === q.correct;
+}
+
+// Deterministic shuffle so the matching dropdowns stay stable across re-renders.
+function hashStr(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
+function stableShuffle(arr, seed) {
+  return arr
+    .map((v, i) => ({ v, k: hashStr(`${seed}_${i}_${v}`) }))
+    .sort((a, b) => a.k - b.k)
+    .map((x) => x.v);
+}
 
 const TIMER_OPTIONS = [
   { label: "No timer", sub: "Practice at your own pace", value: "off" },
@@ -52,6 +75,7 @@ export default function QuizPlay() {
 
   const [current, setCurrent] = useState(saved.current || 0);
   const [answers, setAnswers] = useState(saved.answers || {});
+  const [matchDraft, setMatchDraft] = useState(saved.matchDraft || {}); // in-progress matching selections
   const [timedOut, setTimedOut] = useState(saved.timedOut || {});
   const [bookmarks, setBookmarks] = useState(saved.bookmarks || {});
   const [seconds, setSeconds] = useState(saved.seconds || 0); // total elapsed
@@ -115,16 +139,16 @@ export default function QuizPlay() {
     if (!loading && started) {
       localStorage.setItem(
         storageKey,
-        JSON.stringify({ answers, timedOut, bookmarks, seconds, current, timerMode, qTime })
+        JSON.stringify({ answers, matchDraft, timedOut, bookmarks, seconds, current, timerMode, qTime })
       );
     }
-  }, [answers, timedOut, bookmarks, seconds, current, timerMode, qTime, storageKey, loading, started]);
+  }, [answers, matchDraft, timedOut, bookmarks, seconds, current, timerMode, qTime, storageKey, loading, started]);
 
   const submit = useCallback(async () => {
     setSubmitting(true);
     let correct = 0;
     questions.forEach((qq, i) => {
-      if (answers[i] === qq.correct) correct += 1;
+      if (isQuestionCorrect(qq, answers[i])) correct += 1;
     });
     const attempted = Object.keys(answers).length;
     const result = {
@@ -142,14 +166,16 @@ export default function QuizPlay() {
       weakTopics: [
         ...new Set(
           questions
-            .filter((qq, i) => answers[i] !== undefined && answers[i] !== qq.correct)
+            .filter((qq, i) => answers[i] !== undefined && !isQuestionCorrect(qq, answers[i]))
             .map((qq) => qq.topic)
         ),
       ],
       review: questions.map((qq, i) => ({
+        type: qq.type || "mcq",
         text: qq.text,
         options: qq.options,
         correct: qq.correct,
+        pairs: qq.pairs,
         chosen: answers[i] ?? null,
         topic: qq.topic,
         explanation: qq.explanation,
@@ -226,6 +252,18 @@ export default function QuizPlay() {
   const locked = answers[current] !== undefined || !!timedOut[current];
   const wasTimedOut = !!timedOut[current] && answers[current] === undefined;
 
+  // Matching helpers
+  const isMatching = q.type === "matching";
+  const draft = matchDraft[current] || {};
+  const rights = isMatching ? stableShuffle(q.pairs.map((p) => p.right), q._id) : [];
+  const allMatched = isMatching && q.pairs.every((_, k) => draft[k] !== undefined && draft[k] !== "");
+  const setMatch = (k, val) =>
+    setMatchDraft((d) => ({ ...d, [current]: { ...(d[current] || {}), [k]: val } }));
+  const checkMatch = () => {
+    if (!allMatched || locked) return;
+    setAnswers((a) => ({ ...a, [current]: matchDraft[current] }));
+  };
+
   const selectOption = (idx) => {
     if (locked) return;
     setAnswers((a) => ({ ...a, [current]: idx }));
@@ -260,7 +298,7 @@ export default function QuizPlay() {
     <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
       {questions.map((_, i) => {
         const isAnswered = answers[i] !== undefined;
-        const isCorrect = isAnswered && answers[i] === questions[i].correct;
+        const isCorrect = isAnswered && isQuestionCorrect(questions[i], answers[i]);
         const isBookmarked = bookmarks[i];
         let cls = "relative flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold transition";
         if (i === current) cls += " ring-2 ring-brand-500 ring-offset-1 dark:ring-offset-slate-900";
@@ -326,28 +364,85 @@ export default function QuizPlay() {
           </div>
 
           {q.image && <img src={q.image} alt="" className="mb-4 max-h-64 rounded-xl object-contain" />}
-          <h2 className="text-lg font-semibold leading-relaxed">{q.text}</h2>
+          <h2 className="text-lg font-semibold leading-relaxed">
+            <MathText>{q.text}</MathText>
+          </h2>
 
-          <div className="mt-5 space-y-3">
-            {q.options.map((opt, idx) => (
-              <button key={idx} onClick={() => selectOption(idx)} disabled={locked} className={optionClass(idx)}>
-                <span
-                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border text-xs font-bold ${
-                    locked && idx === q.correct
-                      ? "border-emerald-500 bg-emerald-500 text-white"
-                      : locked && idx === answers[current]
-                      ? "border-rose-500 bg-rose-500 text-white"
-                      : "border-slate-300 dark:border-slate-600"
-                  }`}
-                >
-                  {optionLabels[idx]}
-                </span>
-                <span className="flex-1">{opt}</span>
-                {locked && idx === q.correct && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
-                {locked && idx === answers[current] && idx !== q.correct && <XCircle className="h-5 w-5 text-rose-500" />}
-              </button>
-            ))}
-          </div>
+          {isMatching ? (
+            <div className="mt-5 space-y-3">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Match each item on the left with the correct option on the right.
+              </p>
+              {q.pairs.map((p, k) => {
+                const chosen = locked ? answers[current]?.[k] : draft[k];
+                const rowCorrect = locked && chosen === p.right;
+                const rowWrong = locked && chosen !== p.right;
+                return (
+                  <div
+                    key={k}
+                    className={`flex flex-col gap-2 rounded-xl border-2 p-3 sm:flex-row sm:items-center ${
+                      rowCorrect
+                        ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
+                        : rowWrong
+                        ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex-1 font-medium"><MathText>{p.left}</MathText></div>
+                    <ChevronRight className="hidden h-4 w-4 flex-shrink-0 text-slate-400 sm:block" />
+                    <div className="flex-1">
+                      {locked ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm font-medium ${rowCorrect ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"}`}>
+                            {rowCorrect ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                            <MathText>{chosen || "—"}</MathText>
+                          </span>
+                          {rowWrong && (
+                            <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                              Correct: <MathText>{p.right}</MathText>
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <select value={draft[k] ?? ""} onChange={(e) => setMatch(k, e.target.value)} className="input">
+                          <option value="" disabled>Choose match…</option>
+                          {rights.map((r, ri) => (
+                            <option key={ri} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {!locked && (
+                <button onClick={checkMatch} disabled={!allMatched} className="btn-primary">
+                  <CheckCircle2 className="h-4 w-4" /> Check Answer
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="mt-5 space-y-3">
+              {q.options.map((opt, idx) => (
+                <button key={idx} onClick={() => selectOption(idx)} disabled={locked} className={optionClass(idx)}>
+                  <span
+                    className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border text-xs font-bold ${
+                      locked && idx === q.correct
+                        ? "border-emerald-500 bg-emerald-500 text-white"
+                        : locked && idx === answers[current]
+                        ? "border-rose-500 bg-rose-500 text-white"
+                        : "border-slate-300 dark:border-slate-600"
+                    }`}
+                  >
+                    {optionLabels[idx]}
+                  </span>
+                  <span className="flex-1"><MathText>{opt}</MathText></span>
+                  {locked && idx === q.correct && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
+                  {locked && idx === answers[current] && idx !== q.correct && <XCircle className="h-5 w-5 text-rose-500" />}
+                </button>
+              ))}
+            </div>
+          )}
 
           {wasTimedOut && (
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300">
@@ -360,7 +455,7 @@ export default function QuizPlay() {
               <div className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
                 <Lightbulb className="h-5 w-5" /> Explanation
               </div>
-              <p className="mt-2 text-sm text-amber-900/90 dark:text-amber-100/90">{q.explanation}</p>
+              <p className="mt-2 text-sm text-amber-900/90 dark:text-amber-100/90"><MathText>{q.explanation}</MathText></p>
             </div>
           )}
 

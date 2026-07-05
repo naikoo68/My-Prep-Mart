@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, LogIn, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
+import OtpVerify from "../../components/auth/OtpVerify";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
@@ -9,9 +10,12 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [showPw, setShowPw] = useState(false);
+  const [otpStep, setOtpStep] = useState(null); // { email } when account needs verification
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const dest = location.state?.from || "/dashboard";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -19,15 +23,30 @@ export default function Login() {
     setBusy(true);
     try {
       const profile = await login(form.email, form.password);
-      // Role-aware: admins land in Admin mode, students in their dashboard.
-      const dest = profile?.role === "admin" ? "/admin" : location.state?.from || "/dashboard";
-      navigate(dest, { replace: true });
+      navigate(profile?.role === "admin" ? "/admin" : dest, { replace: true });
     } catch (err) {
+      // Unverified account → move to the OTP verification step
+      if (err.status === 403 && err.data?.needsVerification) {
+        setOtpStep({ email: err.data.email || form.email });
+        return;
+      }
       setError(err.message || "Login failed");
     } finally {
       setBusy(false);
     }
   };
+
+  if (otpStep) {
+    return (
+      <AuthShell title="Verify to continue">
+        <OtpVerify
+          email={otpStep.email}
+          autoResend
+          onVerified={(profile) => navigate(profile?.role === "admin" ? "/admin" : dest, { replace: true })}
+        />
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell title="Welcome back" subtitle="Log in to access your dashboard and test series.">

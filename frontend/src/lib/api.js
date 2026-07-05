@@ -63,6 +63,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
       const message = data?.message || `Request failed (${res.status})`;
       const err = new Error(message);
       err.status = res.status;
+      err.data = data; // full response body (e.g. { needsVerification, email })
       throw err;
     }
     return data;

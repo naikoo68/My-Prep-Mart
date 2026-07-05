@@ -13,7 +13,17 @@ const COLORS = [
   "from-cyan-500 to-teal-600",
 ];
 
-const emptyQuestion = { text: "", options: ["", "", "", ""], correct: 0, difficulty: "Easy", explanation: "", status: "published", image: "" };
+const emptyQuestion = {
+  type: "mcq",
+  text: "",
+  options: ["", "", "", ""],
+  correct: 0,
+  pairs: [{ left: "", right: "" }, { left: "", right: "" }],
+  difficulty: "Easy",
+  explanation: "",
+  status: "published",
+  image: "",
+};
 
 export default function AdminContent() {
   // Drill-down context
@@ -69,8 +79,21 @@ export default function AdminContent() {
         if (mode === "add") await contentService.createSession({ ...form, subject: subject._id, topic: topic._id });
         else await contentService.updateSession(data._id, form);
       } else if (type === "question") {
-        if (mode === "add") await contentService.createQuestion({ ...form, subject: subject._id, session: session._id });
-        else await contentService.updateQuestion(data._id, form);
+        // Build a clean payload depending on the question type.
+        const base = {
+          type: form.type || "mcq",
+          text: form.text,
+          image: form.image,
+          difficulty: form.difficulty,
+          explanation: form.explanation,
+          status: form.status,
+        };
+        const payload =
+          form.type === "matching"
+            ? { ...base, pairs: (form.pairs || []).filter((p) => p.left.trim() && p.right.trim()) }
+            : { ...base, options: form.options, correct: form.correct };
+        if (mode === "add") await contentService.createQuestion({ ...payload, subject: subject._id, session: session._id });
+        else await contentService.updateQuestion(data._id, payload);
       }
       setModal(null);
       load(view);
@@ -153,9 +176,14 @@ export default function AdminContent() {
                   <>
                     <p className="truncate font-medium">{item.text}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <Badge variant={item.type === "matching" ? "accent" : "brand"}>
+                        {item.type === "matching" ? "Matching" : "MCQ"}
+                      </Badge>
                       <Badge variant={item.difficulty}>{item.difficulty}</Badge>
                       <Badge variant={item.status === "published" ? "brand" : "neutral"}>{item.status}</Badge>
-                      <span className="text-xs text-slate-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
+                      {item.type !== "matching" && item.correct !== undefined && (
+                        <span className="text-xs text-slate-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -212,7 +240,17 @@ function FormModal({ modal, saving, onClose, onSave }) {
     if (type === "subject") return { name: data.name || "", description: data.description || "", icon: data.icon || "BookOpen", color: data.color || COLORS[0] };
     if (type === "topic") return { title: data.title || "", description: data.description || "", index: data.index || 1 };
     if (type === "session") return { title: data.title || "", difficulty: data.difficulty || "Medium", index: data.index || 1 };
-    return { text: data.text || "", options: data.options ? [...data.options] : ["", "", "", ""], correct: data.correct ?? 0, difficulty: data.difficulty || "Easy", explanation: data.explanation || "", status: data.status || "published", image: data.image || "" };
+    return {
+      type: data.type || "mcq",
+      text: data.text || "",
+      options: data.options && data.options.length ? [...data.options] : ["", "", "", ""],
+      correct: data.correct ?? 0,
+      pairs: data.pairs && data.pairs.length ? data.pairs.map((p) => ({ ...p })) : [{ left: "", right: "" }, { left: "", right: "" }],
+      difficulty: data.difficulty || "Easy",
+      explanation: data.explanation || "",
+      status: data.status || "published",
+      image: data.image || "",
+    };
   });
 
   const titleMap = { subject: "Subject", topic: "Topic", session: "Session", question: "Question" };
@@ -266,23 +304,53 @@ function FormModal({ modal, saving, onClose, onSave }) {
 
           {type === "question" && (
             <>
-              <Field label="Question Text"><textarea required rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} /></Field>
+              <Field label="Question Type">
+                <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                  <option value="mcq">Multiple Choice (4 options)</option>
+                  <option value="matching">Matching (left ↔ right)</option>
+                </select>
+              </Field>
+              <Field label="Question Text">
+                <textarea required rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="Use $...$ for equations, e.g. Solve $x^2+2x-3=0$" />
+                <p className="mt-1 text-xs text-slate-400">Tip: wrap maths in dollar signs to render equations, e.g. <code>$\\frac{"{a}"}{"{b}"}$</code>.</p>
+              </Field>
               <Field label="Image URL (optional)">
                 <div className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 dark:border-slate-700">
                   <ImageIcon className="h-4 w-4 text-slate-400" />
                   <input className="w-full bg-transparent py-2.5 text-sm focus:outline-none" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://res.cloudinary.com/..." />
                 </div>
               </Field>
-              <Field label="Options (select the correct one)">
-                <div className="space-y-2">
-                  {form.options.map((opt, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <input type="radio" name="correct" checked={form.correct === i} onChange={() => setForm({ ...form, correct: i })} className="h-4 w-4 text-brand-600" />
-                      <input required className="input" value={opt} onChange={(e) => { const o = [...form.options]; o[i] = e.target.value; setForm({ ...form, options: o }); }} placeholder={`Option ${String.fromCharCode(65 + i)}`} />
-                    </div>
-                  ))}
-                </div>
-              </Field>
+
+              {form.type === "matching" ? (
+                <Field label="Matching pairs (left ↔ right)">
+                  <div className="space-y-2">
+                    {form.pairs.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input className="input" value={p.left} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, left: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Left ${i + 1}`} />
+                        <span className="text-slate-400">↔</span>
+                        <input className="input" value={p.right} onChange={(e) => { const pr = form.pairs.map((x, xi) => xi === i ? { ...x, right: e.target.value } : x); setForm({ ...form, pairs: pr }); }} placeholder={`Right ${i + 1}`} />
+                        <button type="button" onClick={() => setForm({ ...form, pairs: form.pairs.filter((_, xi) => xi !== i) })} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30" disabled={form.pairs.length <= 2}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setForm({ ...form, pairs: [...form.pairs, { left: "", right: "" }] })} className="btn-outline py-2">
+                      <Plus className="h-4 w-4" /> Add pair
+                    </button>
+                  </div>
+                </Field>
+              ) : (
+                <Field label="Options (select the correct one)">
+                  <div className="space-y-2">
+                    {form.options.map((opt, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input type="radio" name="correct" checked={form.correct === i} onChange={() => setForm({ ...form, correct: i })} className="h-4 w-4 text-brand-600" />
+                        <input required className="input" value={opt} onChange={(e) => { const o = [...form.options]; o[i] = e.target.value; setForm({ ...form, options: o }); }} placeholder={`Option ${String.fromCharCode(65 + i)}`} />
+                      </div>
+                    ))}
+                  </div>
+                </Field>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Difficulty">
                   <select className="input" value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: e.target.value })}>

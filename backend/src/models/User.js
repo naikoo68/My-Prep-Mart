@@ -13,6 +13,8 @@ const userSchema = new mongoose.Schema(
     status: { type: String, enum: ["active", "blocked"], default: "active" },
     isEmailVerified: { type: Boolean, default: false },
     emailVerificationToken: String,
+    otpHash: { type: String, select: false },
+    otpExpires: { type: Date, select: false },
     resetPasswordToken: String,
     resetPasswordExpires: Date,
     enrolledTests: [{ type: mongoose.Schema.Types.ObjectId, ref: "TestSeries" }],
