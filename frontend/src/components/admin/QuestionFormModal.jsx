@@ -17,6 +17,7 @@ export const emptyQuestion = {
   correct: 0,
   columnA: ["", "", "", ""],
   columnB: ["", "", "", ""],
+  tableRows: [["", ""], ["", ""]],
   difficulty: "Easy",
   explanation: "",
   status: "published",
@@ -45,6 +46,7 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
     correct: data.correct ?? 0,
     columnA: data.columnA && data.columnA.length ? [...data.columnA] : ["", "", "", ""],
     columnB: data.columnB && data.columnB.length ? [...data.columnB] : ["", "", "", ""],
+    tableRows: Array.isArray(data.tableRows) && data.tableRows.length ? data.tableRows.map((r) => [...r]) : [["", ""], ["", ""]],
     difficulty: data.difficulty || "Easy",
     explanation: data.explanation || "",
     status: data.status || "published",
@@ -81,7 +83,7 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
         options: form.options,
         correct: form.correct,
       };
-    } else if (form.type === "pair") {
+    } else if (form.type === "pair" || form.type === "pairselect") {
       // Keep the two sides aligned: drop only rows where BOTH sides are empty.
       const n = Math.max(form.columnA.length, form.columnB.length);
       const rows = [];
@@ -97,6 +99,12 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
         options: form.options,
         correct: form.correct,
       };
+    } else if (form.type === "table") {
+      // Trim cells and drop rows that are entirely empty.
+      const table = (form.tableRows || [])
+        .map((r) => r.map((c) => (c || "").trim()))
+        .filter((r) => r.some((c) => c !== ""));
+      payload = { ...base, tableRows: table, options: form.options, correct: form.correct };
     } else {
       payload = { ...base, options: form.options, correct: form.correct };
     }
@@ -122,15 +130,18 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
               <option value="matching">Matching (left ↔ right)</option>
               <option value="statement">Statement-based (numbered statements)</option>
               <option value="pair">Pair-matching (how many pairs correct)</option>
+              <option value="pairselect">Pair-select (which pairs correct — 1 only, 1 &amp; 2…)</option>
+              <option value="image">Image / Diagram-based</option>
+              <option value="table">Table-based</option>
             </select>
           </Field>
 
-          <Field label={form.type === "statement" || form.type === "pair" ? "Intro / directive line" : "Question Text"}>
-            <textarea required rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={form.type === "statement" ? "Consider the following statements:" : form.type === "pair" ? "Consider the following pairs (Item — Description):" : "Use $...$ for equations, e.g. Solve $x^2+2x-3=0$"} />
-            <p className="mt-1 text-xs text-slate-400">{form.type === "statement" || form.type === "pair" ? "The numbered list you add below appears under this line, followed by the closing question automatically." : "Tip: wrap maths in dollar signs to render equations."}</p>
+          <Field label={["statement", "pair", "pairselect", "table"].includes(form.type) ? "Intro / directive line" : "Question Text"}>
+            <textarea required rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={form.type === "statement" ? "Consider the following statements:" : form.type === "pair" || form.type === "pairselect" ? "Consider the following pairs (Item — Description):" : form.type === "table" ? "Study the table below and answer:" : "Use $...$ for equations, e.g. Solve $x^2+2x-3=0$"} />
+            <p className="mt-1 text-xs text-slate-400">{["statement", "pair", "pairselect"].includes(form.type) ? "The numbered list you add below appears under this line, followed by the closing question automatically." : form.type === "table" ? "The table you build below appears under this line." : "Tip: wrap maths in dollar signs to render equations."}</p>
           </Field>
 
-          <Field label="Image URL (optional)">
+          <Field label={form.type === "image" ? "Image / Diagram URL (required for this type)" : "Image URL (optional)"}>
             <div className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 dark:border-slate-700">
               <ImageIcon className="h-4 w-4 text-slate-400" />
               <input className="w-full bg-transparent py-2.5 text-sm focus:outline-none" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://res.cloudinary.com/..." />
@@ -152,7 +163,7 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
             </Field>
           )}
 
-          {form.type === "pair" && (
+          {(form.type === "pair" || form.type === "pairselect") && (
             <Field label="Pairs (shown numbered 1, 2, 3… as Left — Right)">
               <div className="space-y-2">
                 {form.columnA.map((left, i) => (
@@ -166,6 +177,40 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
                 ))}
                 <button type="button" onClick={() => setForm({ ...form, columnA: [...form.columnA, ""], columnB: [...form.columnB, ""] })} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add pair</button>
               </div>
+            </Field>
+          )}
+
+          {form.type === "table" && (
+            <Field label="Table (first row = header — add any number of rows & columns)">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+                <table className="border-collapse">
+                  <tbody>
+                    {form.tableRows.map((row, r) => (
+                      <tr key={r}>
+                        {row.map((cell, c) => (
+                          <td key={c} className="p-1">
+                            <input
+                              className={`input min-w-[92px] py-1.5 text-sm ${r === 0 ? "font-semibold" : ""}`}
+                              value={cell}
+                              onChange={(e) => setForm((f) => { const t = f.tableRows.map((rr) => [...rr]); t[r][c] = e.target.value; return { ...f, tableRows: t }; })}
+                              placeholder={r === 0 ? `Header ${c + 1}` : `Row ${r} · Col ${c + 1}`}
+                            />
+                          </td>
+                        ))}
+                        <td className="p-1">
+                          <button type="button" title="Remove row" onClick={() => setForm((f) => ({ ...f, tableRows: f.tableRows.filter((_, ri) => ri !== r) }))} disabled={form.tableRows.length <= 1} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setForm((f) => ({ ...f, tableRows: [...f.tableRows, new Array(f.tableRows[0]?.length || 2).fill("")] }))} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add row</button>
+                <button type="button" onClick={() => setForm((f) => ({ ...f, tableRows: f.tableRows.map((rr) => [...rr, ""]) }))} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add column</button>
+                <button type="button" onClick={() => setForm((f) => ((f.tableRows[0]?.length || 0) > 1 ? { ...f, tableRows: f.tableRows.map((rr) => rr.slice(0, -1)) } : f))} className="btn-outline py-2" disabled={(form.tableRows[0]?.length || 0) <= 1}><Trash2 className="h-4 w-4" /> Remove column</button>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">The table auto-sizes to the rows and columns you add. The first row is shown as the header.</p>
             </Field>
           )}
 

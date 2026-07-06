@@ -12,9 +12,14 @@ const questionSchema = new mongoose.Schema(
     session: { type: mongoose.Schema.Types.ObjectId, ref: "Session" },
     quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
     testSeries: { type: mongoose.Schema.Types.ObjectId, ref: "TestSeries" },
-    type: { type: String, enum: ["mcq", "matching", "statement", "pair"], default: "mcq" },
+    type: { type: String, enum: ["mcq", "matching", "statement", "pair", "pairselect", "image", "table"], default: "mcq" },
     text: { type: String, required: true },
-    image: { type: String },
+    image: { type: String }, // diagram/figure for "image" (and any) questions
+
+    // Table-based questions: a 2D array of cells (rows × columns). Dimensions
+    // are dynamic — the table renders exactly as many rows/columns as supplied.
+    // First row is treated as the header. Stored as Mixed to allow any shape.
+    tableRows: { type: mongoose.Schema.Types.Mixed, default: undefined },
 
     // MCQ fields
     options: {

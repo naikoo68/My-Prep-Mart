@@ -19,6 +19,7 @@ import {
 import StatCard from "../../components/ui/StatCard";
 import MathText from "../../components/ui/MathText";
 import StatementPairView from "../../components/ui/StatementPairView";
+import TableView from "../../components/ui/TableView";
 import FeedbackButton from "../../components/ui/FeedbackButton";
 
 function toRomanLite(n) {
@@ -202,6 +203,7 @@ export default function QuizResult() {
                       className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
                     />
                   </div>
+                  {r.image && <img src={r.image} alt="" className="mt-3 max-h-52 rounded-lg object-contain" />}
 
                   {r.type === "matching" && (
                     <div className="mt-3 grid grid-cols-2 gap-3">
@@ -221,6 +223,7 @@ export default function QuizResult() {
                   )}
 
                   <StatementPairView q={r} />
+                  <TableView q={r} />
 
                   <div className="mt-3 space-y-2">
                     {(r.options || []).map((opt, idx) => {

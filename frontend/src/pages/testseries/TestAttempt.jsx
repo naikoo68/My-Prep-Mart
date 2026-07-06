@@ -20,6 +20,7 @@ import { testService } from "../../services";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
 import StatementPairView from "../../components/ui/StatementPairView";
+import TableView from "../../components/ui/TableView";
 import FeedbackButton from "../../components/ui/FeedbackButton";
 import { useZoom } from "../../context/ZoomContext";
 
@@ -278,6 +279,7 @@ export default function TestAttempt() {
                   )}
 
                   <StatementPairView q={r} />
+                  <TableView q={r} />
 
                   <div className="mt-3 space-y-2">
                     {(r.options || []).map((opt, idx) => {
@@ -386,8 +388,9 @@ export default function TestAttempt() {
             </div>
           )}
 
-          {/* Statement-based & pair questions render their numbered list here */}
+          {/* Statement/pair questions render their numbered list; table questions their grid */}
           <StatementPairView q={q} />
+          <TableView q={q} />
 
           <div className="mt-5 space-y-3">
             {q.type === "matching" && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Choose the correct matching sequence:</p>}

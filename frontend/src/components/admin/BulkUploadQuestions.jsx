@@ -51,15 +51,19 @@ function buildOptionExplanations(cells, correctIdx) {
 }
 
 // Turns pasted CSV text into question objects + a list of skipped-row errors.
-// Supports four row shapes (all end with optional Difficulty, Explanation, WhyA..D):
+// Supports seven row shapes (all end with optional Difficulty, Explanation, WhyA..D):
 //   MCQ (default):  Question, OptionA..D, Correct, ...
 //   Matching:       matching, Question, ColumnA, ColumnB, OptionA..D, Correct, ...
 //   Statement:      statement, Intro, Statements, OptionA..D, Correct, ...
 //   Pair:           pair, Intro, LeftList, RightList, OptionA..D, Correct, ...
+//   Pair-select:    pairselect, Intro, LeftList, RightList, OptionA..D, Correct, ...
+//   Image:          image, ImageURL, Question, OptionA..D, Correct, ...
+//   Table:          table, Intro, TableData, OptionA..D, Correct, ...
 // Explanation is the DETAILED note for the correct answer; WhyA..D are optional
 // BRIEF notes shown when a student selects that (wrong) option — the correct
-// option's Why cell is ignored. ColumnA/ColumnB/Statements/LeftList/RightList
-// are pipe-separated lists, e.g. "Newton|Bohr|Curie".
+// option's Why cell is ignored. Lists (ColumnA/ColumnB/Statements/LeftList/
+// RightList) are pipe-separated, e.g. "Newton|Bohr|Curie". TableData uses "|"
+// between rows and ";" between cells; the first row is the header.
 export function parseQuestionsCsv(text) {
   const records = parseCsvRecords(text);
   const rows = [];
@@ -146,6 +150,83 @@ export function parseQuestionsCsv(text) {
       return;
     }
 
+    // ---- Pair-select row (which pairs are correct — combination options) ----
+    if (first === "pairselect") {
+      const [, qtext, leftList, rightList, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
+      const columnA = splitList(leftList);
+      const columnB = splitList(rightList);
+      if (!qtext || columnA.length < 2 || columnA.length !== columnB.length || !a || !b || !c || !d) {
+        errors.push(`Row ${idx + 1}: pairselect needs an intro, equal-length Left & Right lists (2+ items, pipe-separated) and 4 options`);
+        return;
+      }
+      const ci = correctIndex(correct);
+      const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
+      rows.push({
+        type: "pairselect",
+        text: qtext,
+        columnA,
+        columnB,
+        options: [a, b, c, d],
+        correct: ci,
+        difficulty: asDifficulty(difficulty),
+        explanation: explanation || "",
+        ...(optExp ? { optionExplanations: optExp } : {}),
+        status: "published",
+      });
+      return;
+    }
+
+    // ---- Image / diagram row ----
+    if (first === "image") {
+      const [, imageUrl, qtext, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
+      if (!imageUrl || !qtext || !a || !b || !c || !d) {
+        errors.push(`Row ${idx + 1}: image needs an image URL, a question and 4 options`);
+        return;
+      }
+      const ci = correctIndex(correct);
+      const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
+      rows.push({
+        type: "image",
+        image: imageUrl,
+        text: qtext,
+        options: [a, b, c, d],
+        correct: ci,
+        difficulty: asDifficulty(difficulty),
+        explanation: explanation || "",
+        ...(optExp ? { optionExplanations: optExp } : {}),
+        status: "published",
+      });
+      return;
+    }
+
+    // ---- Table row (dynamic rows × columns) ----
+    if (first === "table") {
+      const [, qtext, tableData, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
+      // Rows separated by "|", cells within a row separated by ";".
+      const tableRows = String(tableData || "")
+        .split("|")
+        .map((r) => r.split(";").map((cell) => cell.trim()))
+        .filter((r) => r.some((cell) => cell !== ""));
+      if (!qtext || tableRows.length < 2 || !a || !b || !c || !d) {
+        errors.push(`Row ${idx + 1}: table needs an intro, a table (rows split by "|", cells by ";") and 4 options`);
+        return;
+      }
+      const ci = correctIndex(correct);
+      const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
+      rows.push({
+        type: "table",
+        text: qtext,
+        tableRows,
+        options: [a, b, c, d],
+        correct: ci,
+        difficulty: asDifficulty(difficulty),
+        explanation: explanation || "",
+        ...(optExp ? { optionExplanations: optExp } : {}),
+        status: "published",
+      });
+      return;
+    }
+
     // ---- MCQ row (optionally prefixed with "mcq") ----
     const cols = first === "mcq" ? cells.slice(1) : cells;
     if (cols.length < 5) { errors.push(`Row ${idx + 1}: needs a question + 4 options`); return; }
@@ -173,7 +254,10 @@ const TEMPLATE =
   '"Speed of light in vacuum (m/s)?","3x10^8","1x10^6","3x10^6","9x10^8",A,Medium,"Light travels at ~3x10^8 m/s in vacuum.",,"Too small by 100x.","Too small by 100x.","This is higher than the actual value."\n' +
   'matching,"Match the scientist to the discovery","Newton|Einstein|Bohr|Curie","Relativity|Gravity|Atom model|Radioactivity","1-II, 2-I, 3-III, 4-IV","1-I, 2-II, 3-III, 4-IV","1-III, 2-IV, 3-I, 4-II","1-IV, 2-III, 3-II, 4-I",A,Medium,"Newton-Gravity, Einstein-Relativity, Bohr-Atom model, Curie-Radioactivity",,"Swaps Newton and Einstein.","All mappings are shifted.","Order is fully reversed."\n' +
   'statement,"Consider the following statements:","The Sun is a star.|The Moon is a planet.|Water boils at 100°C at sea level.","1 and 3 only","2 and 3 only","1 and 2 only","1, 2 and 3",A,Medium,"Statements 1 and 3 are correct; the Moon is a satellite, not a planet.",,"Statement 2 is wrong — the Moon is a satellite.","Includes the wrong statement 2.","Includes the wrong statement 2."\n' +
-  'pair,"Consider the following pairs (River — Tributary):","Ganga|Indus|Krishna","Yamuna|Chenab|Tungabhadra","Only one pair","Only two pairs","Only three pairs","All four pairs",C,Medium,"All three pairs are correctly matched.","Undercount.","Undercount.",,"There are only three pairs listed."';
+  'pair,"Consider the following pairs (River — Tributary):","Ganga|Indus|Krishna","Yamuna|Chenab|Tungabhadra","Only one pair","Only two pairs","Only three pairs","All four pairs",C,Medium,"All three pairs are correctly matched.","Undercount.","Undercount.",,"There are only three pairs listed."\n' +
+  'pairselect,"Consider the following pairs (State — Capital):","Kerala|Punjab|Bihar","Thiruvananthapuram|Chandigarh|Jaipur","1 and 2 only","2 and 3 only","1 and 3 only","1, 2 and 3",A,Medium,"Pairs 1 and 2 are correct; Jaipur is in Rajasthan, not Bihar (Patna).",,"Includes the wrong pair 3.","Includes the wrong pair 3.","Includes the wrong pair 3."\n' +
+  'image,"https://res.cloudinary.com/demo/image/upload/diagram.png","Identify the labelled part in the diagram:","Nucleus","Mitochondrion","Ribosome","Golgi body",A,Medium,"The labelled central organelle is the nucleus.",,"Mitochondria are rod-shaped, not central.","Ribosomes are much smaller dots.","Golgi is a stack of membranes."\n' +
+  'table,"Study the table and answer which product had the highest sales:","Product;Sales|Pens;120|Books;340|Bags;90","Pens","Books","Bags","Cannot be determined",B,Easy,"Books have the highest sales at 340.","Pens are 120.",,"Bags are only 90.","The table gives clear figures."';
 
 // Reusable bulk-upload modal. `onUpload(questions)` should return a promise
 // (e.g. resolving to { inserted }). Used for both quizzes and test series.
@@ -224,7 +308,10 @@ export default function BulkUploadQuestions({ open, onClose, onUpload, title = "
           <p className="mt-1 text-slate-500 dark:text-slate-400"><b>MCQ:</b> <code>Question, Option A, Option B, Option C, Option D, …tail</code></p>
           <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Matching:</b> <code>matching, Question, ColumnA, ColumnB, Option A–D, …tail</code></p>
           <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Statement:</b> <code>statement, Intro, Statements, Option A–D, …tail</code></p>
-          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Pair:</b> <code>pair, Intro, LeftList, RightList, Option A–D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Pair (count):</b> <code>pair, Intro, LeftList, RightList, Option A–D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Pair-select (which pairs):</b> <code>pairselect, Intro, LeftList, RightList, Option A–D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Image:</b> <code>image, ImageURL, Question, Option A–D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Table:</b> <code>table, Intro, TableData, Option A–D, …tail</code> — TableData rows split by <code>|</code>, cells by <code>;</code> (first row = header)</p>
           <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-slate-500 dark:text-slate-400">
             <li><b>Correct</b>: A/B/C/D (or 1–4) — the correct answer option.</li>
             <li><b>Explanation</b>: the <b>detailed</b> explanation of the correct answer (shown after answering).</li>

@@ -4,13 +4,16 @@ import MathText from "./MathText";
 export function closingPrompt(type) {
   if (type === "statement") return "Which of the statement(s) given above is/are correct?";
   if (type === "pair") return "How many of the above pairs are correctly matched?";
+  if (type === "pairselect") return "Which of the pairs given above is/are correctly matched?";
   return "";
 }
 
 // Renders the numbered list that sits between the question stem and the answer
-// options for "statement" and "pair" question types:
-//  - statement: columnA holds the statements → "1. <statement>"
-//  - pair:      columnA/columnB hold the two sides → "1. <left> — <right>"
+// options for statement/pair/pairselect question types:
+//  - statement:  columnA holds the statements → "1. <statement>"
+//  - pair:       columnA/columnB hold the two sides → "1. <left> — <right>"
+//                (options are counts: "Only one pair"…)
+//  - pairselect: same list as pair, but options are combinations ("1 and 2 only"…)
 export default function StatementPairView({ q }) {
   if (!q) return null;
 
@@ -19,7 +22,7 @@ export default function StatementPairView({ q }) {
     rows = (q.columnA || [])
       .filter((s) => s != null && String(s).trim() !== "")
       .map((s) => <MathText>{s}</MathText>);
-  } else if (q.type === "pair") {
+  } else if (q.type === "pair" || q.type === "pairselect") {
     const left = q.columnA || [];
     const right = q.columnB || [];
     const n = Math.max(left.length, right.length);
