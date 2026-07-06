@@ -4,7 +4,7 @@ import { feedbackService } from "../../services";
 
 // Reusable feedback button + modal. Used per-question (context="question") and
 // on the result screens (context="quiz" | "test").
-export default function FeedbackButton({ context = "question", questionText = "", source = "", label = "Feedback", className = "" }) {
+export default function FeedbackButton({ context = "question", questionText = "", source = "", questionNumber, details = "", label = "Feedback", className = "" }) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [rating, setRating] = useState(0);
@@ -18,7 +18,7 @@ export default function FeedbackButton({ context = "question", questionText = ""
     setBusy(true);
     setError("");
     try {
-      await feedbackService.send({ context, message, rating: rating || undefined, questionText, source });
+      await feedbackService.send({ context, message, rating: rating || undefined, questionText, source, questionNumber, details });
       setDone(true);
       setMessage("");
       setRating(0);

@@ -64,7 +64,9 @@ export default function AdminFeedback() {
                     {f.source ? <span className="text-xs text-slate-400">{f.source}</span> : null}
                     {!f.read && <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">NEW</span>}
                   </div>
-                  {f.questionText ? <p className="mt-1 truncate text-xs italic text-slate-400">Q: {f.questionText}</p> : null}
+                  {f.questionNumber ? <p className="mt-1 text-xs font-semibold text-slate-500">Question #{f.questionNumber}</p> : null}
+                  {f.questionText ? <p className="mt-0.5 truncate text-xs italic text-slate-400">Q: {f.questionText}</p> : null}
+                  {f.details ? <p className="mt-0.5 text-xs text-slate-400">{f.details}</p> : null}
                   <p className="mt-1 text-sm">{f.message}</p>
                   <p className="mt-1 text-xs text-slate-400">{f.name}{f.email ? ` · ${f.email}` : ""} · {new Date(f.createdAt).toLocaleString()}</p>
                 </div>

@@ -27,6 +27,9 @@ function toRomanLite(n) {
   return r;
 }
 
+// Option index → letter (A, B, C…), or — when none.
+const optLetter = (n) => (n == null ? "—" : String.fromCharCode(65 + n));
+
 export default function QuizResult() {
   const { state } = useLocation();
   const { subjectId, topicId, sessionId, quizId } = useParams();
@@ -168,7 +171,7 @@ export default function QuizResult() {
         <Link to={`/quiz/${subjectId}/${topicId}/${sessionId}/${quizId}`} className="btn-outline">
           <RefreshCw className="h-4 w-4" /> Retake Quiz
         </Link>
-        <FeedbackButton context="quiz" source="Quiz" label="Give Feedback" className="btn-outline" />
+        <FeedbackButton context="quiz" source={`${subjectName || "Quiz"} (Quiz)`} label="Give Feedback" className="btn-outline" />
         <Link to={`/quiz/${subjectId}/${topicId}/${sessionId}`} className="btn-ghost">
           Back to Quizzes
         </Link>
@@ -184,7 +187,18 @@ export default function QuizResult() {
                   {i + 1}
                 </span>
                 <div className="flex-1">
-                  <p className="font-semibold"><MathText>{r.text}</MathText></p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold"><MathText>{r.text}</MathText></p>
+                    <FeedbackButton
+                      context="question"
+                      label="Feedback"
+                      questionNumber={i + 1}
+                      questionText={r.text}
+                      source={`${subjectName || "Quiz"} (Quiz)`}
+                      details={`Correct: ${optLetter(r.correct)}${r.chosen != null ? `, Chosen: ${optLetter(r.chosen)}` : ", Not attempted"}`}
+                      className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
+                    />
+                  </div>
 
                   {r.type === "matching" && (
                     <div className="mt-3 grid grid-cols-2 gap-3">

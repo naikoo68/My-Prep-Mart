@@ -30,6 +30,9 @@ function toRoman(n) {
   return r;
 }
 
+// Option index → letter (A, B, C…), or — when none.
+const optLetter = (n) => (n == null ? "—" : String.fromCharCode(65 + n));
+
 const STATUS = {
   NOT_VISITED: "not_visited",
   NOT_ANSWERED: "not_answered",
@@ -232,11 +235,22 @@ export default function TestAttempt() {
                       <span className="mr-2 text-slate-400">Q{i + 1}.</span>
                       <MathText>{r.text}</MathText>
                     </p>
-                    <span className={`flex-shrink-0 text-xs font-semibold ${
-                      r.chosen === null ? "text-amber-600" : r.isCorrect ? "text-emerald-600" : "text-rose-600"
-                    }`}>
-                      {r.chosen === null ? "Skipped" : r.isCorrect ? "Correct" : "Wrong"}
-                    </span>
+                    <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                      <span className={`text-xs font-semibold ${
+                        r.chosen === null ? "text-amber-600" : r.isCorrect ? "text-emerald-600" : "text-rose-600"
+                      }`}>
+                        {r.chosen === null ? "Skipped" : r.isCorrect ? "Correct" : "Wrong"}
+                      </span>
+                      <FeedbackButton
+                        context="question"
+                        label="Feedback"
+                        questionNumber={i + 1}
+                        questionText={r.text}
+                        source={`${test.name} (Test)`}
+                        details={`Correct: ${optLetter(r.correct)}${r.chosen != null ? `, Chosen: ${optLetter(r.chosen)}` : ", Skipped"}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
+                      />
+                    </div>
                   </div>
                   {r.image && <img src={r.image} alt="" className="mt-3 max-h-52 rounded-lg object-contain" />}
 

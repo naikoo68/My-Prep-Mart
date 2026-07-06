@@ -1,8 +1,9 @@
 import Feedback from "../models/Feedback.js";
+import { sendMail } from "../config/mailer.js";
 
 // POST /api/feedback — submit feedback (works for logged-in or guest users)
 export async function createFeedback(req, res) {
-  const { context = "question", message, rating, questionText = "", source = "" } = req.body;
+  const { context = "question", message, rating, questionText = "", source = "", questionNumber, details = "" } = req.body;
   if (!message || !message.trim()) {
     return res.status(400).json({ message: "Feedback message is required" });
   }
@@ -14,8 +15,34 @@ export async function createFeedback(req, res) {
     message: message.trim(),
     rating: rating || undefined,
     questionText,
+    questionNumber,
+    details,
     source,
   });
+
+  // Notify the admin by email (best-effort — needs SMTP/Brevo + NOTIFY_EMAIL).
+  const to = process.env.NOTIFY_EMAIL || process.env.SMTP_FROM;
+  if (to) {
+    const body = [
+      `New ${context} feedback on My Study Guide`,
+      source ? `Source: ${source}` : "",
+      questionNumber ? `Question number: ${questionNumber}` : "",
+      questionText ? `Question: ${questionText}` : "",
+      details ? `Details: ${details}` : "",
+      rating ? `Rating: ${rating}/5` : "",
+      `From: ${fb.name}${fb.email ? ` (${fb.email})` : " (guest)"}`,
+      "",
+      "Message:",
+      message.trim(),
+    ].filter(Boolean).join("\n");
+    sendMail({
+      to,
+      subject: `New ${context} feedback${source ? ` — ${source}` : ""}`,
+      text: body,
+      replyTo: fb.email || undefined,
+    }).catch(() => {});
+  }
+
   res.status(201).json({ ok: true, id: fb._id });
 }
 
