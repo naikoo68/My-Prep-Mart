@@ -51,13 +51,15 @@ function buildOptionExplanations(cells, correctIdx) {
 }
 
 // Turns pasted CSV text into question objects + a list of skipped-row errors.
-// Supports two row shapes:
-//   MCQ (default):  Question, OptionA..D, Correct, Difficulty, Explanation, WhyA..D
-//   Matching:       matching, Question, ColumnA, ColumnB, OptionA..D, Correct, Difficulty, Explanation, WhyA..D
+// Supports four row shapes (all end with optional Difficulty, Explanation, WhyA..D):
+//   MCQ (default):  Question, OptionA..D, Correct, ...
+//   Matching:       matching, Question, ColumnA, ColumnB, OptionA..D, Correct, ...
+//   Statement:      statement, Intro, Statements, OptionA..D, Correct, ...
+//   Pair:           pair, Intro, LeftList, RightList, OptionA..D, Correct, ...
 // Explanation is the DETAILED note for the correct answer; WhyA..D are optional
 // BRIEF notes shown when a student selects that (wrong) option — the correct
-// option's Why cell is ignored. For matching, ColumnA / ColumnB are pipe-
-// separated lists, e.g. "Newton|Bohr|Curie".
+// option's Why cell is ignored. ColumnA/ColumnB/Statements/LeftList/RightList
+// are pipe-separated lists, e.g. "Newton|Bohr|Curie".
 export function parseQuestionsCsv(text) {
   const records = parseCsvRecords(text);
   const rows = [];
@@ -81,6 +83,56 @@ export function parseQuestionsCsv(text) {
       const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
       rows.push({
         type: "matching",
+        text: qtext,
+        columnA,
+        columnB,
+        options: [a, b, c, d],
+        correct: ci,
+        difficulty: asDifficulty(difficulty),
+        explanation: explanation || "",
+        ...(optExp ? { optionExplanations: optExp } : {}),
+        status: "published",
+      });
+      return;
+    }
+
+    // ---- Statement-based row ----
+    if (first === "statement") {
+      const [, qtext, statements, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
+      const columnA = splitList(statements);
+      if (!qtext || columnA.length < 2 || !a || !b || !c || !d) {
+        errors.push(`Row ${idx + 1}: statement needs an intro, 2+ pipe-separated statements and 4 options`);
+        return;
+      }
+      const ci = correctIndex(correct);
+      const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
+      rows.push({
+        type: "statement",
+        text: qtext,
+        columnA,
+        options: [a, b, c, d],
+        correct: ci,
+        difficulty: asDifficulty(difficulty),
+        explanation: explanation || "",
+        ...(optExp ? { optionExplanations: optExp } : {}),
+        status: "published",
+      });
+      return;
+    }
+
+    // ---- Pair-matching row (how many pairs are correct) ----
+    if (first === "pair") {
+      const [, qtext, leftList, rightList, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
+      const columnA = splitList(leftList);
+      const columnB = splitList(rightList);
+      if (!qtext || columnA.length < 2 || columnA.length !== columnB.length || !a || !b || !c || !d) {
+        errors.push(`Row ${idx + 1}: pair needs an intro, equal-length Left & Right lists (2+ items, pipe-separated) and 4 options`);
+        return;
+      }
+      const ci = correctIndex(correct);
+      const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
+      rows.push({
+        type: "pair",
         text: qtext,
         columnA,
         columnB,
@@ -119,7 +171,9 @@ const TEMPLATE =
   "Question,Option A,Option B,Option C,Option D,Correct,Difficulty,Explanation,WhyA,WhyB,WhyC,WhyD\n" +
   '"What is 2+2?",3,4,5,6,B,Easy,"2+2 equals 4 because you add two and two.","3 is 2+1, not 2+2.",,"5 is 2+3.","6 is 2+4."\n' +
   '"Speed of light in vacuum (m/s)?","3x10^8","1x10^6","3x10^6","9x10^8",A,Medium,"Light travels at ~3x10^8 m/s in vacuum.",,"Too small by 100x.","Too small by 100x.","This is higher than the actual value."\n' +
-  'matching,"Match the scientist to the discovery","Newton|Einstein|Bohr|Curie","Relativity|Gravity|Atom model|Radioactivity","1-II, 2-I, 3-III, 4-IV","1-I, 2-II, 3-III, 4-IV","1-III, 2-IV, 3-I, 4-II","1-IV, 2-III, 3-II, 4-I",A,Medium,"Newton-Gravity, Einstein-Relativity, Bohr-Atom model, Curie-Radioactivity",,"Swaps Newton and Einstein.","All mappings are shifted.","Order is fully reversed."';
+  'matching,"Match the scientist to the discovery","Newton|Einstein|Bohr|Curie","Relativity|Gravity|Atom model|Radioactivity","1-II, 2-I, 3-III, 4-IV","1-I, 2-II, 3-III, 4-IV","1-III, 2-IV, 3-I, 4-II","1-IV, 2-III, 3-II, 4-I",A,Medium,"Newton-Gravity, Einstein-Relativity, Bohr-Atom model, Curie-Radioactivity",,"Swaps Newton and Einstein.","All mappings are shifted.","Order is fully reversed."\n' +
+  'statement,"Consider the following statements:","The Sun is a star.|The Moon is a planet.|Water boils at 100°C at sea level.","1 and 3 only","2 and 3 only","1 and 2 only","1, 2 and 3",A,Medium,"Statements 1 and 3 are correct; the Moon is a satellite, not a planet.",,"Statement 2 is wrong — the Moon is a satellite.","Includes the wrong statement 2.","Includes the wrong statement 2."\n' +
+  'pair,"Consider the following pairs (River — Tributary):","Ganga|Indus|Krishna","Yamuna|Chenab|Tungabhadra","Only one pair","Only two pairs","Only three pairs","All four pairs",C,Medium,"All three pairs are correctly matched.","Undercount.","Undercount.",,"There are only three pairs listed."';
 
 // Reusable bulk-upload modal. `onUpload(questions)` should return a promise
 // (e.g. resolving to { inserted }). Used for both quizzes and test series.
@@ -166,19 +220,18 @@ export default function BulkUploadQuestions({ open, onClose, onUpload, title = "
 
         <div className="mb-4 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800/60">
           <p className="font-semibold">CSV format (one question per line):</p>
-          <p className="mt-1 text-slate-500 dark:text-slate-400">
-            <b>MCQ:</b> <code>Question, Option A, Option B, Option C, Option D, Correct, Difficulty, Explanation, WhyA, WhyB, WhyC, WhyD</code>
-          </p>
-          <p className="mt-1 text-slate-500 dark:text-slate-400">
-            <b>Matching:</b> start the line with <code>matching</code>, then <code>Question, ColumnA, ColumnB, Option A, Option B, Option C, Option D, Correct, Difficulty, Explanation, WhyA, WhyB, WhyC, WhyD</code>
-          </p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">Every row ends with the same tail: <code>…, Correct, Difficulty, Explanation, WhyA, WhyB, WhyC, WhyD</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>MCQ:</b> <code>Question, Option A, Option B, Option C, Option D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Matching:</b> <code>matching, Question, ColumnA, ColumnB, Option A–D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Statement:</b> <code>statement, Intro, Statements, Option A–D, …tail</code></p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Pair:</b> <code>pair, Intro, LeftList, RightList, Option A–D, …tail</code></p>
           <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-slate-500 dark:text-slate-400">
             <li><b>Correct</b>: A/B/C/D (or 1–4) — the correct answer option.</li>
             <li><b>Explanation</b>: the <b>detailed</b> explanation of the correct answer (shown after answering).</li>
             <li><b>WhyA–WhyD</b> (optional): a <b>brief</b> note for each option explaining why it is wrong — shown when a student picks it. Leave the correct option's cell blank (it's ignored).</li>
-            <li><b>Matching ColumnA / ColumnB</b>: separate items with a pipe <code>|</code>, e.g. <code>"Newton|Bohr|Curie"</code>. Column A shows as 1,2,3… and Column B as I,II,III…</li>
-            <li>Each matching <b>option</b> is a sequence like <code>1-III, 2-I, 3-IV, 4-II</code>.</li>
-            <li><b>Difficulty</b>, <b>Explanation</b> &amp; the Why columns are optional. Wrap any value containing a comma in "double quotes".</li>
+            <li><b>Lists</b> (ColumnA/ColumnB, Statements, LeftList/RightList): separate items with a pipe <code>|</code>, e.g. <code>"Newton|Bohr|Curie"</code>.</li>
+            <li><b>Matching option</b> is a sequence like <code>1-III, 2-I, 3-IV, 4-II</code>. <b>Statement</b> options are combos like <code>"1 and 2 only"</code>. <b>Pair</b> options are counts like <code>"Only two pairs"</code>.</li>
+            <li>Wrap any value containing a comma in "double quotes". Difficulty, Explanation &amp; Why columns are optional.</li>
             <li>Tip: build it in Excel/Google Sheets, then <b>Save/Download as CSV</b> and upload the file below.</li>
           </ul>
           <button
