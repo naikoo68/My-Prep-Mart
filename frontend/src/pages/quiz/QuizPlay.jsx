@@ -24,6 +24,7 @@ import { contentService, quizService } from "../../services";
 import ProgressBar from "../../components/ui/ProgressBar";
 import Badge from "../../components/ui/Badge";
 import MathText from "../../components/ui/MathText";
+import FeedbackButton from "../../components/ui/FeedbackButton";
 import { useZoom } from "../../context/ZoomContext";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
@@ -376,17 +377,20 @@ export default function QuizPlay() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr,300px]">
         <div className="card p-6">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <Badge variant={q.difficulty}>{q.difficulty}</Badge>
-            <button
-              onClick={toggleBookmark}
-              className={`flex items-center gap-1.5 text-sm font-medium transition ${
-                bookmarks[current] ? "text-accent-600 dark:text-accent-400" : "text-slate-400 hover:text-accent-500"
-              }`}
-            >
-              {bookmarks[current] ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
-              {bookmarks[current] ? "Bookmarked" : "Bookmark"}
-            </button>
+            <div className="flex items-center gap-4">
+              <FeedbackButton context="question" questionText={q.text} source={subjectName || "Quiz"} label="Feedback" />
+              <button
+                onClick={toggleBookmark}
+                className={`flex items-center gap-1.5 text-sm font-medium transition ${
+                  bookmarks[current] ? "text-accent-600 dark:text-accent-400" : "text-slate-400 hover:text-accent-500"
+                }`}
+              >
+                {bookmarks[current] ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
+                {bookmarks[current] ? "Bookmarked" : "Bookmark"}
+              </button>
+            </div>
           </div>
 
           {q.image && <img src={q.image} alt="" className="mb-4 max-h-64 rounded-xl object-contain" />}

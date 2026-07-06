@@ -19,6 +19,7 @@ import {
 import { testService } from "../../services";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
+import FeedbackButton from "../../components/ui/FeedbackButton";
 import { useZoom } from "../../context/ZoomContext";
 
 // Roman numerals for Column B labels (I, II, III, IV…)
@@ -215,6 +216,7 @@ export default function TestAttempt() {
                   {showReview ? "Hide" : "Review"} Answers
                 </button>
               )}
+              <FeedbackButton context="test" source={test.name} label="Give Feedback" className="btn-outline" />
               <button onClick={() => navigate("/dashboard")} className="btn-primary">Go to Dashboard</button>
               <button onClick={() => navigate("/test-series")} className="btn-outline">More Tests</button>
             </div>
@@ -325,11 +327,14 @@ export default function TestAttempt() {
 
       <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[1fr,320px]">
         <div className="card flex flex-col p-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
             <span className="font-bold">Question {current + 1} of {questions.length}</span>
-            <span className="text-sm text-slate-500">
-              +{(test.marks / questions.length).toFixed(1)} / -{test.negativeMarking ?? 0.25}
-            </span>
+            <div className="flex items-center gap-4">
+              <FeedbackButton context="question" questionText={q.text} source={test.name} label="Feedback" />
+              <span className="text-sm text-slate-500">
+                +{(test.marks / questions.length).toFixed(1)} / -{test.negativeMarking ?? 0.25}
+              </span>
+            </div>
           </div>
 
           {q.image && <img src={q.image} alt="" className="mt-4 max-h-64 rounded-xl object-contain" />}

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import StatCard from "../../components/ui/StatCard";
 import MathText from "../../components/ui/MathText";
+import FeedbackButton from "../../components/ui/FeedbackButton";
 
 function toRomanLite(n) {
   const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]];
@@ -167,6 +168,7 @@ export default function QuizResult() {
         <Link to={`/quiz/${subjectId}/${topicId}/${sessionId}/${quizId}`} className="btn-outline">
           <RefreshCw className="h-4 w-4" /> Retake Quiz
         </Link>
+        <FeedbackButton context="quiz" source="Quiz" label="Give Feedback" className="btn-outline" />
         <Link to={`/quiz/${subjectId}/${topicId}/${sessionId}`} className="btn-ghost">
           Back to Quizzes
         </Link>

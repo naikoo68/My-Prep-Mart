@@ -1,0 +1,19 @@
+import mongoose from "mongoose";
+
+// Student feedback — either about a specific question, or an overall quiz/test.
+const feedbackSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    name: { type: String, default: "Guest" },
+    email: { type: String, default: "" },
+    context: { type: String, enum: ["question", "quiz", "test"], default: "question" },
+    message: { type: String, required: true, trim: true },
+    rating: { type: Number, min: 1, max: 5 },
+    questionText: { type: String, default: "" }, // snapshot of the question, if any
+    source: { type: String, default: "" }, // quiz/test name for context
+    read: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Feedback", feedbackSchema);

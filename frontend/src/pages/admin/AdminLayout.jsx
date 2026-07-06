@@ -7,6 +7,7 @@ import {
   BookMarked,
   Users,
   Mail,
+  MessageSquare,
   Palette,
   GraduationCap,
   LogOut,
@@ -27,6 +28,7 @@ const nav = [
   { to: "/admin/tests", label: "Test Series", icon: FileStack },
   { to: "/admin/study", label: "Study Material", icon: BookMarked },
   { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { to: "/admin/messages", label: "Messages", icon: Mail },
   { to: "/admin/customization", label: "Customization", icon: Palette },
 ];

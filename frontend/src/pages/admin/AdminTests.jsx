@@ -601,7 +601,7 @@ export default function AdminTests() {
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : "MCQ"}</Badge>
                         <Badge variant={item.difficulty}>{item.difficulty}</Badge>
-                        {item.type !== "matching" && item.correct !== undefined && (
+                        {item.correct !== undefined && (
                           <span className="text-xs text-slate-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
                         )}
                       </div>

@@ -43,6 +43,7 @@ const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminContent = lazy(() => import("./pages/admin/AdminContent"));
 const AdminTests = lazy(() => import("./pages/admin/AdminTests"));
 const AdminStudyMaterial = lazy(() => import("./pages/admin/AdminStudyMaterial"));
+const AdminFeedback = lazy(() => import("./pages/admin/AdminFeedback"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const AdminCustomization = lazy(() => import("./pages/admin/AdminCustomization"));
@@ -109,6 +110,7 @@ const router = createBrowserRouter([
       { path: "content", element: S(AdminContent) },
       { path: "tests", element: S(AdminTests) },
       { path: "study", element: S(AdminStudyMaterial) },
+      { path: "feedback", element: S(AdminFeedback) },
       { path: "users", element: S(AdminUsers) },
       { path: "messages", element: S(AdminMessages) },
       { path: "customization", element: S(AdminCustomization) },

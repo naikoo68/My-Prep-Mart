@@ -197,7 +197,7 @@ export default function AdminContent() {
                       </Badge>
                       <Badge variant={item.difficulty}>{item.difficulty}</Badge>
                       <Badge variant={item.status === "published" ? "brand" : "neutral"}>{item.status}</Badge>
-                      {item.type !== "matching" && item.correct !== undefined && (
+                      {item.correct !== undefined && (
                         <span className="text-xs text-slate-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
                       )}
                     </div>

@@ -133,6 +133,14 @@ export const studyService = {
   deleteFile: (id) => api.del(`/sm-files/${id}`),
 };
 
+// ---- Feedback ----
+export const feedbackService = {
+  send: (data) => api.post("/feedback", data),
+  list: () => api.get("/feedback"),
+  toggleRead: (id, read) => api.patch(`/feedback/${id}/read`, { read }),
+  remove: (id) => api.del(`/feedback/${id}`),
+};
+
 // ---- File upload (Cloudinary) ----
 export const uploadService = {
   file: (file) => {
