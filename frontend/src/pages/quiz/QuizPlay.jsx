@@ -17,6 +17,8 @@ import {
   Play,
   Maximize,
   Minimize,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { contentService, quizService } from "../../services";
 import ProgressBar from "../../components/ui/ProgressBar";
@@ -77,6 +79,11 @@ export default function QuizPlay() {
   const [submitting, setSubmitting] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const containerRef = useRef(null);
+
+  // Zoom (magnify) the question area.
+  const [zoom, setZoom] = useState(1);
+  const zoomIn = () => setZoom((z) => Math.min(1.8, +(z + 0.1).toFixed(2)));
+  const zoomOut = () => setZoom((z) => Math.max(0.7, +(z - 0.1).toFixed(2)));
 
   // Full-screen mode (same behaviour as the test interface).
   const toggleFullscreen = () => {
@@ -339,6 +346,11 @@ export default function QuizPlay() {
           <span className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white">
             <Clock className="h-4 w-4" /> {mmss}
           </span>
+          <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+            <button onClick={zoomOut} title="Zoom out" className="px-2.5 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomOut className="h-4 w-4" /></button>
+            <span className="min-w-[42px] text-center text-xs font-semibold tabular-nums text-slate-500">{Math.round(zoom * 100)}%</span>
+            <button onClick={zoomIn} title="Zoom in" className="px-2.5 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomIn className="h-4 w-4" /></button>
+          </div>
           <button onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} className="btn-outline px-3">
             {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
           </button>
@@ -357,7 +369,7 @@ export default function QuizPlay() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr,300px]">
-        <div className="card p-6">
+        <div className="card p-6" style={{ zoom }}>
           <div className="mb-4 flex items-center justify-between">
             <Badge variant={q.difficulty}>{q.difficulty}</Badge>
             <button
