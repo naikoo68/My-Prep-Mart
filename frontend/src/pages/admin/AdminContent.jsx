@@ -35,6 +35,22 @@ export default function AdminContent() {
   const [saving, setSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question to preview
   const [viewAll, setViewAll] = useState(false); // preview all questions
+  const [selected, setSelected] = useState([]); // bulk-selected question ids
+
+  const toggleSelect = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const allSelected = view === "questions" && items.length > 0 && selected.length === items.length;
+  const toggleAll = () => setSelected(allSelected ? [] : items.map((i) => i._id));
+  const deleteSelected = async () => {
+    if (!selected.length) return;
+    if (!window.confirm(`Delete ${selected.length} selected question(s)? This cannot be undone.`)) return;
+    try {
+      for (const id of selected) await contentService.deleteQuestion(id);
+      setSelected([]);
+      load("questions");
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   const loaders = {
     subjects: () => contentService.subjects(),
@@ -54,7 +70,7 @@ export default function AdminContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject, topic, session, quiz]);
 
-  useEffect(() => { load(view); /* eslint-disable-next-line */ }, [view]);
+  useEffect(() => { setSelected([]); load(view); /* eslint-disable-next-line */ }, [view]);
 
   // Navigation
   const openSubject = (s) => { setSubject(s); setTopic(null); setSession(null); setQuiz(null); setView("topics"); };
@@ -193,8 +209,25 @@ export default function AdminContent() {
         <EmptyState message={`No ${view} yet. Click "${H.add}".`} />
       ) : (
         <div className="space-y-3">
+          {view === "questions" && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 px-4 py-2 dark:border-slate-700">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4 accent-brand-600" /> Select all
+              </label>
+              {selected.length > 0 && (
+                <>
+                  <span className="text-sm text-slate-500">{selected.length} selected</span>
+                  <button onClick={deleteSelected} className="btn-outline py-1.5 text-rose-600"><Trash2 className="h-4 w-4" /> Delete selected</button>
+                  <button onClick={() => setSelected([])} className="text-sm text-slate-500 hover:underline">Clear</button>
+                </>
+              )}
+            </div>
+          )}
           {items.map((item, i) => (
             <div key={item._id} className="card flex items-center justify-between gap-3 p-4">
+              {view === "questions" && (
+                <input type="checkbox" checked={selected.includes(item._id)} onChange={() => toggleSelect(item._id)} className="h-4 w-4 flex-shrink-0 accent-brand-600" />
+              )}
               <div className="min-w-0 flex-1">
                 {view === "questions" ? (
                   <>

@@ -48,10 +48,28 @@ export default function AdminTests() {
   const [tqSaving, setTqSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question preview
   const [viewAllQ, setViewAllQ] = useState(false); // all questions preview
+  const [selectedTq, setSelectedTq] = useState([]); // bulk-selected question ids
+
+  const toggleTqSelect = (id) => setSelectedTq((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const allTqSelected = tq.length > 0 && selectedTq.length === tq.length;
+  const toggleAllTq = () => setSelectedTq(allTqSelected ? [] : tq.map((x) => x._id));
+  const deleteSelectedTq = async () => {
+    if (!selectedTq.length) return;
+    if (!window.confirm(`Delete ${selectedTq.length} selected question(s)? This cannot be undone.`)) return;
+    try {
+      for (const id of selectedTq) await testService.deleteQuestion(qTest._id, id);
+      setSelectedTq([]);
+      await reloadTq();
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   const openQuestions = async (t) => {
     setQTest(t);
     setTq([]);
+    setSelectedTq([]);
     setTqLoading(true);
     try {
       setTq(await testService.getQuestions(t._id));
@@ -605,10 +623,25 @@ export default function AdminTests() {
             ) : tq.length === 0 ? (
               <EmptyState message="No questions yet. Add one, or use Bulk Upload." />
             ) : (
+              <>
+              <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" checked={allTqSelected} onChange={toggleAllTq} className="h-4 w-4 accent-brand-600" /> Select all
+                </label>
+                {selectedTq.length > 0 && (
+                  <>
+                    <span className="text-sm text-slate-500">{selectedTq.length} selected</span>
+                    <button onClick={deleteSelectedTq} className="btn-outline py-1.5 text-rose-600"><Trash2 className="h-4 w-4" /> Delete selected</button>
+                    <button onClick={() => setSelectedTq([])} className="text-sm text-slate-500 hover:underline">Clear</button>
+                  </>
+                )}
+              </div>
               <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
                 {tq.map((item, i) => (
                   <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-start gap-2">
+                      <input type="checkbox" checked={selectedTq.includes(item._id)} onChange={() => toggleTqSelect(item._id)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600" />
+                      <div className="min-w-0">
                       <p className="truncate text-sm font-medium"><span className="text-slate-400">Q{i + 1}.</span> {item.text}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : "MCQ"}</Badge>
@@ -616,6 +649,7 @@ export default function AdminTests() {
                         {item.correct !== undefined && (
                           <span className="text-xs text-slate-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
                         )}
+                      </div>
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 gap-1">
@@ -632,6 +666,7 @@ export default function AdminTests() {
                   </div>
                 ))}
               </div>
+              </>
             )}
 
             <div className="mt-6 flex justify-end">
