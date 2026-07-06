@@ -32,6 +32,13 @@ const settingsSchema = new mongoose.Schema(
     primaryColor: { type: String, default: "#2563eb" },
     accentColor: { type: String, default: "#f97316" },
     fontFamily: { type: String, default: "Inter" },
+    // ---- Navbar (header) appearance ----
+    navHeight: { type: Number, default: 64 }, // px
+    navBrandSize: { type: Number, default: 18 }, // site-name font size (px)
+    navFontSize: { type: Number, default: 14 }, // menu link font size (px)
+    navFontWeight: { type: String, default: "500" }, // 400 | 500 | 600 | 700
+    navFontFamily: { type: String, default: "" }, // "" = use site font
+    navTextTransform: { type: String, default: "none" }, // none | uppercase | capitalize
     socialLinks: {
       type: [socialSchema],
       default: () => [

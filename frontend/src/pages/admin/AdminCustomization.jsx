@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Palette, Type, ImagePlus, Save, RotateCcw, CheckCircle2, Eye,
-  Share2, Phone, Plus, Trash2, Upload, X, Info, BarChart3,
+  Share2, Phone, Plus, Trash2, Upload, X, Info, BarChart3, PanelTop,
 } from "lucide-react";
 import { useSettings } from "../../context/SettingsContext";
 import { FONT_OPTIONS } from "../../lib/theme";
@@ -18,6 +18,12 @@ const DEFAULTS = {
   primaryColor: "#2563eb",
   accentColor: "#f97316",
   fontFamily: "Inter",
+  navHeight: 64,
+  navBrandSize: 18,
+  navFontSize: 14,
+  navFontWeight: "500",
+  navFontFamily: "",
+  navTextTransform: "none",
   socialLinks: [
     { platform: "facebook", url: "" },
     { platform: "instagram", url: "" },
@@ -225,6 +231,73 @@ export default function AdminCustomization() {
               <span className="text-lg font-extrabold">{form.siteName || "My Study Guide"}</span>
               <button type="button" className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: form.primaryColor }}>Primary button</button>
               <button type="button" className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: form.accentColor }}>Accent button</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Navbar appearance */}
+        <div className="card p-6 lg:col-span-2">
+          <h3 className="mb-4 flex items-center gap-2 font-bold"><PanelTop className="h-5 w-5 text-brand-600" /> Navbar (Header)</h3>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Height: <span className="font-mono text-brand-600">{form.navHeight}px</span></label>
+              <input type="range" min="48" max="120" step="2" value={form.navHeight} onChange={(e) => set("navHeight", Number(e.target.value))} className="w-full accent-brand-600" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Site name size: <span className="font-mono text-brand-600">{form.navBrandSize}px</span></label>
+              <input type="range" min="14" max="34" step="1" value={form.navBrandSize} onChange={(e) => set("navBrandSize", Number(e.target.value))} className="w-full accent-brand-600" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Menu link size: <span className="font-mono text-brand-600">{form.navFontSize}px</span></label>
+              <input type="range" min="11" max="22" step="1" value={form.navFontSize} onChange={(e) => set("navFontSize", Number(e.target.value))} className="w-full accent-brand-600" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Menu link weight</label>
+              <select className="input" value={form.navFontWeight} onChange={(e) => set("navFontWeight", e.target.value)}>
+                <option value="400">Normal</option>
+                <option value="500">Medium</option>
+                <option value="600">Semibold</option>
+                <option value="700">Bold</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Menu font</label>
+              <select className="input" value={form.navFontFamily} onChange={(e) => set("navFontFamily", e.target.value)}>
+                <option value="">Default (site font)</option>
+                {FONT_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Text style</label>
+              <select className="input" value={form.navTextTransform} onChange={(e) => set("navTextTransform", e.target.value)}>
+                <option value="none">Normal</option>
+                <option value="uppercase">UPPERCASE</option>
+                <option value="capitalize">Capitalize</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+            <p className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-800/60"><Eye className="h-4 w-4" /> Live preview</p>
+            <div
+              className="flex items-center justify-between gap-4 bg-white px-5 dark:bg-slate-950"
+              style={{ minHeight: `${form.navHeight}px`, fontFamily: `'${form.navFontFamily || form.fontFamily}', sans-serif` }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-white" style={{ background: `linear-gradient(135deg, ${form.primaryColor}, ${form.accentColor})` }}>
+                  {form.logoUrl ? <img src={form.logoUrl} alt="" className="h-full w-full rounded-xl object-cover" /> : (form.siteName || "M")[0]}
+                </span>
+                <span className="font-extrabold tracking-tight" style={{ fontSize: `${form.navBrandSize}px` }}>{form.siteName || "My Study Guide"}</span>
+              </div>
+              <div className="hidden items-center gap-4 sm:flex">
+                {["Home", "Quiz", "Test Series", "About"].map((t, i) => (
+                  <span key={t} style={{ fontSize: `${form.navFontSize}px`, fontWeight: Number(form.navFontWeight), textTransform: form.navTextTransform, color: i === 0 ? form.primaryColor : undefined }} className={i === 0 ? "" : "text-slate-600 dark:text-slate-300"}>
+                    {t}
+                  </span>
+                ))}
+                <span className="rounded-lg px-3 py-1.5 text-white" style={{ background: form.primaryColor, fontSize: `${form.navFontSize}px`, fontWeight: Number(form.navFontWeight) }}>Login</span>
+              </div>
             </div>
           </div>
         </div>

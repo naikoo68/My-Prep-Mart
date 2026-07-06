@@ -16,6 +16,7 @@ export async function updateSettings(req, res) {
   const allowed = [
     "siteName", "tagline", "logoUrl", "primaryColor", "accentColor",
     "fontFamily", "socialLinks", "contacts",
+    "navHeight", "navBrandSize", "navFontSize", "navFontWeight", "navFontFamily", "navTextTransform",
     "aboutHeading", "aboutIntro", "aboutValues", "aboutStats",
   ];
   const update = {};

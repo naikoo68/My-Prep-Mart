@@ -33,10 +33,10 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur-lg dark:border-slate-800/70 dark:bg-slate-950/80">
-      <nav className="container-page flex h-24 items-center justify-between">
+      <nav className="container-page flex items-center justify-between" style={{ minHeight: "var(--nav-height, 4rem)" }}>
         <div className="flex items-center gap-3">
           <Link to="/" onClick={() => setOpen(false)}>
-            <Brand />
+            <Brand nameStyle={{ fontSize: "var(--nav-brand-size, 1.125rem)" }} />
           </Link>
           <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
             <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out" className="px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-2"><ZoomOut className="h-4 w-4" /></button>
@@ -51,8 +51,14 @@ export default function Navbar() {
               key={l.to}
               to={l.to}
               end={l.end}
+              style={{
+                fontSize: "var(--nav-font-size, 0.875rem)",
+                fontWeight: "var(--nav-font-weight, 500)",
+                fontFamily: "var(--nav-font-family)",
+                textTransform: "var(--nav-text-transform, none)",
+              }}
               className={({ isActive }) =>
-                `rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                `rounded-lg px-3 py-2 transition-colors ${
                   isActive
                     ? "text-brand-600 dark:text-brand-400"
                     : "text-slate-600 hover:text-brand-600 dark:text-slate-300 dark:hover:text-brand-400"
@@ -116,8 +122,14 @@ export default function Navbar() {
                 to={l.to}
                 end={l.end}
                 onClick={() => setOpen(false)}
+                style={{
+                  fontSize: "var(--nav-font-size, 0.875rem)",
+                  fontWeight: "var(--nav-font-weight, 500)",
+                  fontFamily: "var(--nav-font-family)",
+                  textTransform: "var(--nav-text-transform, none)",
+                }}
                 className={({ isActive }) =>
-                  `rounded-lg px-3 py-2.5 text-sm font-medium ${
+                  `rounded-lg px-3 py-2.5 ${
                     isActive
                       ? "bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-300"
                       : "text-slate-700 dark:text-slate-200"
