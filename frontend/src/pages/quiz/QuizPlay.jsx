@@ -67,6 +67,7 @@ export default function QuizPlay() {
 
   const [questions, setQuestions] = useState([]);
   const [subjectName, setSubjectName] = useState("Quiz");
+  const [crumb, setCrumb] = useState(""); // "Subject › Topic › Session › Quiz"
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -113,11 +114,18 @@ export default function QuizPlay() {
     Promise.all([
       contentService.quizQuestions(quizId),
       contentService.subjects().catch(() => []),
+      contentService.topics(subjectId).catch(() => []),
+      contentService.sessions(topicId).catch(() => []),
+      contentService.quizzes(sessionId).catch(() => []),
     ])
-      .then(([qs, subjects]) => {
+      .then(([qs, subjects, topics, sessions, quizzes]) => {
         setQuestions(qs);
         const subj = subjects.find?.((s) => s._id === subjectId);
+        const top = topics.find?.((t) => t._id === topicId);
+        const ses = sessions.find?.((s) => s._id === sessionId);
+        const qz = quizzes.find?.((q) => q._id === quizId);
         if (subj) setSubjectName(subj.name);
+        setCrumb([subj?.name, top?.title, ses?.title, qz?.title].filter(Boolean).join(" › "));
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -180,6 +188,7 @@ export default function QuizPlay() {
       subjectId,
       sessionId,
       subjectName,
+      source: crumb,
       total: questions.length,
       attempted,
       correct,
@@ -380,7 +389,7 @@ export default function QuizPlay() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <Badge variant={q.difficulty}>{q.difficulty}</Badge>
             <div className="flex items-center gap-4">
-              <FeedbackButton context="question" questionText={q.text} source={subjectName || "Quiz"} label="Feedback" />
+              <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={crumb || subjectName || "Quiz"} label="Feedback" />
               <button
                 onClick={toggleBookmark}
                 className={`flex items-center gap-1.5 text-sm font-medium transition ${

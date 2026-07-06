@@ -9,8 +9,8 @@ export async function createFeedback(req, res) {
   }
   const fb = await Feedback.create({
     user: req.user?._id,
-    name: req.user?.name || "Guest",
-    email: req.user?.email || "",
+    name: (req.body.name || "").trim() || req.user?.name || "Guest",
+    email: (req.body.email || "").trim() || req.user?.email || "",
     context,
     message: message.trim(),
     rating: rating || undefined,

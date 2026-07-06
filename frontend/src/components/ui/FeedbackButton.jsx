@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { MessageSquarePlus, X, CheckCircle2, Loader2, Star } from "lucide-react";
 import { feedbackService } from "../../services";
+import { useAuth } from "../../context/AuthContext";
 
 // Reusable feedback button + modal. Used per-question (context="question") and
 // on the result screens (context="quiz" | "test").
 export default function FeedbackButton({ context = "question", questionText = "", source = "", questionNumber, details = "", label = "Feedback", className = "" }) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [rating, setRating] = useState(0);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -18,7 +22,7 @@ export default function FeedbackButton({ context = "question", questionText = ""
     setBusy(true);
     setError("");
     try {
-      await feedbackService.send({ context, message, rating: rating || undefined, questionText, source, questionNumber, details });
+      await feedbackService.send({ context, message, rating: rating || undefined, questionText, source, questionNumber, details, name: user ? undefined : name, email: user ? undefined : email });
       setDone(true);
       setMessage("");
       setRating(0);
@@ -64,6 +68,14 @@ export default function FeedbackButton({ context = "question", questionText = ""
                         <Star className="h-6 w-6" fill={n <= rating ? "currentColor" : "none"} />
                       </button>
                     ))}
+                  </div>
+                )}
+                {user ? (
+                  <p className="mb-3 text-xs text-slate-400">Sending as <b>{user.name}</b> ({user.email})</p>
+                ) : (
+                  <div className="mb-3 grid grid-cols-2 gap-2">
+                    <input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="Your name" />
+                    <input value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="Your email" type="email" />
                   </div>
                 )}
                 <textarea

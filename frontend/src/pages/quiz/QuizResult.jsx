@@ -42,6 +42,7 @@ export default function QuizResult() {
 
   const {
     subjectName,
+    source,
     total,
     attempted,
     correct,
@@ -171,7 +172,7 @@ export default function QuizResult() {
         <Link to={`/quiz/${subjectId}/${topicId}/${sessionId}/${quizId}`} className="btn-outline">
           <RefreshCw className="h-4 w-4" /> Retake Quiz
         </Link>
-        <FeedbackButton context="quiz" source={`${subjectName || "Quiz"} (Quiz)`} label="Give Feedback" className="btn-outline" />
+        <FeedbackButton context="quiz" source={source || `${subjectName || "Quiz"} (Quiz)`} label="Give Feedback" className="btn-outline" />
         <Link to={`/quiz/${subjectId}/${topicId}/${sessionId}`} className="btn-ghost">
           Back to Quizzes
         </Link>
@@ -194,7 +195,7 @@ export default function QuizResult() {
                       label="Feedback"
                       questionNumber={i + 1}
                       questionText={r.text}
-                      source={`${subjectName || "Quiz"} (Quiz)`}
+                      source={source || `${subjectName || "Quiz"} (Quiz)`}
                       details={`Correct: ${optLetter(r.correct)}${r.chosen != null ? `, Chosen: ${optLetter(r.chosen)}` : ", Not attempted"}`}
                       className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
                     />
