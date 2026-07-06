@@ -328,7 +328,11 @@ export default function AdminTests() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {tests.map((t) => (
                 <tr key={t._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="px-5 py-3 font-medium">{t.name}</td>
+                  <td className="px-5 py-3">
+                    <button onClick={() => openQuestions(t)} title="Open test — view, edit, add or remove questions" className="text-left font-medium text-brand-600 hover:underline dark:text-brand-400">
+                      {t.name}
+                    </button>
+                  </td>
                   <td className="px-5 py-3">{t.category}</td>
                   <td className="px-5 py-3">{t.questionCount}</td>
                   <td className="px-5 py-3">{t.marks}</td>
