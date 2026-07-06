@@ -217,6 +217,28 @@ export default function Home() {
       </section>
       )}
 
+      {/* Quick access */}
+      <section className="container-page pt-10">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            { to: "/quiz", label: "Quiz", desc: "Subject-wise practice quizzes", Icon: ListChecks, cls: "from-brand-600 to-indigo-600" },
+            { to: "/test-series", label: "Test Series", desc: "Full-length & sectional mocks", Icon: FileText, cls: "from-accent-500 to-orange-600" },
+            { to: "/study", label: "Study Material", desc: "Notes, PDFs & resources", Icon: BookMarked, cls: "from-emerald-500 to-teal-600" },
+          ].map((q) => (
+            <Link key={q.to} to={q.to} className="card-hover flex items-center gap-4 p-5">
+              <span className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${q.cls} text-white`}>
+                <q.Icon className="h-6 w-6" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold">{q.label}</p>
+                <p className="truncate text-sm text-slate-500 dark:text-slate-400">{q.desc}</p>
+              </div>
+              <ArrowRight className="h-5 w-5 flex-shrink-0 text-slate-400" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* Features */}
       <section className="container-page py-20">
         <div className="mx-auto max-w-2xl text-center">

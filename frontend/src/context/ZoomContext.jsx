@@ -16,7 +16,10 @@ export function ZoomProvider({ children }) {
   });
 
   useEffect(() => {
-    document.documentElement.style.zoom = String(zoom);
+    // Scale the root font-size instead of using the CSS `zoom` property.
+    // Tailwind sizes are rem-based, so this zooms the whole layout and — unlike
+    // `zoom` — works correctly on iOS Safari (portrait, landscape & overlays).
+    document.documentElement.style.fontSize = `${Math.round(zoom * 100)}%`;
     localStorage.setItem(KEY, String(zoom));
   }, [zoom]);
 

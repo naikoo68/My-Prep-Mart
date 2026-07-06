@@ -108,14 +108,19 @@ export default function TestAttempt() {
   }, [remaining, loading, result, test, finalize]);
 
   useEffect(() => {
-    const onChange = () => setFullscreen(!!document.fullscreenElement);
+    const onChange = () => { if (!document.fullscreenElement) setFullscreen(false); };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen?.().catch(() => {});
-    else document.exitFullscreen?.().catch(() => {});
+    if (!fullscreen) {
+      setFullscreen(true);
+      containerRef.current?.requestFullscreen?.().catch(() => {});
+    } else {
+      setFullscreen(false);
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    }
   };
 
   const goTo = (i) => {
@@ -293,7 +298,7 @@ export default function TestAttempt() {
   }
 
   return (
-    <div ref={containerRef} style={{ zoom: fullscreen ? zoom : undefined }} className="min-h-screen bg-slate-100 dark:bg-slate-950">
+    <div ref={containerRef} className={`bg-slate-100 dark:bg-slate-950 ${fullscreen ? "fixed inset-0 z-[60] overflow-y-auto" : "min-h-screen"}`}>
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
           <h1 className="min-w-0 flex-1 truncate text-sm font-bold sm:text-base">{test.name}</h1>

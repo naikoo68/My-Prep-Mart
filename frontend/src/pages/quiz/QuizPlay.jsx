@@ -84,13 +84,20 @@ export default function QuizPlay() {
   // Site-wide zoom (also usable here, incl. full-screen).
   const { zoom, zoomIn, zoomOut } = useZoom();
 
-  // Full-screen mode (same behaviour as the test interface).
+  // Full-screen mode. Uses a CSS full-viewport overlay (works on iOS Safari,
+  // which doesn't support the Fullscreen API for pages) and ALSO requests the
+  // native Fullscreen API where available (Android/desktop).
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen?.().catch(() => {});
-    else document.exitFullscreen?.().catch(() => {});
+    if (!fullscreen) {
+      setFullscreen(true);
+      containerRef.current?.requestFullscreen?.().catch(() => {});
+    } else {
+      setFullscreen(false);
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    }
   };
   useEffect(() => {
-    const onChange = () => setFullscreen(!!document.fullscreenElement);
+    const onChange = () => { if (!document.fullscreenElement) setFullscreen(false); };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
@@ -327,7 +334,7 @@ export default function QuizPlay() {
   );
 
   return (
-    <div ref={containerRef} style={{ zoom: fullscreen ? zoom : undefined }} className={`container-page py-6 ${fullscreen ? "min-h-screen overflow-y-auto bg-slate-50 dark:bg-slate-950" : ""}`}>
+    <div ref={containerRef} className={fullscreen ? "fixed inset-0 z-[60] overflow-y-auto bg-slate-50 px-4 py-6 dark:bg-slate-950" : "container-page py-6"}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <button onClick={() => navigate(`/quiz/${subjectId}/${topicId}`)} className="btn-ghost -ml-2">
           <ChevronLeft className="h-4 w-4" /> Exit
