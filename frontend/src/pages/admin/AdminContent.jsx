@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload, Eye } from "lucide-react";
 import { contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
+import QuestionView from "../../components/admin/QuestionView";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -32,6 +33,8 @@ export default function AdminContent() {
   const [modal, setModal] = useState(null); // { type, mode, data }
   const [bulkOpen, setBulkOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [viewQ, setViewQ] = useState(null); // single question to preview
+  const [viewAll, setViewAll] = useState(false); // preview all questions
 
   const loaders = {
     subjects: () => contentService.subjects(),
@@ -165,9 +168,14 @@ export default function AdminContent() {
         </div>
         <div className="flex flex-wrap gap-2">
           {view === "questions" && (
-            <button onClick={() => setBulkOpen(true)} className="btn-outline">
-              <Upload className="h-4 w-4" /> Bulk Upload
-            </button>
+            <>
+              <button onClick={() => setViewAll(true)} className="btn-outline">
+                <Eye className="h-4 w-4" /> View All
+              </button>
+              <button onClick={() => setBulkOpen(true)} className="btn-outline">
+                <Upload className="h-4 w-4" /> Bulk Upload
+              </button>
+            </>
           )}
           <button onClick={openAdd} className="btn-primary">
             <Plus className="h-4 w-4" /> {H.add}
@@ -234,6 +242,11 @@ export default function AdminContent() {
                     Manage <ChevronRight className="h-4 w-4" />
                   </button>
                 )}
+                {view === "questions" && (
+                  <button onClick={() => setViewQ(item)} title="View" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700">
+                    <Eye className="h-4 w-4" />
+                  </button>
+                )}
                 <button onClick={() => openEdit(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -276,6 +289,34 @@ export default function AdminContent() {
           return res;
         }}
       />
+
+      {/* View single question */}
+      {viewQ && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewQ(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-2xl animate-scale-in card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Question</h3>
+              <button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button>
+            </div>
+            <QuestionView q={viewQ} />
+          </div>
+        </div>
+      )}
+
+      {/* View all questions */}
+      {viewAll && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewAll(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-3xl animate-scale-in card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">All questions {quiz ? `in ${quiz.title}` : ""} ({items.length})</h3>
+              <button onClick={() => setViewAll(false)}><X className="h-5 w-5" /></button>
+            </div>
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+              {items.map((it, i) => <QuestionView key={it._id} q={it} index={i + 1} />)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

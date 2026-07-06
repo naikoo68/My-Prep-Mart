@@ -5,6 +5,7 @@ import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
+import QuestionView from "../../components/admin/QuestionView";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -45,6 +46,8 @@ export default function AdminTests() {
   const [tqLoading, setTqLoading] = useState(false);
   const [tqModal, setTqModal] = useState(null); // { mode, data }
   const [tqSaving, setTqSaving] = useState(false);
+  const [viewQ, setViewQ] = useState(null); // single question preview
+  const [viewAllQ, setViewAllQ] = useState(false); // all questions preview
 
   const openQuestions = async (t) => {
     setQTest(t);
@@ -582,7 +585,12 @@ export default function AdminTests() {
             </div>
             <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{qTest.name}</p>
 
-            <div className="mb-4 flex justify-end">
+            <div className="mb-4 flex justify-end gap-2">
+              {tq.length > 0 && (
+                <button onClick={() => setViewAllQ(true)} className="btn-outline">
+                  <Eye className="h-4 w-4" /> View All
+                </button>
+              )}
               <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary">
                 <Plus className="h-4 w-4" /> Add Question
               </button>
@@ -607,6 +615,9 @@ export default function AdminTests() {
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 gap-1">
+                      <button onClick={() => setViewQ(item)} title="View" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700">
+                        <Eye className="h-4 w-4" />
+                      </button>
                       <button onClick={() => setTqModal({ mode: "edit", data: item })} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -633,6 +644,34 @@ export default function AdminTests() {
           onClose={() => setTqModal(null)}
           onSave={saveTestQuestion}
         />
+      )}
+
+      {/* View single test question */}
+      {viewQ && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewQ(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-2xl animate-scale-in card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Question</h3>
+              <button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button>
+            </div>
+            <QuestionView q={viewQ} />
+          </div>
+        </div>
+      )}
+
+      {/* View all test questions */}
+      {viewAllQ && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewAllQ(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-3xl animate-scale-in card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">All questions{qTest ? ` — ${qTest.name}` : ""} ({tq.length})</h3>
+              <button onClick={() => setViewAllQ(false)}><X className="h-5 w-5" /></button>
+            </div>
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+              {tq.map((it, i) => <QuestionView key={it._id} q={it} index={i + 1} />)}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
