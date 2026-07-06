@@ -116,22 +116,7 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
             <select
               className="input"
               value={form.type}
-              onChange={(e) => {
-                const type = e.target.value;
-                setForm((f) => {
-                  const next = { ...f, type };
-                  const optsEmpty = (f.options || []).every((o) => !o || !o.trim());
-                  // Seed helpful defaults when switching into a statement/pair type.
-                  if (type === "statement") {
-                    if (!f.text.trim()) next.text = "Consider the following statements:";
-                    if (optsEmpty) next.options = ["1 and 2 only", "2 and 3 only", "1 and 3 only", "1, 2 and 3"];
-                  } else if (type === "pair") {
-                    if (!f.text.trim()) next.text = "Consider the following pairs:";
-                    if (optsEmpty) next.options = ["Only one pair", "Only two pairs", "Only three pairs", "All four pairs"];
-                  }
-                  return next;
-                });
-              }}
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
             >
               <option value="mcq">Multiple Choice (4 options)</option>
               <option value="matching">Matching (left ↔ right)</option>
