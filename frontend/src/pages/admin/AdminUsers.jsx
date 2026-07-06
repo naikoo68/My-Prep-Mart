@@ -455,7 +455,20 @@ export default function AdminUsers() {
 
                 {/* Test series access */}
                 <div>
-                  <p className="mb-2 text-sm font-semibold">Test Series ({access.tests.length})</p>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">Test Series ({access.tests.length})</p>
+                    {access.tests.length > 0 && (
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-accent-600"
+                          checked={access.tests.every((t) => t.visible)}
+                          onChange={(e) => setAccess({ ...access, tests: access.tests.map((t) => ({ ...t, visible: e.target.checked })) })}
+                        />
+                        Visible for every test series
+                      </label>
+                    )}
+                  </div>
                   {access.tests.length === 0 ? (
                     <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">No test series created yet.</p>
                   ) : (
