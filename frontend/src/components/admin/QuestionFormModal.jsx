@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Plus, Trash2, X, Image as ImageIcon, Upload, Loader2 } from "lucide-react";
+import { Plus, Trash2, X, Image as ImageIcon, Upload, Loader2, Eraser, FileText } from "lucide-react";
 import { uploadService } from "../../services";
+import { parseQuestionsCsv } from "./BulkUploadQuestions";
 
 // Roman numerals for Column B labels (I, II, III, IV…)
 function toRomanLite(n) {
@@ -37,7 +38,7 @@ function Field({ label, children }) {
 // Reusable Add/Edit question modal supporting simple MCQs and matching MCQs.
 // `question` = existing data (edit) or null (add). `onSave(payload)` receives a
 // clean payload (the parent attaches context like quiz/testSeries + calls the API).
-export default function QuestionFormModal({ question, saving, onClose, onSave, onDelete, onAddNew, onBulk }) {
+export default function QuestionFormModal({ question, saving, onClose, onSave }) {
   const data = question || emptyQuestion;
   const [form, setForm] = useState(() => ({
     type: data.type || "mcq",
@@ -56,6 +57,47 @@ export default function QuestionFormModal({ question, saving, onClose, onSave, o
 
   const [imgUploading, setImgUploading] = useState(false);
   const [imgErr, setImgErr] = useState("");
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvText, setCsvText] = useState("");
+  const [csvErr, setCsvErr] = useState("");
+
+  // Blank out all the question fields (keeps the current type & status) so you
+  // can re-enter fresh data. Saving still UPDATES the same question.
+  const clearFields = () => setForm((f) => ({ ...emptyQuestion, type: f.type, status: f.status }));
+
+  const onCsvFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setCsvText(String(reader.result || ""));
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  // Parse a single CSV row and load it into the form, replacing the current
+  // fields. Saving still updates THIS question — nothing is created or deleted.
+  const applyCsv = () => {
+    setCsvErr("");
+    const { rows, errors } = parseQuestionsCsv(csvText);
+    if (!rows.length) { setCsvErr(errors[0] || "No valid question found in the CSV."); return; }
+    const r = rows[0];
+    setForm((f) => ({
+      ...f,
+      type: r.type || "mcq",
+      text: r.text || "",
+      image: r.image || "",
+      options: Array.isArray(r.options) && r.options.length === 4 ? [...r.options] : ["", "", "", ""],
+      optionExplanations: Array.isArray(r.optionExplanations) && r.optionExplanations.length ? [...r.optionExplanations] : ["", "", "", ""],
+      correct: r.correct ?? 0,
+      columnA: Array.isArray(r.columnA) && r.columnA.length ? [...r.columnA] : ["", "", "", ""],
+      columnB: Array.isArray(r.columnB) && r.columnB.length ? [...r.columnB] : ["", "", "", ""],
+      tableRows: Array.isArray(r.tableRows) && r.tableRows.length ? r.tableRows.map((x) => [...x]) : [["", ""], ["", ""]],
+      difficulty: r.difficulty || "Medium",
+      explanation: r.explanation || "",
+    }));
+    setCsvOpen(false);
+    setCsvText("");
+  };
 
   // Upload a chosen image file to Cloudinary and fill in the URL automatically.
   const onPickImage = async (e) => {
@@ -140,14 +182,21 @@ export default function QuestionFormModal({ question, saving, onClose, onSave, o
           <button type="button" onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
 
-        {(onAddNew || onBulk) && (
-          <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-4 dark:border-slate-700">
-            {onAddNew && (
-              <button type="button" onClick={onAddNew} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add new question</button>
-            )}
-            {onBulk && (
-              <button type="button" onClick={onBulk} className="btn-outline py-2"><Upload className="h-4 w-4" /> Add via CSV</button>
-            )}
+        <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4 dark:border-slate-700">
+          <button type="button" onClick={clearFields} className="btn-outline py-2"><Eraser className="h-4 w-4" /> Clear fields</button>
+          <button type="button" onClick={() => setCsvOpen((v) => !v)} className="btn-outline py-2"><FileText className="h-4 w-4" /> Import from CSV</button>
+          <span className="text-xs text-slate-400">Enter new data — Save keeps the same question.</span>
+        </div>
+
+        {csvOpen && (
+          <div className="mb-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">Paste <b>one</b> question row (same format as bulk upload; only the first row is used). It fills the fields below — <b>Save still updates this question</b>.</p>
+            <textarea rows={3} className="input resize-y font-mono text-xs" value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={'e.g. "What is 2+2?",3,4,5,6,B,Easy,"2+2 equals 4"'} />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="btn-outline cursor-pointer py-1.5 text-xs"><FileText className="h-3.5 w-3.5" /> Choose CSV file<input type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={onCsvFile} /></label>
+              <button type="button" onClick={applyCsv} className="btn-primary py-1.5 text-xs">Fill fields from CSV</button>
+              {csvErr && <span className="text-xs text-rose-600">{csvErr}</span>}
+            </div>
           </div>
         )}
 
@@ -335,16 +384,9 @@ export default function QuestionFormModal({ question, saving, onClose, onSave, o
           <Field label="Explanation / Solution (detailed — explains the correct answer)"><textarea rows={3} className="input resize-none" value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} placeholder="Explain in detail why the correct option is right…" /></Field>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          {question && onDelete ? (
-            <button type="button" onClick={() => onDelete(question)} className="btn-outline text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /> Remove question</button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="btn-outline">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Save"}</button>
-          </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="btn-outline">Cancel</button>
+          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Save"}</button>
         </div>
       </form>
     </div>

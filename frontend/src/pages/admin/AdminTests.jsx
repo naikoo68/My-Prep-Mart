@@ -687,9 +687,6 @@ export default function AdminTests() {
           saving={tqSaving}
           onClose={() => setTqModal(null)}
           onSave={saveTestQuestion}
-          onDelete={(q) => { setTqModal(null); removeTq(q._id); }}
-          onAddNew={() => setTqModal({ mode: "add", data: {} })}
-          onBulk={qTest ? () => { setTqModal(null); setBulkTest(qTest); } : undefined}
         />
       )}
 
