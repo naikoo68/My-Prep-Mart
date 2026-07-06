@@ -56,13 +56,13 @@ export default function NoticeTicker() {
           type="button"
           onClick={() => setOpen(true)}
           title="View all notices"
-          className="z-10 flex flex-shrink-0 items-center gap-1.5 bg-accent-600 px-3 py-1.5 font-bold uppercase tracking-wide shadow-md transition hover:bg-accent-500"
+          className="z-10 flex flex-shrink-0 items-center gap-2 bg-accent-600 px-4 py-3 text-base font-bold uppercase tracking-wide shadow-md transition hover:bg-accent-500"
         >
-          <Megaphone className="h-4 w-4" />
+          <Megaphone className="h-5 w-5" />
           <span className="hidden sm:inline">Notice</span>
         </button>
         <div
-          className="marquee-track flex flex-1 cursor-pointer items-center overflow-hidden py-1.5"
+          className="marquee-track flex flex-1 cursor-pointer items-center overflow-hidden py-3 text-base"
           style={{ "--marquee-duration": `${duration}s` }}
           onClick={() => setOpen(true)}
         >
