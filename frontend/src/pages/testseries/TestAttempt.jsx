@@ -183,6 +183,10 @@ export default function TestAttempt() {
   const mm = String(Math.floor((remaining % 3600) / 60)).padStart(2, "0");
   const ss = String(remaining % 60).padStart(2, "0");
   const lowTime = remaining < 300;
+  // Full context for feedback: "Exam › Post › Test (Test)"
+  const testSource = test
+    ? [test.exam?.name, test.post?.name, test.name].filter(Boolean).join(" › ") + " (Test)"
+    : "Test";
 
   // ---- Result screen (uses backend-graded data) ----
   if (result) {
@@ -219,7 +223,7 @@ export default function TestAttempt() {
                   {showReview ? "Hide" : "Review"} Answers
                 </button>
               )}
-              <FeedbackButton context="test" source={test.name} label="Give Feedback" className="btn-outline" />
+              <FeedbackButton context="test" source={testSource} label="Give Feedback" className="btn-outline" />
               <button onClick={() => navigate("/dashboard")} className="btn-primary">Go to Dashboard</button>
               <button onClick={() => navigate("/test-series")} className="btn-outline">More Tests</button>
             </div>
@@ -246,7 +250,7 @@ export default function TestAttempt() {
                         label="Feedback"
                         questionNumber={i + 1}
                         questionText={r.text}
-                        source={`${test.name} (Test)`}
+                        source={testSource}
                         details={`Correct: ${optLetter(r.correct)}${r.chosen != null ? `, Chosen: ${optLetter(r.chosen)}` : ", Skipped"}`}
                         question={r}
                         className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
@@ -345,7 +349,7 @@ export default function TestAttempt() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
             <span className="font-bold">Question {current + 1} of {questions.length}</span>
             <div className="flex items-center gap-4">
-              <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={test.name} question={{ ...q, chosen: answers[current] ?? null }} label="Feedback" />
+              <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={testSource} question={{ ...q, chosen: answers[current] ?? null }} label="Feedback" />
               <span className="text-sm text-slate-500">
                 +{(test.marks / questions.length).toFixed(1)} / -{test.negativeMarking ?? 0.25}
               </span>

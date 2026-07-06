@@ -41,10 +41,10 @@ export async function listAllTests(req, res) {
 
 // GET /api/tests/:id  (questions without correct answers for taking the test)
 export async function getTest(req, res) {
-  const test = await TestSeries.findById(req.params.id).populate({
-    path: "questions",
-    select: "-correct -explanation",
-  });
+  const test = await TestSeries.findById(req.params.id)
+    .populate({ path: "questions", select: "-correct -explanation" })
+    .populate("exam", "name")
+    .populate("post", "name");
   if (!test) return res.status(404).json({ message: "Test not found" });
   // Admins can always open a test; students must have access (and it must not
   // be hidden or past its validity for them).
