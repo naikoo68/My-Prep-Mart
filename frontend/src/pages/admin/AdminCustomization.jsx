@@ -38,9 +38,9 @@ const DEFAULTS = {
     { title: "Our Promise", desc: "Honest content, transparent analytics and relentless focus on student outcomes." },
   ],
   aboutStats: [
-    { value: "1,20,000+", label: "Students" },
-    { value: "8,500+", label: "Quizzes" },
-    { value: "640+", label: "Test Series" },
+    { value: "1,20,000+", label: "Total Students" },
+    { value: "8,500+", label: "Total Quizzes" },
+    { value: "640+", label: "Total Test Series" },
   ],
 };
 
@@ -304,7 +304,7 @@ export default function AdminCustomization() {
             {/* Stats */}
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <label className="flex items-center gap-1.5 text-sm font-medium"><BarChart3 className="h-4 w-4" /> Statistics band</label>
+                <label className="flex items-center gap-1.5 text-sm font-medium"><BarChart3 className="h-4 w-4" /> Statistics (shown on Home &amp; About)</label>
                 <button type="button" onClick={addStat} className="btn-outline py-1.5"><Plus className="h-4 w-4" /> Add</button>
               </div>
               <div className="space-y-2">

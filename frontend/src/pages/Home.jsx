@@ -13,6 +13,10 @@ import {
   Layers,
   Star,
 } from "lucide-react";
+import { useSettings } from "../context/SettingsContext";
+
+// Icons applied by position to the editable stats from Customization.
+const STAT_ICONS = [Users, ListChecks, Layers];
 
 const features = [
   {
@@ -47,12 +51,6 @@ const features = [
   },
 ];
 
-const stats = [
-  { icon: Users, label: "Total Students", value: "1,20,000+" },
-  { icon: ListChecks, label: "Total Quizzes", value: "8,500+" },
-  { icon: Layers, label: "Total Test Series", value: "640+" },
-];
-
 const steps = [
   { n: "01", t: "Pick a Subject", d: "Choose from 12+ subjects and start a focused session." },
   { n: "02", t: "Attempt & Learn", d: "Answer questions, see instant explanations and bookmark tricky ones." },
@@ -60,6 +58,13 @@ const steps = [
 ];
 
 export default function Home() {
+  const { settings } = useSettings();
+  const stats = (settings.aboutStats?.length ? settings.aboutStats : []).map((s, i) => ({
+    icon: STAT_ICONS[i % STAT_ICONS.length],
+    label: s.label,
+    value: s.value,
+  }));
+
   return (
     <div>
       {/* Hero */}
@@ -151,6 +156,7 @@ export default function Home() {
       </section>
 
       {/* Stats */}
+      {stats.length > 0 && (
       <section className="container-page">
         <div className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-3 dark:border-slate-800 dark:bg-slate-900">
           {stats.map((s) => (
@@ -166,6 +172,7 @@ export default function Home() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Features */}
       <section className="container-page py-20">

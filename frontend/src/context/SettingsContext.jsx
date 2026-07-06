@@ -22,9 +22,9 @@ const DEFAULTS = {
     { title: "Our Promise", desc: "Honest content, transparent analytics and relentless focus on student outcomes." },
   ],
   aboutStats: [
-    { value: "1,20,000+", label: "Students" },
-    { value: "8,500+", label: "Quizzes" },
-    { value: "640+", label: "Test Series" },
+    { value: "1,20,000+", label: "Total Students" },
+    { value: "8,500+", label: "Total Quizzes" },
+    { value: "640+", label: "Total Test Series" },
   ],
 };
 
