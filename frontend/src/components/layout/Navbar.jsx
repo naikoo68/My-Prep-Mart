@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { Menu, X, Moon, Sun, LayoutDashboard, LogOut, User, ShieldCheck } from "lucide-react";
+import { Menu, X, Moon, Sun, LayoutDashboard, LogOut, User, ShieldCheck, ZoomIn, ZoomOut } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
+import { useZoom } from "../../context/ZoomContext";
 import Brand from "./Brand";
 
 const links = [
@@ -18,6 +19,7 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { zoom, zoomIn, zoomOut } = useZoom();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
 
@@ -54,6 +56,11 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="hidden items-center overflow-hidden rounded-lg border border-slate-200 sm:flex dark:border-slate-700">
+            <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomOut className="h-4 w-4" /></button>
+            <span className="min-w-[40px] text-center text-xs font-semibold tabular-nums text-slate-500">{Math.round(zoom * 100)}%</span>
+            <button onClick={zoomIn} title="Zoom in" aria-label="Zoom in" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomIn className="h-4 w-4" /></button>
+          </div>
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Search, Ban, CheckCircle2, KeyRound, Crown, UserPlus, Pencil, Trash2, X, Clock, AlarmClock, ListChecks, BookOpen } from "lucide-react";
-import { userService } from "../../services";
+import { userService, testService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 
@@ -64,6 +64,18 @@ export default function AdminUsers() {
       setAccessUser(null);
     } finally {
       setAccessLoading(false);
+    }
+  };
+
+  // Permanently delete a test series (from the access panel) for everyone.
+  const deleteTestSeries = async (t, i) => {
+    if (!window.confirm(`Permanently delete the test series "${t.name}" for ALL users? This cannot be undone.`)) return;
+    try {
+      await testService.remove(t._id);
+      setAccess((a) => ({ ...a, tests: a.tests.filter((_, xi) => xi !== i) }));
+      flash("Test series deleted.");
+    } catch (e) {
+      flash(e.message);
     }
   };
 
@@ -455,15 +467,20 @@ export default function AdminUsers() {
                               <p className="truncate text-sm font-medium">{t.name}</p>
                               <p className="text-xs text-slate-400">{t.category}</p>
                             </div>
-                            <label className="inline-flex flex-shrink-0 cursor-pointer items-center gap-2 text-xs font-medium">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-accent-600"
-                                checked={t.visible}
-                                onChange={(e) => setAccess({ ...access, tests: access.tests.map((x, xi) => xi === i ? { ...x, visible: e.target.checked } : x) })}
-                              />
-                              {t.visible ? "Visible" : "Hidden"}
-                            </label>
+                            <div className="flex flex-shrink-0 items-center gap-2">
+                              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 accent-accent-600"
+                                  checked={t.visible}
+                                  onChange={(e) => setAccess({ ...access, tests: access.tests.map((x, xi) => xi === i ? { ...x, visible: e.target.checked } : x) })}
+                                />
+                                {t.visible ? "Visible" : "Hidden"}
+                              </label>
+                              <button type="button" onClick={() => deleteTestSeries(t, i)} title="Delete this test series permanently" className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                           {t.visible && (
                             <div className="mt-2 flex items-center gap-2">

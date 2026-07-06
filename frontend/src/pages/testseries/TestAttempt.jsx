@@ -19,6 +19,7 @@ import {
 import { testService } from "../../services";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
+import { useZoom } from "../../context/ZoomContext";
 
 // Roman numerals for Column B labels (I, II, III, IV…)
 function toRoman(n) {
@@ -51,9 +52,7 @@ export default function TestAttempt() {
   const [visited, setVisited] = useState({ 0: true });
   const [remaining, setRemaining] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const zoomIn = () => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)));
-  const zoomOut = () => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)));
+  const { zoom, zoomIn, zoomOut } = useZoom();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState(null);
   const [showReview, setShowReview] = useState(false);
@@ -294,7 +293,7 @@ export default function TestAttempt() {
   }
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-slate-100 dark:bg-slate-950">
+    <div ref={containerRef} style={{ zoom: fullscreen ? zoom : undefined }} className="min-h-screen bg-slate-100 dark:bg-slate-950">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           <h1 className="truncate text-sm font-bold sm:text-base">{test.name}</h1>
@@ -320,7 +319,7 @@ export default function TestAttempt() {
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[1fr,320px]">
-        <div className="card flex flex-col p-6" style={{ zoom }}>
+        <div className="card flex flex-col p-6">
           <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
             <span className="font-bold">Question {current + 1} of {questions.length}</span>
             <span className="text-sm text-slate-500">

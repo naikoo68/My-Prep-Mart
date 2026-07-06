@@ -3,6 +3,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { SettingsProvider } from "./context/SettingsContext";
 import { AuthProvider } from "./context/AuthContext";
+import { ZoomProvider } from "./context/ZoomContext";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Layout from "./components/layout/Layout";
 import { Loading } from "./components/ui/AsyncState";
@@ -122,7 +123,9 @@ export default function App() {
     <ThemeProvider>
       <SettingsProvider>
         <AuthProvider>
-          <RouterProvider router={router} />
+          <ZoomProvider>
+            <RouterProvider router={router} />
+          </ZoomProvider>
         </AuthProvider>
       </SettingsProvider>
     </ThemeProvider>

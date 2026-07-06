@@ -24,6 +24,7 @@ import { contentService, quizService } from "../../services";
 import ProgressBar from "../../components/ui/ProgressBar";
 import Badge from "../../components/ui/Badge";
 import MathText from "../../components/ui/MathText";
+import { useZoom } from "../../context/ZoomContext";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
 const optionLabels = ["A", "B", "C", "D"];
@@ -80,10 +81,8 @@ export default function QuizPlay() {
   const [fullscreen, setFullscreen] = useState(false);
   const containerRef = useRef(null);
 
-  // Zoom (magnify) the question area.
-  const [zoom, setZoom] = useState(1);
-  const zoomIn = () => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)));
-  const zoomOut = () => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)));
+  // Site-wide zoom (also usable here, incl. full-screen).
+  const { zoom, zoomIn, zoomOut } = useZoom();
 
   // Full-screen mode (same behaviour as the test interface).
   const toggleFullscreen = () => {
@@ -328,7 +327,7 @@ export default function QuizPlay() {
   );
 
   return (
-    <div ref={containerRef} className={`container-page py-6 ${fullscreen ? "min-h-screen overflow-y-auto bg-slate-50 dark:bg-slate-950" : ""}`}>
+    <div ref={containerRef} style={{ zoom: fullscreen ? zoom : undefined }} className={`container-page py-6 ${fullscreen ? "min-h-screen overflow-y-auto bg-slate-50 dark:bg-slate-950" : ""}`}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <button onClick={() => navigate(`/quiz/${subjectId}/${topicId}`)} className="btn-ghost -ml-2">
           <ChevronLeft className="h-4 w-4" /> Exit
@@ -369,7 +368,7 @@ export default function QuizPlay() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr,300px]">
-        <div className="card p-6" style={{ zoom }}>
+        <div className="card p-6">
           <div className="mb-4 flex items-center justify-between">
             <Badge variant={q.difficulty}>{q.difficulty}</Badge>
             <button
