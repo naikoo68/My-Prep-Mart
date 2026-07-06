@@ -37,7 +37,7 @@ function Field({ label, children }) {
 // Reusable Add/Edit question modal supporting simple MCQs and matching MCQs.
 // `question` = existing data (edit) or null (add). `onSave(payload)` receives a
 // clean payload (the parent attaches context like quiz/testSeries + calls the API).
-export default function QuestionFormModal({ question, saving, onClose, onSave }) {
+export default function QuestionFormModal({ question, saving, onClose, onSave, onDelete, onAddNew, onBulk }) {
   const data = question || emptyQuestion;
   const [form, setForm] = useState(() => ({
     type: data.type || "mcq",
@@ -139,6 +139,17 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
           <h3 className="text-lg font-bold">{question ? "Edit" : "Add"} Question</h3>
           <button type="button" onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
+
+        {(onAddNew || onBulk) && (
+          <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-4 dark:border-slate-700">
+            {onAddNew && (
+              <button type="button" onClick={onAddNew} className="btn-outline py-2"><Plus className="h-4 w-4" /> Add new question</button>
+            )}
+            {onBulk && (
+              <button type="button" onClick={onBulk} className="btn-outline py-2"><Upload className="h-4 w-4" /> Add via CSV</button>
+            )}
+          </div>
+        )}
 
         <div className="space-y-4">
           <Field label="Question Type">
@@ -324,9 +335,16 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
           <Field label="Explanation / Solution (detailed — explains the correct answer)"><textarea rows={3} className="input resize-none" value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} placeholder="Explain in detail why the correct option is right…" /></Field>
         </div>
 
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="btn-outline">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Save"}</button>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          {question && onDelete ? (
+            <button type="button" onClick={() => onDelete(question)} className="btn-outline text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /> Remove question</button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="btn-outline">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Save"}</button>
+          </div>
         </div>
       </form>
     </div>

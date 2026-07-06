@@ -294,10 +294,14 @@ export default function AdminContent() {
 
       {modal && (modal.type === "question" ? (
         <QuestionFormModal
+          key={modal.mode === "edit" ? modal.data?._id : "new-question"}
           question={modal.mode === "edit" ? modal.data : null}
           saving={saving}
           onClose={() => setModal(null)}
           onSave={saveQuestion}
+          onDelete={view === "questions" ? (q) => { setModal(null); remove("question", q._id, "this question"); } : undefined}
+          onAddNew={view === "questions" ? openAdd : undefined}
+          onBulk={view === "questions" ? () => { setModal(null); setBulkOpen(true); } : undefined}
         />
       ) : (
         <FormModal

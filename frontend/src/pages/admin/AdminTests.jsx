@@ -682,10 +682,14 @@ export default function AdminTests() {
 
       {tqModal && (
         <QuestionFormModal
+          key={tqModal.mode === "edit" ? tqModal.data?._id : "new-test-question"}
           question={tqModal.mode === "edit" ? tqModal.data : null}
           saving={tqSaving}
           onClose={() => setTqModal(null)}
           onSave={saveTestQuestion}
+          onDelete={(q) => { setTqModal(null); removeTq(q._id); }}
+          onAddNew={() => setTqModal({ mode: "add", data: {} })}
+          onBulk={qTest ? () => { setTqModal(null); setBulkTest(qTest); } : undefined}
         />
       )}
 
