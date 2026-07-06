@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Trash2, X, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, X, Image as ImageIcon, Upload, Loader2 } from "lucide-react";
+import { uploadService } from "../../services";
 
 // Roman numerals for Column B labels (I, II, III, IV…)
 function toRomanLite(n) {
@@ -52,6 +53,26 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
     status: data.status || "published",
     image: data.image || "",
   }));
+
+  const [imgUploading, setImgUploading] = useState(false);
+  const [imgErr, setImgErr] = useState("");
+
+  // Upload a chosen image file to Cloudinary and fill in the URL automatically.
+  const onPickImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImgErr("");
+    setImgUploading(true);
+    try {
+      const res = await uploadService.file(file);
+      setForm((f) => ({ ...f, image: res.url }));
+    } catch (err) {
+      setImgErr(err.message || "Upload failed");
+    } finally {
+      setImgUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -141,11 +162,26 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
             <p className="mt-1 text-xs text-slate-400">{["statement", "pair", "pairselect"].includes(form.type) ? "The numbered list you add below appears under this line, followed by the closing question automatically." : form.type === "table" ? "The table you build below appears under this line." : "Tip: wrap maths in dollar signs to render equations."}</p>
           </Field>
 
-          <Field label={form.type === "image" ? "Image / Diagram URL (required for this type)" : "Image URL (optional)"}>
+          <Field label={form.type === "image" ? "Image / Diagram (required for this type)" : "Image (optional)"}>
             <div className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 dark:border-slate-700">
               <ImageIcon className="h-4 w-4 text-slate-400" />
-              <input className="w-full bg-transparent py-2.5 text-sm focus:outline-none" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://res.cloudinary.com/..." />
+              <input className="w-full bg-transparent py-2.5 text-sm focus:outline-none" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="Upload below, or paste an image link" />
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <label className={`btn-outline cursor-pointer py-2 ${imgUploading ? "pointer-events-none opacity-60" : ""}`}>
+                {imgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {imgUploading ? "Uploading…" : "Upload image"}
+                <input type="file" accept="image/*" className="hidden" onChange={onPickImage} disabled={imgUploading} />
+              </label>
+              {form.image && (
+                <>
+                  <img src={form.image} alt="preview" className="h-12 w-12 rounded-lg border border-slate-200 object-cover dark:border-slate-700" />
+                  <button type="button" onClick={() => setForm({ ...form, image: "" })} className="text-xs font-medium text-rose-600 hover:underline">Remove</button>
+                </>
+              )}
+            </div>
+            {imgErr && <p className="mt-1 text-xs text-rose-600">{imgErr}</p>}
+            <p className="mt-1 text-xs text-slate-400">Pick a file from your device — it uploads to Cloudinary and fills the link automatically.</p>
           </Field>
 
           {form.type === "statement" && (
