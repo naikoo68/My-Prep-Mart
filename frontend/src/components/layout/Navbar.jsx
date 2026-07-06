@@ -38,10 +38,10 @@ export default function Navbar() {
           <Link to="/" onClick={() => setOpen(false)}>
             <Brand />
           </Link>
-          <div className="hidden items-center overflow-hidden rounded-lg border border-slate-200 sm:flex dark:border-slate-700">
-            <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomOut className="h-4 w-4" /></button>
-            <span className="min-w-[40px] text-center text-xs font-semibold tabular-nums text-slate-500">{Math.round(zoom * 100)}%</span>
-            <button onClick={zoomIn} title="Zoom in" aria-label="Zoom in" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomIn className="h-4 w-4" /></button>
+          <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+            <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out" className="px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-2"><ZoomOut className="h-4 w-4" /></button>
+            <span className="min-w-[34px] text-center text-xs font-semibold tabular-nums text-slate-500 sm:min-w-[40px]">{Math.round(zoom * 100)}%</span>
+            <button onClick={zoomIn} title="Zoom in" aria-label="Zoom in" className="px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-2"><ZoomIn className="h-4 w-4" /></button>
           </div>
         </div>
 
