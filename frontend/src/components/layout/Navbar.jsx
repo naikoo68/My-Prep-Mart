@@ -32,9 +32,16 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur-lg dark:border-slate-800/70 dark:bg-slate-950/80">
       <nav className="container-page flex h-16 items-center justify-between">
-        <Link to="/" onClick={() => setOpen(false)}>
-          <Brand />
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/" onClick={() => setOpen(false)}>
+            <Brand />
+          </Link>
+          <div className="hidden items-center overflow-hidden rounded-lg border border-slate-200 sm:flex dark:border-slate-700">
+            <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomOut className="h-4 w-4" /></button>
+            <span className="min-w-[40px] text-center text-xs font-semibold tabular-nums text-slate-500">{Math.round(zoom * 100)}%</span>
+            <button onClick={zoomIn} title="Zoom in" aria-label="Zoom in" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomIn className="h-4 w-4" /></button>
+          </div>
+        </div>
 
         <div className="hidden items-center gap-1 lg:flex">
           {links.map((l) => (
@@ -56,11 +63,6 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden items-center overflow-hidden rounded-lg border border-slate-200 sm:flex dark:border-slate-700">
-            <button onClick={zoomOut} title="Zoom out" aria-label="Zoom out" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomOut className="h-4 w-4" /></button>
-            <span className="min-w-[40px] text-center text-xs font-semibold tabular-nums text-slate-500">{Math.round(zoom * 100)}%</span>
-            <button onClick={zoomIn} title="Zoom in" aria-label="Zoom in" className="px-2 py-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><ZoomIn className="h-4 w-4" /></button>
-          </div>
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
