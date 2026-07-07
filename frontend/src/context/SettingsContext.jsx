@@ -24,6 +24,7 @@ const DEFAULTS = {
   watermarkSize: 14,
   watermarkMode: "always",
   restrictCopy: true,
+  screenshotGuard: false,
   notifyOnNewContent: false,
   socialLinks: [],
   contacts: [],

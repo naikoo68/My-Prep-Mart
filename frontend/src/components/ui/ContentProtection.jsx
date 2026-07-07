@@ -1,23 +1,27 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { ShieldAlert } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../context/SettingsContext";
 
-// Deters copying of site content for students (and guests): disables text
-// selection, right-click, copy/cut, drag and the iOS long-press callout.
-// Admins are never restricted. Controlled by the "restrictCopy" setting.
+// Deters copying/screenshotting of site content for students (and guests):
+//  - restrictCopy   : disables selection, right-click, copy/cut, drag, iOS callout
+//  - screenshotGuard: covers the whole screen when the window loses focus or is
+//                     hidden (best-effort — catches desktop tools like Win+Shift+S
+//                     that blur the page; phone screenshots can't be detected).
+// Admins are never restricted.
 export default function ContentProtection() {
   const { user } = useAuth();
   const { settings } = useSettings();
   const isAdmin = user?.role === "admin";
-  const active = settings?.restrictCopy !== false && !isAdmin;
+  const copyActive = settings?.restrictCopy !== false && !isAdmin;
+  const guardActive = settings?.screenshotGuard === true && !isAdmin;
+  const [covered, setCovered] = useState(false);
 
   useEffect(() => {
-    if (!active) return;
+    if (!copyActive) return;
     const block = (e) => {
-      // Allow interacting with form fields (login, search, etc.).
       const t = e.target;
-      const tag = t?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      if (t?.tagName === "INPUT" || t?.tagName === "TEXTAREA" || t?.isContentEditable) return;
       e.preventDefault();
       return false;
     };
@@ -28,7 +32,30 @@ export default function ContentProtection() {
       events.forEach((ev) => document.removeEventListener(ev, block));
       document.body.classList.remove("no-select");
     };
-  }, [active]);
+  }, [copyActive]);
 
-  return null;
+  useEffect(() => {
+    if (!guardActive) { setCovered(false); return; }
+    const cover = () => setCovered(true);
+    const uncover = () => setCovered(false);
+    const onVis = () => setCovered(document.hidden);
+    window.addEventListener("blur", cover);
+    window.addEventListener("focus", uncover);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", cover);
+      window.removeEventListener("focus", uncover);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [guardActive]);
+
+  if (!guardActive || !covered) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-3 bg-slate-950 p-6 text-center text-white">
+      <ShieldAlert className="h-10 w-10 text-accent-400" />
+      <p className="text-lg font-bold">Content hidden</p>
+      <p className="max-w-xs text-sm text-slate-300">Return to the page to continue. Screenshots and screen sharing are restricted here.</p>
+    </div>
+  );
 }

@@ -31,6 +31,7 @@ const DEFAULTS = {
   watermarkSize: 14,
   watermarkMode: "always",
   restrictCopy: true,
+  screenshotGuard: false,
   socialLinks: [
     { platform: "facebook", url: "" },
     { platform: "instagram", url: "" },
@@ -318,11 +319,18 @@ export default function AdminCustomization() {
         <div className="card p-6 lg:col-span-2">
           <h3 className="mb-4 flex items-center gap-2 font-bold"><Info className="h-5 w-5 text-brand-600" /> Watermark &amp; Content Protection</h3>
           <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">A tiled watermark is drawn over quiz &amp; test pages so screenshots carry your copyright mark.</p>
-          <label className="mb-4 flex items-start gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <label className="mb-3 flex items-start gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
             <input type="checkbox" checked={form.restrictCopy} onChange={(e) => set("restrictCopy", e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-600" />
             <span>
               <span className="text-sm font-semibold">Restrict copying for students</span>
               <span className="block text-xs text-slate-500 dark:text-slate-400">Disables text selection, right-click and copy/cut for students &amp; guests (admins are unaffected).</span>
+            </span>
+          </label>
+          <label className="mb-4 flex items-start gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <input type="checkbox" checked={form.screenshotGuard} onChange={(e) => set("screenshotGuard", e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-600" />
+            <span>
+              <span className="text-sm font-semibold">Restrict screenshots (screen guard)</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">Blanks the screen for students when the page loses focus — deters desktop capture tools like Win+Shift+S. Note: phone screenshots can't be blocked by any website.</span>
             </span>
           </label>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

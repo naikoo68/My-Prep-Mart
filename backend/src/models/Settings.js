@@ -47,6 +47,7 @@ const settingsSchema = new mongoose.Schema(
     watermarkSize: { type: Number, default: 14 }, // px (8–48)
     watermarkMode: { type: String, default: "always" }, // "always" | "screenshot" (best-effort)
     restrictCopy: { type: Boolean, default: true }, // block copy/right-click/selection for students
+    screenshotGuard: { type: Boolean, default: false }, // hide content when window loses focus (anti-screenshot, desktop best-effort)
     // Email + notice-board announcement when a new quiz/test is added.
     notifyOnNewContent: { type: Boolean, default: false },
     socialLinks: {

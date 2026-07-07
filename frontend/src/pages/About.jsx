@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Target, Eye, HeartHandshake, Users, Award, BookOpen } from "lucide-react";
 import { useSettings } from "../context/SettingsContext";
+import { analyticsService } from "../services";
 
 // Fixed icon sets (cycled by index) so admins only edit the text.
 const VALUE_ICONS = [Target, Eye, HeartHandshake];
@@ -8,7 +10,21 @@ const STAT_ICONS = [Users, BookOpen, Award];
 export default function About() {
   const { settings } = useSettings();
   const values = settings.aboutValues?.length ? settings.aboutValues : [];
-  const stats = settings.aboutStats?.length ? settings.aboutStats : [];
+
+  // Live platform stats (real counts).
+  const [realStats, setRealStats] = useState(null);
+  useEffect(() => {
+    analyticsService.stats().then(setRealStats).catch(() => {});
+  }, []);
+  const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
+  const labels = (settings.aboutStats?.length ? settings.aboutStats : []).map((s) => s.label);
+  const stats = realStats
+    ? [
+        { label: labels[0] || "Total Students", value: fmt(realStats.students) },
+        { label: labels[1] || "Total Quizzes", value: fmt(realStats.quizzes) },
+        { label: labels[2] || "Total Test Series", value: fmt(realStats.tests) },
+      ]
+    : [];
 
   return (
     <div className="container-page py-14">

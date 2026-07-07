@@ -83,6 +83,7 @@ export const testService = {
 export const analyticsService = {
   dashboard: () => api.get("/me/dashboard"),
   leaderboard: () => api.get("/leaderboard"),
+  stats: () => api.get("/stats", { auth: false }),
   adminAnalytics: () => api.get("/admin/analytics"),
 };
 
