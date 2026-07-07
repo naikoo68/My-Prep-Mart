@@ -17,6 +17,7 @@ const DEFAULTS = {
   navFontWeight: "500",
   navFontFamily: "",
   navTextTransform: "none",
+  defaultZoom: 80,
   socialLinks: [],
   contacts: [],
   aboutHeading: "Built by educators, loved by toppers",

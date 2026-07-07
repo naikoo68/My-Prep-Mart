@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download } from "lucide-react";
 import { testService, contentService, examService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -85,23 +85,28 @@ export default function AdminTests() {
     try { setTq(await testService.getQuestions(qTest._id)); } catch { /* ignore */ }
   };
 
-  // Export all of a test's questions as CSV (copy to clipboard; download if blocked).
-  const copyCsv = async (questions, name) => {
+  // Copy a test's questions as CSV text to the clipboard.
+  const copyCsv = async (questions) => {
     if (!questions?.length) return;
-    const csv = questionsToCsv(questions);
     try {
-      await navigator.clipboard.writeText(csv);
+      await navigator.clipboard.writeText(questionsToCsv(questions));
       window.alert(`Copied ${questions.length} question(s) as CSV to the clipboard.`);
     } catch {
-      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${String(name || "test").replace(/[^\w-]+/g, "_")}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      window.alert("Couldn't access the clipboard — use “Download CSV” instead.");
     }
+  };
+
+  // Download a test's questions as a .csv file.
+  const downloadCsv = (questions, name) => {
+    if (!questions?.length) return;
+    const url = URL.createObjectURL(new Blob([questionsToCsv(questions)], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${String(name || "test").replace(/[^\w-]+/g, "_")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const saveTestQuestion = async (payload) => {
@@ -636,8 +641,11 @@ export default function AdminTests() {
                   <button onClick={() => setViewAllQ(true)} className="btn-outline">
                     <Eye className="h-4 w-4" /> View All
                   </button>
-                  <button onClick={() => copyCsv(tq, qTest?.name || "test")} className="btn-outline">
+                  <button onClick={() => copyCsv(tq)} className="btn-outline">
                     <Copy className="h-4 w-4" /> Copy CSV
+                  </button>
+                  <button onClick={() => downloadCsv(tq, qTest?.name || "test")} className="btn-outline">
+                    <Download className="h-4 w-4" /> Download CSV
                   </button>
                 </>
               )}

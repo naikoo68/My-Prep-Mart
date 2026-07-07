@@ -39,6 +39,7 @@ const settingsSchema = new mongoose.Schema(
     navFontWeight: { type: String, default: "500" }, // 400 | 500 | 600 | 700
     navFontFamily: { type: String, default: "" }, // "" = use site font
     navTextTransform: { type: String, default: "none" }, // none | uppercase | capitalize
+    defaultZoom: { type: Number, default: 80 }, // default page zoom % for new visitors (50–200)
     socialLinks: {
       type: [socialSchema],
       default: () => [

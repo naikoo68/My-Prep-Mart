@@ -3,6 +3,9 @@ import { Trash2, Check, Star, X, CheckCircle2, XCircle, ChevronRight, Pencil } f
 import { feedbackService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import MathText from "../../components/ui/MathText";
+import StatementPairView from "../../components/ui/StatementPairView";
+import TableView from "../../components/ui/TableView";
+import AssertionReasonView from "../../components/ui/AssertionReasonView";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
@@ -172,6 +175,10 @@ export default function AdminFeedback() {
                     </div>
                   </div>
                 )}
+
+                {selected.question && <StatementPairView q={selected.question} />}
+                {selected.question && <TableView q={selected.question} />}
+                {selected.question && <AssertionReasonView q={selected.question} />}
 
                 {selected.question?.options && (
                   <div className="mt-3 space-y-2">

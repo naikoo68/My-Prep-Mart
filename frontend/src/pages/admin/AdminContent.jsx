@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload, Eye, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload, Eye, Copy, Download } from "lucide-react";
 import { contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -175,24 +175,28 @@ export default function AdminContent() {
   const openAdd = () => setModal({ type: VIEW_TYPE[view], mode: "add", data: {} });
   const openEdit = (item) => setModal({ type: VIEW_TYPE[view], mode: "edit", data: item });
 
-  // Export all questions of the current quiz as CSV (copy to clipboard; if the
-  // clipboard is blocked, download a .csv file instead).
-  const copyCsv = async (questions, name) => {
+  // Copy all questions of the current quiz as CSV text to the clipboard.
+  const copyCsv = async (questions) => {
     if (!questions?.length) return;
-    const csv = questionsToCsv(questions);
     try {
-      await navigator.clipboard.writeText(csv);
+      await navigator.clipboard.writeText(questionsToCsv(questions));
       window.alert(`Copied ${questions.length} question(s) as CSV to the clipboard.`);
     } catch {
-      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${String(name || "quiz").replace(/[^\w-]+/g, "_")}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      window.alert("Couldn't access the clipboard — use “Download CSV” instead.");
     }
+  };
+
+  // Download all questions of the current quiz as a .csv file.
+  const downloadCsv = (questions, name) => {
+    if (!questions?.length) return;
+    const url = URL.createObjectURL(new Blob([questionsToCsv(questions)], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${String(name || "quiz").replace(/[^\w-]+/g, "_")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -211,8 +215,11 @@ export default function AdminContent() {
               <button onClick={() => setBulkOpen(true)} className="btn-outline">
                 <Upload className="h-4 w-4" /> Bulk Upload
               </button>
-              <button onClick={() => copyCsv(items, quiz?.title || "quiz")} disabled={!items.length} className="btn-outline">
+              <button onClick={() => copyCsv(items)} disabled={!items.length} className="btn-outline">
                 <Copy className="h-4 w-4" /> Copy CSV
+              </button>
+              <button onClick={() => downloadCsv(items, quiz?.title || "quiz")} disabled={!items.length} className="btn-outline">
+                <Download className="h-4 w-4" /> Download CSV
               </button>
             </>
           )}
