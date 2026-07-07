@@ -20,6 +20,7 @@ import StatCard from "../../components/ui/StatCard";
 import MathText from "../../components/ui/MathText";
 import StatementPairView from "../../components/ui/StatementPairView";
 import TableView from "../../components/ui/TableView";
+import AssertionReasonView from "../../components/ui/AssertionReasonView";
 import FeedbackButton from "../../components/ui/FeedbackButton";
 
 function toRomanLite(n) {
@@ -224,6 +225,7 @@ export default function QuizResult() {
 
                   <StatementPairView q={r} />
                   <TableView q={r} />
+                  <AssertionReasonView q={r} />
 
                   <div className="mt-3 space-y-2">
                     {(r.options || []).map((opt, idx) => {

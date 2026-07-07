@@ -26,6 +26,7 @@ import Badge from "../../components/ui/Badge";
 import MathText from "../../components/ui/MathText";
 import StatementPairView from "../../components/ui/StatementPairView";
 import TableView from "../../components/ui/TableView";
+import AssertionReasonView from "../../components/ui/AssertionReasonView";
 import FeedbackButton from "../../components/ui/FeedbackButton";
 import { useZoom } from "../../context/ZoomContext";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -217,6 +218,8 @@ export default function QuizPlay() {
         columnA: qq.columnA,
         columnB: qq.columnB,
         tableRows: qq.tableRows,
+        assertion: qq.assertion,
+        reason: qq.reason,
         chosen: answers[i] ?? null,
         topic: qq.topic,
         explanation: qq.explanation,
@@ -441,9 +444,10 @@ export default function QuizPlay() {
             </div>
           )}
 
-          {/* Statement/pair questions render their numbered list; table questions their grid */}
+          {/* Statement/pair lists, table grids, and assertion–reason statements */}
           <StatementPairView q={q} />
           <TableView q={q} />
+          <AssertionReasonView q={q} />
 
           <div className="mt-5 space-y-3">
             {isMatching && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Choose the correct matching sequence:</p>}

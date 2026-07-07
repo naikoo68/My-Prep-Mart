@@ -12,9 +12,13 @@ const questionSchema = new mongoose.Schema(
     session: { type: mongoose.Schema.Types.ObjectId, ref: "Session" },
     quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz" },
     testSeries: { type: mongoose.Schema.Types.ObjectId, ref: "TestSeries" },
-    type: { type: String, enum: ["mcq", "matching", "statement", "pair", "pairselect", "image", "table"], default: "mcq" },
+    type: { type: String, enum: ["mcq", "matching", "statement", "pair", "pairselect", "image", "table", "assertion"], default: "mcq" },
     text: { type: String, required: true },
     image: { type: String }, // diagram/figure for "image" (and any) questions
+
+    // Assertion & Reason questions: the two statements shown to the student.
+    assertion: { type: String }, // "Assertion (A)"
+    reason: { type: String }, // "Reason (R)"
 
     // Table-based questions: a 2D array of cells (rows × columns). Dimensions
     // are dynamic — the table renders exactly as many rows/columns as supplied.

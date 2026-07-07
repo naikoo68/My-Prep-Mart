@@ -59,6 +59,7 @@ function buildOptionExplanations(cells, correctIdx) {
 //   Pair-select:    pairselect, Intro, LeftList, RightList, OptionA..D, Correct, ...
 //   Image:          image, ImageURL, Question, OptionA..D, Correct, ...
 //   Table:          table, Intro, TableData, OptionA..D, Correct, ...
+//   Assertion:      assertion, Assertion, Reason, OptionA..D, Correct, ...
 // Explanation is the DETAILED note for the correct answer; WhyA..D are optional
 // BRIEF notes shown when a student selects that (wrong) option — the correct
 // option's Why cell is ignored. Lists (ColumnA/ColumnB/Statements/LeftList/
@@ -176,6 +177,30 @@ export function parseQuestionsCsv(text) {
       return;
     }
 
+    // ---- Assertion & Reason row ----
+    if (first === "assertion") {
+      const [, assertion, reason, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
+      if (!assertion || !reason || !a || !b || !c || !d) {
+        errors.push(`Row ${idx + 1}: assertion needs an Assertion, a Reason and 4 options`);
+        return;
+      }
+      const ci = correctIndex(correct);
+      const optExp = buildOptionExplanations([wa, wb, wc, wd], ci);
+      rows.push({
+        type: "assertion",
+        text: "In the following question, a statement of Assertion (A) is followed by a statement of Reason (R). Select the correct option:",
+        assertion,
+        reason,
+        options: [a, b, c, d],
+        correct: ci,
+        difficulty: asDifficulty(difficulty),
+        explanation: explanation || "",
+        ...(optExp ? { optionExplanations: optExp } : {}),
+        status: "published",
+      });
+      return;
+    }
+
     // ---- Image / diagram row ----
     if (first === "image") {
       const [, imageUrl, qtext, a, b, c, d, correct, difficulty, explanation, wa, wb, wc, wd] = cells;
@@ -257,7 +282,8 @@ const TEMPLATE =
   'pair,"Consider the following pairs (River — Tributary):","Ganga|Indus|Krishna","Yamuna|Chenab|Tungabhadra","Only one pair","Only two pairs","Only three pairs","All four pairs",C,Medium,"All three pairs are correctly matched.","Undercount.","Undercount.",,"There are only three pairs listed."\n' +
   'pairselect,"Consider the following pairs (State — Capital):","Kerala|Punjab|Bihar","Thiruvananthapuram|Chandigarh|Jaipur","1 and 2 only","2 and 3 only","1 and 3 only","1, 2 and 3",A,Medium,"Pairs 1 and 2 are correct; Jaipur is in Rajasthan, not Bihar (Patna).",,"Includes the wrong pair 3.","Includes the wrong pair 3.","Includes the wrong pair 3."\n' +
   'image,"https://res.cloudinary.com/demo/image/upload/diagram.png","Identify the labelled part in the diagram:","Nucleus","Mitochondrion","Ribosome","Golgi body",A,Medium,"The labelled central organelle is the nucleus.",,"Mitochondria are rod-shaped, not central.","Ribosomes are much smaller dots.","Golgi is a stack of membranes."\n' +
-  'table,"Study the table and answer which product had the highest sales:","Product;Sales|Pens;120|Books;340|Bags;90","Pens","Books","Bags","Cannot be determined",B,Easy,"Books have the highest sales at 340.","Pens are 120.",,"Bags are only 90.","The table gives clear figures."';
+  'table,"Study the table and answer which product had the highest sales:","Product;Sales|Pens;120|Books;340|Bags;90","Pens","Books","Bags","Cannot be determined",B,Easy,"Books have the highest sales at 340.","Pens are 120.",,"Bags are only 90.","The table gives clear figures."\n' +
+  'assertion,"The Earth is closer to the Sun in January.","The Earth\'s orbit around the Sun is elliptical.","Both A and R are true and R is the correct explanation of A","Both A and R are true but R is NOT the correct explanation of A","A is true but R is false","A is false but R is true",A,Medium,"Earth reaches perihelion in early January because its orbit is elliptical — so R correctly explains A.",,"R does explain A here.","R is true, not false.","A is true, not false."';
 
 // Reusable bulk-upload modal. `onUpload(questions)` should return a promise
 // (e.g. resolving to { inserted }). Used for both quizzes and test series.
@@ -315,6 +341,7 @@ export default function BulkUploadQuestions({ open, onClose, onUpload, title = "
           <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Pair-select (which pairs):</b> <code>pairselect, Intro, LeftList, RightList, Option A–D, …tail</code></p>
           <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Image:</b> <code>image, ImageURL, Question, Option A–D, …tail</code></p>
           <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Table:</b> <code>table, Intro, TableData, Option A–D, …tail</code> — TableData rows split by <code>|</code>, cells by <code>;</code> (first row = header)</p>
+          <p className="mt-1 text-slate-500 dark:text-slate-400"><b>Assertion &amp; Reason:</b> <code>assertion, Assertion, Reason, Option A–D, …tail</code></p>
           <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-slate-500 dark:text-slate-400">
             <li><b>Correct</b>: A/B/C/D (or 1–4) — the correct answer option.</li>
             <li><b>Explanation</b>: the <b>detailed</b> explanation of the correct answer (shown after answering).</li>

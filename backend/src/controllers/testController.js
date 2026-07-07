@@ -162,6 +162,8 @@ export async function submitTest(req, res) {
       columnA: q.columnA,
       columnB: q.columnB,
       tableRows: q.tableRows,
+      assertion: q.assertion,
+      reason: q.reason,
       correct: q.correct,
       explanation: q.explanation,
       optionExplanations: q.optionExplanations,

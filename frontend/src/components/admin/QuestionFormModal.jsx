@@ -20,6 +20,8 @@ export const emptyQuestion = {
   columnA: ["", "", "", ""],
   columnB: ["", "", "", ""],
   tableRows: [["", ""], ["", ""]],
+  assertion: "",
+  reason: "",
   difficulty: "Easy",
   explanation: "",
   status: "published",
@@ -49,6 +51,8 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
     columnA: data.columnA && data.columnA.length ? [...data.columnA] : ["", "", "", ""],
     columnB: data.columnB && data.columnB.length ? [...data.columnB] : ["", "", "", ""],
     tableRows: Array.isArray(data.tableRows) && data.tableRows.length ? data.tableRows.map((r) => [...r]) : [["", ""], ["", ""]],
+    assertion: data.assertion || "",
+    reason: data.reason || "",
     difficulty: data.difficulty || "Easy",
     explanation: data.explanation || "",
     status: data.status || "published",
@@ -92,6 +96,8 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
       columnA: Array.isArray(r.columnA) && r.columnA.length ? [...r.columnA] : ["", "", "", ""],
       columnB: Array.isArray(r.columnB) && r.columnB.length ? [...r.columnB] : ["", "", "", ""],
       tableRows: Array.isArray(r.tableRows) && r.tableRows.length ? r.tableRows.map((x) => [...x]) : [["", ""], ["", ""]],
+      assertion: r.assertion || "",
+      reason: r.reason || "",
       difficulty: r.difficulty || "Medium",
       explanation: r.explanation || "",
     }));
@@ -168,6 +174,15 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
         .map((r) => r.map((c) => (c || "").trim()))
         .filter((r) => r.some((c) => c !== ""));
       payload = { ...base, tableRows: table, options: form.options, correct: form.correct };
+    } else if (form.type === "assertion") {
+      payload = {
+        ...base,
+        text: (form.text || "").trim() || "In the following question, a statement of Assertion (A) is followed by a statement of Reason (R). Select the correct option:",
+        assertion: (form.assertion || "").trim(),
+        reason: (form.reason || "").trim(),
+        options: form.options,
+        correct: form.correct,
+      };
     } else {
       payload = { ...base, options: form.options, correct: form.correct };
     }
@@ -214,12 +229,13 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
               <option value="pairselect">Pair-select (which pairs correct — 1 only, 1 &amp; 2…)</option>
               <option value="image">Image / Diagram-based</option>
               <option value="table">Table-based</option>
+              <option value="assertion">Assertion &amp; Reason</option>
             </select>
           </Field>
 
-          <Field label={["statement", "pair", "pairselect", "table"].includes(form.type) ? "Intro / directive line" : "Question Text"}>
-            <textarea required rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={form.type === "statement" ? "Consider the following statements:" : form.type === "pair" || form.type === "pairselect" ? "Consider the following pairs (Item — Description):" : form.type === "table" ? "Study the table below and answer:" : "Use $...$ for equations, e.g. Solve $x^2+2x-3=0$"} />
-            <p className="mt-1 text-xs text-slate-400">{["statement", "pair", "pairselect"].includes(form.type) ? "The numbered list you add below appears under this line, followed by the closing question automatically." : form.type === "table" ? "The table you build below appears under this line." : "Tip: wrap maths in dollar signs to render equations."}</p>
+          <Field label={form.type === "assertion" ? "Directive line (optional)" : ["statement", "pair", "pairselect", "table"].includes(form.type) ? "Intro / directive line" : "Question Text"}>
+            <textarea required={form.type !== "assertion"} rows={2} className="input resize-none" value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder={form.type === "statement" ? "Consider the following statements:" : form.type === "pair" || form.type === "pairselect" ? "Consider the following pairs (Item — Description):" : form.type === "table" ? "Study the table below and answer:" : form.type === "assertion" ? "Leave blank for the standard directive, or write your own" : "Use $...$ for equations, e.g. Solve $x^2+2x-3=0$"} />
+            <p className="mt-1 text-xs text-slate-400">{["statement", "pair", "pairselect"].includes(form.type) ? "The numbered list you add below appears under this line, followed by the closing question automatically." : form.type === "table" ? "The table you build below appears under this line." : form.type === "assertion" ? "If left blank, a standard Assertion–Reason directive is used automatically." : "Tip: wrap maths in dollar signs to render equations."}</p>
           </Field>
 
           <Field label={form.type === "image" ? "Image / Diagram (required for this type)" : "Image (optional)"}>
@@ -243,6 +259,18 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
             {imgErr && <p className="mt-1 text-xs text-rose-600">{imgErr}</p>}
             <p className="mt-1 text-xs text-slate-400">Pick a file from your device — it uploads to Cloudinary and fills the link automatically.</p>
           </Field>
+
+          {form.type === "assertion" && (
+            <>
+              <Field label="Assertion (A)">
+                <textarea required rows={2} className="input resize-none" value={form.assertion} onChange={(e) => setForm({ ...form, assertion: e.target.value })} placeholder="Statement of Assertion (A)…" />
+              </Field>
+              <Field label="Reason (R)">
+                <textarea required rows={2} className="input resize-none" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Statement of Reason (R)…" />
+              </Field>
+              <p className="-mt-1 text-xs text-slate-400">Now enter the four options below (e.g. "Both A and R are true and R is the correct explanation of A") and tick the correct one.</p>
+            </>
+          )}
 
           {form.type === "statement" && (
             <Field label="Statements (shown numbered 1, 2, 3…)">
