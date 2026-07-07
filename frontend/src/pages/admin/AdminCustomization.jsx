@@ -27,6 +27,9 @@ const DEFAULTS = {
   defaultZoom: 80,
   watermarkEnabled: true,
   watermarkText: "",
+  watermarkOpacity: 10,
+  watermarkSize: 14,
+  watermarkMode: "always",
   socialLinks: [
     { platform: "facebook", url: "" },
     { platform: "instagram", url: "" },
@@ -313,12 +316,12 @@ export default function AdminCustomization() {
         {/* Screenshot watermark */}
         <div className="card p-6 lg:col-span-2">
           <h3 className="mb-4 flex items-center gap-2 font-bold"><Info className="h-5 w-5 text-brand-600" /> Screenshot Watermark</h3>
-          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">A faint tiled watermark is drawn over quiz &amp; test pages, so any screenshot a student takes carries your copyright mark.</p>
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
+          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">A tiled watermark is drawn over quiz &amp; test pages so screenshots carry your copyright mark.</p>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="sm:col-span-2 lg:col-span-1">
               <label className="mb-1.5 block text-sm font-medium">Watermark text</label>
               <input className="input" value={form.watermarkText} onChange={(e) => set("watermarkText", e.target.value)} placeholder={`${form.siteName || "My Study Guide"} ©`} />
-              <p className="mt-1 text-xs text-slate-400">Leave blank to use "{form.siteName || "My Study Guide"} ©". The current year is appended automatically.</p>
+              <p className="mt-1 text-xs text-slate-400">Blank = "{form.siteName || "My Study Guide"} ©". The year is added automatically.</p>
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">Show watermark</label>
@@ -326,6 +329,23 @@ export default function AdminCustomization() {
                 <option value="1">On</option>
                 <option value="0">Off</option>
               </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">When to show</label>
+              <select className="input" value={form.watermarkMode} onChange={(e) => set("watermarkMode", e.target.value)}>
+                <option value="always">Always visible (reliable)</option>
+                <option value="screenshot">Only on screenshot attempt (best-effort)</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-400">"Screenshot" mode can't catch snipping tools or phone screenshots.</p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Opacity: <span className="font-mono text-brand-600">{form.watermarkOpacity}%</span></label>
+              <input type="range" min="2" max="60" step="1" value={form.watermarkOpacity} onChange={(e) => set("watermarkOpacity", Number(e.target.value))} className="w-full accent-brand-600" />
+              <p className="mt-1 text-xs text-slate-400">Lower = fainter on screen (still shows in screenshots).</p>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Text size: <span className="font-mono text-brand-600">{form.watermarkSize}px</span></label>
+              <input type="range" min="8" max="48" step="1" value={form.watermarkSize} onChange={(e) => set("watermarkSize", Number(e.target.value))} className="w-full accent-brand-600" />
             </div>
           </div>
         </div>

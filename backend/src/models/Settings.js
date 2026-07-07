@@ -43,6 +43,9 @@ const settingsSchema = new mongoose.Schema(
     // Screenshot watermark shown over quiz/test question pages.
     watermarkEnabled: { type: Boolean, default: true },
     watermarkText: { type: String, default: "" }, // "" = use "<siteName> ©"
+    watermarkOpacity: { type: Number, default: 10 }, // % (2–60)
+    watermarkSize: { type: Number, default: 14 }, // px (8–48)
+    watermarkMode: { type: String, default: "always" }, // "always" | "screenshot" (best-effort)
     // Email + notice-board announcement when a new quiz/test is added.
     notifyOnNewContent: { type: Boolean, default: false },
     socialLinks: {
