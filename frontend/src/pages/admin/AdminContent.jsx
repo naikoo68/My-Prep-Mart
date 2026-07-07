@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, FolderOpen, Layers, BookOpen, HelpCircle, ListChecks, Upload, Eye, Copy } from "lucide-react";
 import { contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
-import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
+import BulkUploadQuestions, { questionsToCsv } from "../../components/admin/BulkUploadQuestions";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 
@@ -175,6 +175,26 @@ export default function AdminContent() {
   const openAdd = () => setModal({ type: VIEW_TYPE[view], mode: "add", data: {} });
   const openEdit = (item) => setModal({ type: VIEW_TYPE[view], mode: "edit", data: item });
 
+  // Export all questions of the current quiz as CSV (copy to clipboard; if the
+  // clipboard is blocked, download a .csv file instead).
+  const copyCsv = async (questions, name) => {
+    if (!questions?.length) return;
+    const csv = questionsToCsv(questions);
+    try {
+      await navigator.clipboard.writeText(csv);
+      window.alert(`Copied ${questions.length} question(s) as CSV to the clipboard.`);
+    } catch {
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${String(name || "quiz").replace(/[^\w-]+/g, "_")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -190,6 +210,9 @@ export default function AdminContent() {
               </button>
               <button onClick={() => setBulkOpen(true)} className="btn-outline">
                 <Upload className="h-4 w-4" /> Bulk Upload
+              </button>
+              <button onClick={() => copyCsv(items, quiz?.title || "quiz")} disabled={!items.length} className="btn-outline">
+                <Copy className="h-4 w-4" /> Copy CSV
               </button>
             </>
           )}

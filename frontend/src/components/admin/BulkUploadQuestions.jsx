@@ -273,6 +273,47 @@ export function parseQuestionsCsv(text) {
   return { rows, errors };
 }
 
+// ---- CSV export (reverse of parseQuestionsCsv) ----
+const LETTERS = ["A", "B", "C", "D"];
+
+// Escape a single CSV cell: quote it when it contains a comma/quote/newline.
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// The WhyA..D tail cells from optionExplanations (the correct option is blank).
+function whyCells(q) {
+  const oe = Array.isArray(q.optionExplanations) ? q.optionExplanations : [];
+  return [0, 1, 2, 3].map((i) => (i === q.correct ? "" : oe[i] || ""));
+}
+
+// Convert an array of question objects into CSV text that parseQuestionsCsv can
+// read back — used to "Copy whole quiz/test as CSV". Handles every type.
+export function questionsToCsv(questions) {
+  return (questions || [])
+    .map((q) => {
+      const o = q.options || [];
+      const [a, b, c, d] = [o[0] || "", o[1] || "", o[2] || "", o[3] || ""];
+      const tail = [LETTERS[q.correct] || "A", q.difficulty || "Medium", q.explanation || "", ...whyCells(q)];
+      const A = (arr) => (arr || []).join("|");
+      let cells;
+      switch (q.type) {
+        case "matching": cells = ["matching", q.text, A(q.columnA), A(q.columnB), a, b, c, d, ...tail]; break;
+        case "statement": cells = ["statement", q.text, A(q.columnA), a, b, c, d, ...tail]; break;
+        case "pair": cells = ["pair", q.text, A(q.columnA), A(q.columnB), a, b, c, d, ...tail]; break;
+        case "pairselect": cells = ["pairselect", q.text, A(q.columnA), A(q.columnB), a, b, c, d, ...tail]; break;
+        case "table": cells = ["table", q.text, (q.tableRows || []).map((r) => (r || []).join(";")).join("|"), a, b, c, d, ...tail]; break;
+        case "assertion": cells = ["assertion", q.assertion || "", q.reason || "", a, b, c, d, ...tail]; break;
+        case "image": cells = ["image", q.image || "", q.text, a, b, c, d, ...tail]; break;
+        default: cells = [q.text, a, b, c, d, ...tail];
+      }
+      while (cells.length && cells[cells.length - 1] === "") cells.pop(); // trim trailing empties
+      return cells.map(csvCell).join(",");
+    })
+    .join("\n");
+}
+
 const TEMPLATE =
   "Question,Option A,Option B,Option C,Option D,Correct,Difficulty,Explanation,WhyA,WhyB,WhyC,WhyD\n" +
   '"What is 2+2?",3,4,5,6,B,Easy,"2+2 equals 4 because you add two and two.","3 is 2+1, not 2+2.",,"5 is 2+3.","6 is 2+4."\n' +

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy } from "lucide-react";
 import { testService, contentService, examService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
-import BulkUploadQuestions from "../../components/admin/BulkUploadQuestions";
+import BulkUploadQuestions, { questionsToCsv } from "../../components/admin/BulkUploadQuestions";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 
@@ -83,6 +83,25 @@ export default function AdminTests() {
 
   const reloadTq = async () => {
     try { setTq(await testService.getQuestions(qTest._id)); } catch { /* ignore */ }
+  };
+
+  // Export all of a test's questions as CSV (copy to clipboard; download if blocked).
+  const copyCsv = async (questions, name) => {
+    if (!questions?.length) return;
+    const csv = questionsToCsv(questions);
+    try {
+      await navigator.clipboard.writeText(csv);
+      window.alert(`Copied ${questions.length} question(s) as CSV to the clipboard.`);
+    } catch {
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${String(name || "test").replace(/[^\w-]+/g, "_")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
   };
 
   const saveTestQuestion = async (payload) => {
@@ -611,11 +630,16 @@ export default function AdminTests() {
             </div>
             <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{qTest.name}</p>
 
-            <div className="mb-4 flex justify-end gap-2">
+            <div className="mb-4 flex flex-wrap justify-end gap-2">
               {tq.length > 0 && (
-                <button onClick={() => setViewAllQ(true)} className="btn-outline">
-                  <Eye className="h-4 w-4" /> View All
-                </button>
+                <>
+                  <button onClick={() => setViewAllQ(true)} className="btn-outline">
+                    <Eye className="h-4 w-4" /> View All
+                  </button>
+                  <button onClick={() => copyCsv(tq, qTest?.name || "test")} className="btn-outline">
+                    <Copy className="h-4 w-4" /> Copy CSV
+                  </button>
+                </>
               )}
               <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary">
                 <Plus className="h-4 w-4" /> Add Question
