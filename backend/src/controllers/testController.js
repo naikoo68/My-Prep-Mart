@@ -110,7 +110,7 @@ export async function updateTestAccess(req, res) {
 // POST /api/tests  (admin)
 export async function createTest(req, res) {
   const test = await TestSeries.create(req.body);
-  notifyNewContent("test", test.name); // fire-and-forget (respects admin toggle)
+  notifyNewContent("test", test); // fire-and-forget (respects admin toggle)
   res.status(201).json(test);
 }
 

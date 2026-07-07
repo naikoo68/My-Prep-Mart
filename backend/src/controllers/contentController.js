@@ -179,7 +179,7 @@ export async function listQuizzes(req, res) {
 
 export async function createQuiz(req, res) {
   const quiz = await Quiz.create(req.body);
-  notifyNewContent("quiz", quiz.title); // fire-and-forget (respects admin toggle)
+  notifyNewContent("quiz", quiz); // fire-and-forget (respects admin toggle)
   res.status(201).json(quiz);
 }
 

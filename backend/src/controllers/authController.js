@@ -2,6 +2,7 @@ import crypto from "crypto";
 import User from "../models/User.js";
 import generateToken from "../utils/generateToken.js";
 import { sendMail } from "../config/mailer.js";
+import { notifyNewUser } from "../utils/notify.js";
 
 // Normalise emails so case/whitespace never causes a login mismatch
 // (phone keyboards often auto-capitalise the first letter).
@@ -89,6 +90,7 @@ export async function verifyOtp(req, res) {
     user.otpHash = undefined;
     user.otpExpires = undefined;
     await user.save();
+    notifyNewUser(user); // notify admin of the new registration (fire-and-forget)
   }
 
   res.json({ user: sanitize(user), token: generateToken(user._id) });
@@ -139,6 +141,7 @@ export async function googleLogin(req, res) {
   let user = await User.findOne({ email });
   if (!user) {
     user = await User.create({ name, email, googleId, avatar, isEmailVerified: true });
+    notifyNewUser(user); // notify admin of the new registration (fire-and-forget)
   }
   res.json({ user: sanitize(user), token: generateToken(user._id) });
 }
