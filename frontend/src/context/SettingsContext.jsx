@@ -25,6 +25,7 @@ const DEFAULTS = {
   watermarkMode: "always",
   restrictCopy: true,
   screenshotGuard: false,
+  guardHoldMs: 1500,
   statsAuto: true,
   notifyOnNewContent: false,
   socialLinks: [],

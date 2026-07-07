@@ -32,6 +32,7 @@ const DEFAULTS = {
   watermarkMode: "always",
   restrictCopy: true,
   screenshotGuard: false,
+  guardHoldMs: 1500,
   socialLinks: [
     { platform: "facebook", url: "" },
     { platform: "instagram", url: "" },
@@ -334,6 +335,13 @@ export default function AdminCustomization() {
               <span className="block text-xs text-slate-500 dark:text-slate-400">Blanks the screen for students when the page loses focus — deters desktop capture tools like Win+Shift+S. Note: phone screenshots can't be blocked by any website.</span>
             </span>
           </label>
+          {form.screenshotGuard && (
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm font-medium">Guard hold time: <span className="font-mono text-brand-600">{form.guardHoldMs} ms</span></label>
+              <input type="range" min="300" max="5000" step="100" value={form.guardHoldMs} onChange={(e) => set("guardHoldMs", Number(e.target.value))} className="w-full accent-brand-600" />
+              <p className="mt-1 text-xs text-slate-400">How long the "Content hidden" cover stays after a screenshot key. The cover itself appears instantly; increase this if a capture still slips through.</p>
+            </div>
+          )}
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             <div className="sm:col-span-2 lg:col-span-1">
               <label className="mb-1.5 block text-sm font-medium">Watermark text</label>
