@@ -215,11 +215,11 @@ export default function AdminContent() {
               <button onClick={() => setBulkOpen(true)} className="btn-outline">
                 <Upload className="h-4 w-4" /> Bulk Upload
               </button>
-              <button onClick={() => copyCsv(items)} disabled={!items.length} className="btn-outline">
-                <Copy className="h-4 w-4" /> Copy CSV
+              <button onClick={() => copyCsv(selected.length ? items.filter((q) => selected.includes(q._id)) : items)} disabled={!items.length} className="btn-outline">
+                <Copy className="h-4 w-4" /> Copy CSV{selected.length ? ` (${selected.length})` : ""}
               </button>
-              <button onClick={() => downloadCsv(items, quiz?.title || "quiz")} disabled={!items.length} className="btn-outline">
-                <Download className="h-4 w-4" /> Download CSV
+              <button onClick={() => downloadCsv(selected.length ? items.filter((q) => selected.includes(q._id)) : items, quiz?.title || "quiz")} disabled={!items.length} className="btn-outline">
+                <Download className="h-4 w-4" /> Download CSV{selected.length ? ` (${selected.length})` : ""}
               </button>
             </>
           )}

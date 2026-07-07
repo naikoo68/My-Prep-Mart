@@ -641,11 +641,11 @@ export default function AdminTests() {
                   <button onClick={() => setViewAllQ(true)} className="btn-outline">
                     <Eye className="h-4 w-4" /> View All
                   </button>
-                  <button onClick={() => copyCsv(tq)} className="btn-outline">
-                    <Copy className="h-4 w-4" /> Copy CSV
+                  <button onClick={() => copyCsv(selectedTq.length ? tq.filter((q) => selectedTq.includes(q._id)) : tq)} className="btn-outline">
+                    <Copy className="h-4 w-4" /> Copy CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
                   </button>
-                  <button onClick={() => downloadCsv(tq, qTest?.name || "test")} className="btn-outline">
-                    <Download className="h-4 w-4" /> Download CSV
+                  <button onClick={() => downloadCsv(selectedTq.length ? tq.filter((q) => selectedTq.includes(q._id)) : tq, qTest?.name || "test")} className="btn-outline">
+                    <Download className="h-4 w-4" /> Download CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
                   </button>
                 </>
               )}
