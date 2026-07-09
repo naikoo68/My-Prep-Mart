@@ -21,3 +21,10 @@ services:
         sync: false           # you paste your MongoDB Atlas connection string
       - key: CLIENT_URL
         sync: false           # set to your Vercel URL after the frontend deploys
+      # ---- AI Question Generator (optional) ----
+      - key: AI_API_KEY
+        sync: false           # your TokenLab (or other) API key — enables "Generate with AI"
+      - key: AI_BASE_URL
+        value: https://api.tokenlab.sh/v1
+      - key: AI_MODEL
+        sync: false           # one OR many model ids, comma-separated (first = default)
