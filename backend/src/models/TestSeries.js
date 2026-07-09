@@ -11,6 +11,13 @@ const testSeriesSchema = new mongoose.Schema(
       enum: ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"],
       required: true,
     },
+    // "Practice Quizzes" section: when practice=true this item lives under a
+    // PracticeStream → PracticeSubject instead of Exam → Post, and is excluded
+    // from the normal Test Series listing. practiceKind is "quiz" or "test".
+    practice: { type: Boolean, default: false },
+    practiceKind: { type: String, enum: ["quiz", "test"], default: "test" },
+    practiceStream: { type: mongoose.Schema.Types.ObjectId, ref: "PracticeStream" },
+    practiceSubject: { type: mongoose.Schema.Types.ObjectId, ref: "PracticeSubject" },
     duration: { type: Number, required: true }, // minutes
     marks: { type: Number, required: true },
     difficulty: { type: String, enum: ["Easy", "Medium", "Hard"], default: "Medium" },

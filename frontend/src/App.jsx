@@ -19,6 +19,8 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 const QuizHome = lazy(() => import("./pages/quiz/QuizHome"));
 const StreamSubjects = lazy(() => import("./pages/quiz/StreamSubjects"));
+const PracticeHome = lazy(() => import("./pages/practice/PracticeHome"));
+const PracticeBrowse = lazy(() => import("./pages/practice/PracticeBrowse"));
 const SubjectTopics = lazy(() => import("./pages/quiz/SubjectTopics"));
 const TopicSessions = lazy(() => import("./pages/quiz/TopicSessions"));
 const SessionQuizzes = lazy(() => import("./pages/quiz/SessionQuizzes"));
@@ -51,6 +53,7 @@ const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const AdminCustomization = lazy(() => import("./pages/admin/AdminCustomization"));
 const AdminNotices = lazy(() => import("./pages/admin/AdminNotices"));
 const AdminPerformance = lazy(() => import("./pages/admin/AdminPerformance"));
+const AdminPractice = lazy(() => import("./pages/admin/AdminPractice"));
 
 // Wraps a lazily-loaded page in a Suspense boundary with a loading fallback.
 const S = (Comp) => (
@@ -78,6 +81,11 @@ const router = createBrowserRouter([
       { path: "/test-series", element: S(TestExams) },
       { path: "/test-series/:examId", element: S(ExamPosts) },
       { path: "/test-series/:examId/:postId", element: S(PostTests) },
+
+      { path: "/practice", element: S(PracticeHome) },
+      { path: "/practice/:kind", element: S(PracticeBrowse) },
+      { path: "/practice/:kind/:streamId", element: S(PracticeBrowse) },
+      { path: "/practice/:kind/:streamId/:subjectId", element: S(PracticeBrowse) },
 
       { path: "/study", element: S(StudyHome) },
       { path: "/study/:institutionId", element: S(StudySubjects) },
@@ -114,6 +122,7 @@ const router = createBrowserRouter([
       { index: true, element: S(AdminDashboard) },
       { path: "content", element: S(AdminContent) },
       { path: "tests", element: S(AdminTests) },
+      { path: "practice", element: S(AdminPractice) },
       { path: "study", element: S(AdminStudyMaterial) },
       { path: "feedback", element: S(AdminFeedback) },
       { path: "users", element: S(AdminUsers) },

@@ -8,7 +8,7 @@ import { notifyNewContent } from "../utils/notify.js";
 // GET /api/tests  — list published tests visible to the requesting user
 export async function listTests(req, res) {
   const { category, post, exam } = req.query;
-  const filter = { status: "published" };
+  const filter = { status: "published", practice: { $ne: true } };
   if (category && category !== "All") filter.category = category;
   if (post) filter.post = post;
   if (exam) filter.exam = exam;
@@ -34,7 +34,7 @@ export async function listTests(req, res) {
 
 // GET /api/tests/admin/all  (admin) — every test regardless of status
 export async function listAllTests(req, res) {
-  const filter = {};
+  const filter = { practice: { $ne: true } };
   if (req.query.post) filter.post = req.query.post;
   const tests = await TestSeries.find(filter).sort("-createdAt").lean();
   res.json(tests.map((t) => ({ ...t, questionCount: t.questions?.length || 0, questions: undefined })));

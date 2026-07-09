@@ -18,6 +18,7 @@ import examRoutes from "./routes/examRoutes.js";
 import studyRoutes from "./routes/studyRoutes.js";
 import feedbackRoutes from "./routes/feedbackRoutes.js";
 import noticeRoutes from "./routes/noticeRoutes.js";
+import practiceRoutes from "./routes/practiceRoutes.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import { isMailConfigured, verifyMail } from "./config/mailer.js";
 import { isCloudinaryConfigured } from "./config/cloudinary.js";
@@ -67,6 +68,7 @@ app.use("/api", examRoutes); // /exams, /exams/:id/posts, /posts
 app.use("/api", studyRoutes); // study material: institutions → subjects → classes → files
 app.use("/api/feedback", feedbackRoutes); // student feedback (per-question + overall)
 app.use("/api/notices", noticeRoutes); // scrolling notice board (public read, admin write)
+app.use("/api/practice", practiceRoutes); // "Practice Quizzes" section (My Quiz / My Test Series)
 
 // Errors
 app.use(notFound);

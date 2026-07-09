@@ -1,0 +1,91 @@
+import { useEffect, useState } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import * as Icons from "lucide-react";
+import { ArrowRight, ChevronLeft, Clock, HelpCircle, Play } from "lucide-react";
+import { practiceService } from "../../services";
+import { useAuth } from "../../context/AuthContext";
+import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
+
+const KIND_LABEL = { quiz: "My Quiz", test: "My Test Series" };
+
+// Handles the three practice browse levels based on the URL params:
+//   /practice/:kind                         → streams
+//   /practice/:kind/:streamId               → subjects
+//   /practice/:kind/:streamId/:subjectId    → items (attempt via TestAttempt)
+export default function PracticeBrowse() {
+  const { kind, streamId, subjectId } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const level = subjectId ? "items" : streamId ? "subjects" : "streams";
+
+  const load = () => {
+    setLoading(true);
+    setError("");
+    const p =
+      level === "items" ? practiceService.items(kind, subjectId)
+      : level === "subjects" ? practiceService.subjects(kind, streamId)
+      : practiceService.streams(kind);
+    p.then(setRows).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  };
+  useEffect(load, [kind, streamId, subjectId]);
+
+  const back =
+    level === "items" ? `/practice/${kind}/${streamId}`
+    : level === "subjects" ? `/practice/${kind}`
+    : "/practice";
+
+  const title = level === "items" ? "Select one to start" : level === "subjects" ? "Choose a subject" : KIND_LABEL[kind] || "Practice";
+
+  const openItem = (item) => {
+    if (!user) return navigate("/login");
+    navigate(`/test-series/attempt/${item._id}`);
+  };
+
+  return (
+    <div className="container-page py-12">
+      <Link to={back} className="btn-ghost mb-6 -ml-2 w-fit"><ChevronLeft className="h-4 w-4" /> Back</Link>
+      <h1 className="text-3xl font-extrabold sm:text-4xl">{title}</h1>
+
+      {loading ? <Loading /> : error ? <ErrorState message={error} onRetry={load} /> : rows.length === 0 ? (
+        <EmptyState message={level === "items" ? "No practice content available to you here yet." : "Nothing shared with you here yet."} />
+      ) : level === "items" ? (
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map((it, i) => (
+            <div key={it._id} style={{ animationDelay: `${i * 40}ms` }} className="card animate-fade-in-up p-6 opacity-0">
+              <h3 className="text-lg font-bold">{it.name}</h3>
+              <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-500 dark:text-slate-400">
+                <span className="inline-flex items-center gap-1"><HelpCircle className="h-4 w-4" /> {it.questionCount} Qs</span>
+                {it.duration ? <span className="inline-flex items-center gap-1"><Clock className="h-4 w-4" /> {it.duration} min</span> : null}
+                {it.difficulty && <span>{it.difficulty}</span>}
+              </div>
+              <button onClick={() => openItem(it)} className="btn-primary mt-4 w-full"><Play className="h-4 w-4" /> Start</button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {rows.map((s, i) => {
+            const Icon = Icons[s.icon] || (level === "streams" ? Icons.GraduationCap : Icons.BookOpen);
+            const to = level === "streams" ? `/practice/${kind}/${s._id}` : `/practice/${kind}/${streamId}/${s._id}`;
+            return (
+              <Link key={s._id} to={to} style={{ animationDelay: `${i * 40}ms` }} className="card-hover group animate-fade-in-up p-6 opacity-0">
+                <div className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${s.color || "from-violet-500 to-fuchsia-600"} text-white shadow-soft`}>
+                  <Icon className="h-7 w-7" />
+                </div>
+                <h3 className="mt-4 text-lg font-bold">{s.name}</h3>
+                {s.description && <p className="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{s.description}</p>}
+                <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand-600 transition group-hover:gap-2 dark:text-brand-400">
+                  Open <ArrowRight className="h-4 w-4" />
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

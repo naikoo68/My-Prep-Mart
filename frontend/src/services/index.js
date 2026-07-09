@@ -85,6 +85,29 @@ export const testService = {
   deleteQuestion: (id, qid) => api.del(`/tests/${id}/questions/${qid}`),
 };
 
+// ---- Practice Quizzes (My Quiz / My Test Series) ----
+// Items are practice TestSeries, so questions/visibility/attempt reuse testService.
+export const practiceService = {
+  // student browse (kind = "quiz" | "test") — token sent if logged in (optionalAuth),
+  // so students see items granted to them; guests see only public ones.
+  streams: (kind) => api.get(`/practice/browse/${kind}/streams`),
+  subjects: (kind, streamId) => api.get(`/practice/browse/${kind}/streams/${streamId}/subjects`),
+  items: (kind, subjectId) => api.get(`/practice/browse/${kind}/subjects/${subjectId}/items`),
+  // admin — streams
+  adminStreams: () => api.get("/practice/streams"),
+  createStream: (data) => api.post("/practice/streams", data),
+  updateStream: (id, data) => api.put(`/practice/streams/${id}`, data),
+  deleteStream: (id) => api.del(`/practice/streams/${id}`),
+  // admin — subjects
+  adminSubjects: (streamId) => api.get(`/practice/streams/${streamId}/subjects`),
+  createSubject: (data) => api.post("/practice/subjects", data),
+  updateSubject: (id, data) => api.put(`/practice/subjects/${id}`, data),
+  deleteSubject: (id) => api.del(`/practice/subjects/${id}`),
+  // admin — items (practice test-series)
+  adminItems: (subjectId, kind) => api.get(`/practice/subjects/${subjectId}/items${kind ? `?kind=${kind}` : ""}`),
+  createItem: (data) => api.post("/practice/items", data),
+};
+
 // ---- Dashboard / analytics ----
 export const analyticsService = {
   dashboard: () => api.get("/me/dashboard"),
