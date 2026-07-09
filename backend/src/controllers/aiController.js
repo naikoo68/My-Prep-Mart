@@ -222,11 +222,72 @@ function normalize(list) {
     .filter((q) => q.text); // drop empty questions
 }
 
+const MAX_TOTAL = 100; // most questions per generate request
+const CHUNK_SIZE = 15; // questions generated per provider call (keeps each reply small enough to not truncate)
+
+// One provider call with transient-error retries. Returns { ok, status, content, detail }.
+async function callProvider({ key, model, userPrompt, maxTokens }) {
+  const payload = {
+    model,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.6,
+    max_tokens: maxTokens,
+  };
+  // Gemini burns budget on hidden "thinking" which truncates JSON — turn it off
+  // (sent only for Gemini; OpenAI/Claude reject this field).
+  if (/gemini/i.test(model)) payload.reasoning_effort = "none";
+
+  const TRANSIENT = [429, 500, 502, 503, 504];
+  const WAITS = [1500, 3000, 6000, 9000];
+  let resp;
+  for (let attempt = 0; ; attempt++) {
+    resp = await fetch(`${BASE_URL()}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify(payload),
+    });
+    if (resp.ok || !TRANSIENT.includes(resp.status) || attempt >= WAITS.length) break;
+    await new Promise((r) => setTimeout(r, WAITS[attempt]));
+  }
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    return { ok: false, status: resp.status, detail };
+  }
+  const data = await resp.json();
+  return { ok: true, content: extractContent(data) };
+}
+
+// Split a bucket plan into sub-plans that each total <= size.
+function chunkPlan(plan, size) {
+  const chunks = [];
+  let cur = [];
+  let curTotal = 0;
+  for (const b of plan) {
+    let remaining = b.count;
+    while (remaining > 0) {
+      const take = Math.min(remaining, size - curTotal);
+      if (take > 0) {
+        cur.push({ type: b.type, difficulty: b.difficulty, count: take });
+        curTotal += take;
+        remaining -= take;
+      }
+      if (curTotal >= size) { chunks.push(cur); cur = []; curTotal = 0; }
+    }
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+
 // POST /api/ai/generate  (admin)
-// Body: { topic, count, difficulty, types:[], notes }
+// Body: { topic, notes, model, plan:[{type,difficulty,count}] }  (or legacy { count, difficulty, types })
+// Large batches are generated in several smaller provider calls and combined,
+// so up to 100 questions can be produced reliably without token-limit truncation.
 // Returns { questions:[...] } — NOT saved; the admin previews then inserts.
 export async function generateQuestions(req, res) {
-  const key = (process.env.AI_API_KEY || "").trim(); // trim stray spaces/newlines from env
+  const key = (process.env.AI_API_KEY || "").trim();
   if (!key) {
     return res.status(400).json({
       message:
@@ -240,21 +301,19 @@ export async function generateQuestions(req, res) {
   const notes = String(req.body?.notes || "").trim();
   const model = resolveModel(String(req.body?.model || "").trim());
 
-  // New: explicit per-bucket plan [{ type, difficulty, count }]. Sanitize each
-  // entry and cap the overall total. Falls back to the simple count/difficulty/
-  // types path when no plan is provided (backward compatible).
+  // Explicit per-bucket plan [{ type, difficulty, count }] — sanitized and
+  // capped at MAX_TOTAL without dropping buckets. Falls back to the legacy
+  // count/difficulty/types path when no plan is provided.
   let plan = null;
   if (Array.isArray(req.body?.plan)) {
     plan = req.body.plan
       .filter((b) => b && TYPES.includes(b.type) && DIFFS.includes(b.difficulty))
       .map((b) => ({ type: b.type, difficulty: b.difficulty, count: Math.max(0, parseInt(b.count, 10) || 0) }))
       .filter((b) => b.count > 0);
-    // Cap total at 40 without dropping buckets entirely.
     let running = 0;
     plan = plan
       .map((b) => {
-        const room = Math.max(0, 40 - running);
-        const c = Math.min(b.count, room);
+        const c = Math.min(b.count, Math.max(0, MAX_TOTAL - running));
         running += c;
         return { ...b, count: c };
       })
@@ -262,78 +321,57 @@ export async function generateQuestions(req, res) {
     if (!plan.length) plan = null;
   }
 
-  // Simple-mode fallbacks (only used when there's no plan).
-  const count = Math.min(30, Math.max(1, parseInt(req.body?.count, 10) || 5));
+  const count = Math.min(MAX_TOTAL, Math.max(1, parseInt(req.body?.count, 10) || 5));
   const difficulty = req.body?.difficulty;
   const types = Array.isArray(req.body?.types)
     ? req.body.types.filter((t) => TYPES.includes(t))
     : [];
 
-  // Total drives the token budget. max_tokens is REQUIRED by Claude and
-  // prevents truncation; each question carries an explanation + 4 option
-  // explanations, so output is large.
-  const totalQ = plan ? plan.reduce((s, b) => s + b.count, 0) : count;
-  const maxTokens = Math.min(24000, 2000 + totalQ * 700);
-
-  const payload = {
-    model,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt({ topic, count, difficulty, types, notes, plan }) },
-    ],
-    temperature: 0.6,
-    max_tokens: maxTokens,
-  };
-
-  // Gemini "flash/pro" models burn a big chunk of the token budget on hidden
-  // "thinking", which truncates the JSON answer. Turn thinking off for Gemini
-  // so the whole budget goes to the actual questions. (Sent only for Gemini —
-  // OpenAI/Claude reject this field.)
-  if (/gemini/i.test(model)) {
-    payload.reasoning_effort = "none";
+  // Build the list of provider calls (chunks), each producing <= CHUNK_SIZE.
+  const jobs = [];
+  if (plan) {
+    for (const sub of chunkPlan(plan, CHUNK_SIZE)) {
+      const n = sub.reduce((s, b) => s + b.count, 0);
+      jobs.push({ n, prompt: buildUserPrompt({ topic, notes, plan: sub }) });
+    }
+  } else {
+    let remaining = count;
+    while (remaining > 0) {
+      const n = Math.min(CHUNK_SIZE, remaining);
+      jobs.push({ n, prompt: buildUserPrompt({ topic, notes, count: n, difficulty, types }) });
+      remaining -= n;
+    }
   }
 
   try {
-    // Providers (esp. Gemini free tier) return transient 429/500/503 under
-    // load. Retry a few times with backoff before giving up.
-    const TRANSIENT = [429, 500, 502, 503, 504];
-    const WAITS = [1500, 3000, 6000, 9000]; // ms
-    let resp;
-    for (let attempt = 0; ; attempt++) {
-      resp = await fetch(`${BASE_URL()}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (resp.ok || !TRANSIENT.includes(resp.status) || attempt >= WAITS.length) break;
-      await new Promise((r) => setTimeout(r, WAITS[attempt]));
+    const questions = [];
+    let lastError = null;
+    for (const job of jobs) {
+      const maxTokens = Math.min(16000, 1500 + job.n * 700);
+      const r = await callProvider({ key, model, userPrompt: job.prompt, maxTokens });
+      if (!r.ok) {
+        lastError = r;
+        continue; // best-effort: keep whatever other chunks succeed
+      }
+      questions.push(...normalize(parseQuestions(r.content)));
     }
-
-    if (!resp.ok) {
-      const detail = await resp.text().catch(() => "");
-      const hint =
-        resp.status === 503 || resp.status === 429
-          ? " The AI model is busy right now — please try again in a moment, or pick a different model."
-          : "";
-      return res
-        .status(502)
-        .json({ message: `AI provider error (${resp.status}).${hint} ${detail.slice(0, 200)}` });
-    }
-
-    const data = await resp.json();
-    const content = extractContent(data);
-    const questions = normalize(parseQuestions(content));
 
     if (!questions.length) {
+      if (lastError) {
+        const hint =
+          lastError.status === 503 || lastError.status === 429
+            ? " The AI model is busy right now — try again shortly, or pick a different model."
+            : "";
+        return res
+          .status(502)
+          .json({ message: `AI provider error (${lastError.status}).${hint} ${(lastError.detail || "").slice(0, 200)}` });
+      }
       return res.status(422).json({
         message:
           "The AI replied but no questions could be read from its output. Try a lower count, a simpler topic, or a different model (e.g. gpt-4o-mini).",
       });
     }
-    res.json({ questions, model });
+    res.json({ questions, model, requested: jobs.reduce((s, j) => s + j.n, 0) });
   } catch (err) {
     res.status(502).json({ message: err?.message || "AI request failed." });
   }

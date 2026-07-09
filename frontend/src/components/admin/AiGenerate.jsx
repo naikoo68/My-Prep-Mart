@@ -62,10 +62,10 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
     if (!topic.trim()) { setMsg("Enter a topic or syllabus to generate from."); return; }
     const plan = buildPlan();
     if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
-    if (total > 40) { setMsg("Please keep the total to 40 questions or fewer per batch."); return; }
+    if (total > 100) { setMsg("Please keep the total to 100 questions or fewer per batch."); return; }
     setBusy(true);
-    setMsg("");
     setPreview([]);
+    setMsg(total > 20 ? `Generating ${total} questions in the background — large batches can take up to a minute…` : "");
     try {
       const res = await aiService.generate({
         topic: topic.trim(),
@@ -154,7 +154,7 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
             {/* How many of each type × difficulty. Total = sum of all cells. */}
             <div className="mt-3 flex items-center justify-between">
               <label className="block text-sm font-semibold">Questions by type &amp; difficulty</label>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${total > 40 ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${total > 100 ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
                 Total: {total}
               </span>
             </div>
@@ -177,7 +177,7 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
                           <input
                             type="number"
                             min={0}
-                            max={30}
+                            max={100}
                             value={matrix[t.id]?.[d] || 0}
                             onChange={(e) => setCell(t.id, d, e.target.value)}
                             className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm dark:border-slate-700 dark:bg-slate-900"
@@ -189,8 +189,16 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
                 </tbody>
               </table>
             </div>
+            {/* Total summary below the grid */}
+            <div className={`mt-2 flex items-center justify-between rounded-xl border px-4 py-2.5 ${total > 100 ? "border-rose-300 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-900/20" : "border-brand-200 bg-brand-50 dark:border-brand-900/40 dark:bg-brand-900/20"}`}>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Total questions</span>
+              <span className={`text-lg font-extrabold tabular-nums ${total > 100 ? "text-rose-600 dark:text-rose-400" : "text-brand-600 dark:text-brand-300"}`}>
+                {total} <span className="text-xs font-medium text-slate-400">/ 100</span>
+              </span>
+            </div>
             <p className="mt-1 text-xs text-slate-400">
-              Set a count in any cell — e.g. 3 Easy MCQs + 2 Medium Matching. Leave cells at 0 to skip. Max 40 total.
+              Set a count in any cell — e.g. 3 Easy MCQs + 2 Medium Matching. Leave cells at 0 to skip.
+              Up to 100 per batch (generated in the background in smaller groups).
             </p>
 
             <label className="mb-1 mt-3 block text-sm font-semibold">Extra instructions (optional)</label>
