@@ -76,6 +76,23 @@ function buildUserPrompt({ topic, count, difficulty, types, notes }) {
     .join("\n");
 }
 
+// Pull the assistant's text out of an OpenAI-compatible response. Handles the
+// normal string form AND Claude-style "content blocks" (an array of
+// { type:"text", text:"..." }) that some proxies pass through unnormalized.
+function extractContent(data) {
+  const msg = data?.choices?.[0]?.message;
+  const c = msg?.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) {
+    return c
+      .map((part) => (typeof part === "string" ? part : part?.text || ""))
+      .join("");
+  }
+  // Some reasoning models expose the answer under a different key.
+  if (typeof msg?.reasoning_content === "string") return msg.reasoning_content;
+  return "";
+}
+
 // Robustly pull a questions array out of the model's text output.
 function parseQuestions(content) {
   let t = String(content || "").trim();
@@ -181,13 +198,19 @@ export async function generateQuestions(req, res) {
   const notes = String(req.body?.notes || "").trim();
   const model = resolveModel(String(req.body?.model || "").trim());
 
+  // max_tokens is REQUIRED by Anthropic/Claude models and prevents the JSON
+  // reply from being truncated for larger batches. Scale it with the count,
+  // capped at a safe ceiling.
+  const maxTokens = Math.min(16000, 1200 + count * 550);
+
   const payload = {
     model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildUserPrompt({ topic, count, difficulty, types, notes }) },
     ],
-    temperature: 0.7,
+    temperature: 0.6,
+    max_tokens: maxTokens,
   };
 
   try {
@@ -208,12 +231,13 @@ export async function generateQuestions(req, res) {
     }
 
     const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content || "";
+    const content = extractContent(data);
     const questions = normalize(parseQuestions(content));
 
     if (!questions.length) {
       return res.status(422).json({
-        message: "The AI returned no usable questions. Try rephrasing the topic or lowering the count.",
+        message:
+          "The AI replied but no questions could be read from its output. Try a lower count, a simpler topic, or a different model (e.g. gpt-4o-mini).",
       });
     }
     res.json({ questions, model });
