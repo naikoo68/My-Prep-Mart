@@ -93,6 +93,43 @@ function extractContent(data) {
   return "";
 }
 
+// Last-resort recovery: if the JSON is truncated (e.g. the model ran out of
+// tokens mid-array), scan for every complete, brace-balanced {...} object and
+// parse them individually. This keeps whatever questions did finish.
+function salvageObjects(text) {
+  const out = [];
+  let depth = 0;
+  let start = -1;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          const o = JSON.parse(text.slice(start, i + 1));
+          if (o && typeof o === "object" && (o.text || o.options)) out.push(o);
+        } catch {
+          /* skip malformed fragment */
+        }
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
 // Robustly pull a questions array out of the model's text output.
 function parseQuestions(content) {
   let t = String(content || "").trim();
@@ -118,7 +155,7 @@ function parseQuestions(content) {
     };
     obj = tryParse(oStart, oEnd) || tryParse(aStart, aEnd);
   }
-  if (!obj) return [];
+  if (!obj) return salvageObjects(t); // last resort: recover from truncated JSON
   if (Array.isArray(obj)) return obj;
   if (Array.isArray(obj.questions)) return obj.questions;
   return [];
@@ -200,8 +237,9 @@ export async function generateQuestions(req, res) {
 
   // max_tokens is REQUIRED by Anthropic/Claude models and prevents the JSON
   // reply from being truncated for larger batches. Scale it with the count,
-  // capped at a safe ceiling.
-  const maxTokens = Math.min(16000, 1200 + count * 550);
+  // with generous headroom (each question carries an explanation + 4 option
+  // explanations, so output is large).
+  const maxTokens = Math.min(24000, 2000 + count * 700);
 
   const payload = {
     model,
@@ -212,6 +250,14 @@ export async function generateQuestions(req, res) {
     temperature: 0.6,
     max_tokens: maxTokens,
   };
+
+  // Gemini "flash/pro" models burn a big chunk of the token budget on hidden
+  // "thinking", which truncates the JSON answer. Turn thinking off for Gemini
+  // so the whole budget goes to the actual questions. (Sent only for Gemini —
+  // OpenAI/Claude reject this field.)
+  if (/gemini/i.test(model)) {
+    payload.reasoning_effort = "none";
+  }
 
   try {
     // Providers (esp. Gemini free tier) return transient 429/500/503 under
