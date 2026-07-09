@@ -142,6 +142,29 @@ export async function createItem(req, res) {
   res.status(201).json(item);
 }
 
+// GET /api/practice/quiz/:id/play — full questions WITH answers, so a "My Quiz"
+// practice quiz can reveal correctness instantly (like the regular Quiz).
+// Restricted to practice items of kind "quiz" that are visible to the user, so
+// this never leaks answers for real tests or My-Test-Series items.
+export async function playQuiz(req, res) {
+  const item = await TestSeries.findById(req.params.id).populate("questions");
+  if (!item || !item.practice || item.practiceKind !== "quiz") {
+    return res.status(404).json({ message: "Practice quiz not found" });
+  }
+  if (req.user?.role !== "admin" && !isTestVisibleToUser(item.toObject(), req.user?._id)) {
+    return res.status(403).json({ message: "You don't have access to this quiz." });
+  }
+  const obj = item.toObject();
+  res.json({
+    _id: obj._id,
+    name: obj.name,
+    duration: obj.duration,
+    difficulty: obj.difficulty,
+    questionCount: obj.questions.length,
+    questions: obj.questions, // includes correct / explanation / optionExplanations
+  });
+}
+
 /* ---------------- Student browse (visibility-filtered) ---------------- */
 export async function browseStreams(req, res) {
   const items = await TestSeries.find({ practice: true, practiceKind: req.params.kind, status: "published" })

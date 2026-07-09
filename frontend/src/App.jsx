@@ -21,6 +21,7 @@ const QuizHome = lazy(() => import("./pages/quiz/QuizHome"));
 const StreamSubjects = lazy(() => import("./pages/quiz/StreamSubjects"));
 const PracticeHome = lazy(() => import("./pages/practice/PracticeHome"));
 const PracticeBrowse = lazy(() => import("./pages/practice/PracticeBrowse"));
+const PracticeQuizPlay = lazy(() => import("./pages/practice/PracticeQuizPlay"));
 const SubjectTopics = lazy(() => import("./pages/quiz/SubjectTopics"));
 const TopicSessions = lazy(() => import("./pages/quiz/TopicSessions"));
 const SessionQuizzes = lazy(() => import("./pages/quiz/SessionQuizzes"));
@@ -87,6 +88,7 @@ const router = createBrowserRouter([
       { path: "/practice/:kind/:streamId", element: S(PracticeBrowse) },
       { path: "/practice/:kind/:streamId/:subjectId", element: S(PracticeBrowse) },
       { path: "/practice/:kind/:streamId/:subjectId/:topicId", element: S(PracticeBrowse) },
+      { path: "/practice/quiz/play/:itemId", element: <ProtectedRoute>{S(PracticeQuizPlay)}</ProtectedRoute> },
 
       { path: "/study", element: S(StudyHome) },
       { path: "/study/:institutionId", element: S(StudySubjects) },

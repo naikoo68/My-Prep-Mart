@@ -48,7 +48,10 @@ export default function PracticeBrowse() {
 
   const openItem = (item) => {
     if (!user) return navigate("/login");
-    navigate(`/test-series/attempt/${item._id}`);
+    // My Quiz → quiz-style player (instant answer reveal + per-question timer).
+    // My Test Series → full test interface (timed, submit at end).
+    if (kind === "quiz") navigate(`/practice/quiz/play/${item._id}`);
+    else navigate(`/test-series/attempt/${item._id}`);
   };
 
   return (

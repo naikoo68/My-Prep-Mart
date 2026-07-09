@@ -5,6 +5,7 @@ import {
   listTopics, createTopic, updateTopic, deleteTopic, listTopicItems,
   listItems, createItem,
   browseStreams, browseSubjects, browseTopics, browseItems, browseTopicItems,
+  playQuiz,
 } from "../controllers/practiceController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -17,6 +18,9 @@ router.get("/browse/:kind/streams/:streamId/subjects", optionalAuth, browseSubje
 router.get("/browse/:kind/subjects/:subjectId/topics", optionalAuth, browseTopics); // My Quiz
 router.get("/browse/:kind/subjects/:subjectId/items", optionalAuth, browseItems); // My Test Series
 router.get("/browse/:kind/topics/:topicId/items", optionalAuth, browseTopicItems); // My Quiz
+
+// Play a "My Quiz" practice quiz with immediate answer reveal (questions incl. answers).
+router.get("/quiz/:id/play", protect, playQuiz);
 
 // Admin — streams
 router.get("/streams", ...admin, listStreams);

@@ -13,6 +13,7 @@ const TYPE_OPTIONS = [
 ];
 
 const LETTERS = ["A", "B", "C", "D"];
+const DIFFS = ["Easy", "Medium", "Hard"];
 
 // Reusable "Generate with AI" modal. Mirrors BulkUploadQuestions:
 // `onUpload(questions)` should return a promise (e.g. { inserted }). The AI
@@ -21,9 +22,8 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
   const [status, setStatus] = useState(null); // { enabled, model, models: [] }
   const [model, setModel] = useState("");
   const [topic, setTopic] = useState("");
-  const [count, setCount] = useState(5);
-  const [difficulty, setDifficulty] = useState("Mixed");
-  const [types, setTypes] = useState(["mcq"]);
+  // matrix[typeId] = { Easy, Medium, Hard } counts. Default: 5 medium MCQs.
+  const [matrix, setMatrix] = useState({ mcq: { Easy: 0, Medium: 5, Hard: 0 } });
   const [notes, setNotes] = useState("");
   const [preview, setPreview] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -45,21 +45,31 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
 
   if (!open) return null;
 
-  const toggleType = (id) =>
-    setTypes((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+  // Update a single cell of the type × difficulty matrix (clamped 0–30).
+  const setCell = (type, diff, val) => {
+    const n = Math.max(0, Math.min(30, parseInt(val, 10) || 0));
+    setMatrix((m) => ({ ...m, [type]: { ...(m[type] || {}), [diff]: n } }));
+  };
+  const rowTotal = (type) => DIFFS.reduce((s, d) => s + (matrix[type]?.[d] || 0), 0);
+  // Flatten the matrix into [{ type, difficulty, count }] entries with count>0.
+  const buildPlan = () =>
+    TYPE_OPTIONS.flatMap((t) =>
+      DIFFS.map((d) => ({ type: t.id, difficulty: d, count: matrix[t.id]?.[d] || 0 })).filter((e) => e.count > 0)
+    );
+  const total = TYPE_OPTIONS.reduce((s, t) => s + rowTotal(t.id), 0);
 
   const generate = async () => {
     if (!topic.trim()) { setMsg("Enter a topic or syllabus to generate from."); return; }
-    if (!types.length) { setMsg("Pick at least one question type."); return; }
+    const plan = buildPlan();
+    if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
+    if (total > 40) { setMsg("Please keep the total to 40 questions or fewer per batch."); return; }
     setBusy(true);
     setMsg("");
     setPreview([]);
     try {
       const res = await aiService.generate({
         topic: topic.trim(),
-        count: Number(count) || 5,
-        difficulty: difficulty === "Mixed" ? undefined : difficulty,
-        types,
+        plan,
         notes: notes.trim(),
         model: model || undefined,
       });
@@ -141,44 +151,47 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
               onChange={(e) => setTopic(e.target.value)}
             />
 
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-semibold">Number of questions</label>
-                <input
-                  type="number" min={1} max={30}
-                  className="input"
-                  value={count}
-                  onChange={(e) => setCount(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold">Difficulty</label>
-                <select className="input" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-                  <option>Mixed</option>
-                  <option>Easy</option>
-                  <option>Medium</option>
-                  <option>Hard</option>
-                </select>
-              </div>
+            {/* How many of each type × difficulty. Total = sum of all cells. */}
+            <div className="mt-3 flex items-center justify-between">
+              <label className="block text-sm font-semibold">Questions by type &amp; difficulty</label>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${total > 40 ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
+                Total: {total}
+              </span>
             </div>
-
-            <label className="mb-1 mt-3 block text-sm font-semibold">Question types</label>
-            <div className="flex flex-wrap gap-2">
-              {TYPE_OPTIONS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => toggleType(t.id)}
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                    types.includes(t.id)
-                      ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"
-                      : "border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              <table className="w-full min-w-[380px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
+                    <th className="px-3 py-2 text-left font-semibold">Type</th>
+                    {DIFFS.map((d) => (
+                      <th key={d} className="px-2 py-2 text-center font-semibold">{d}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {TYPE_OPTIONS.map((t) => (
+                    <tr key={t.id} className={`border-b border-slate-100 last:border-0 dark:border-slate-800 ${rowTotal(t.id) > 0 ? "bg-brand-50/40 dark:bg-brand-900/10" : ""}`}>
+                      <td className="px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200">{t.label}</td>
+                      {DIFFS.map((d) => (
+                        <td key={d} className="px-2 py-1.5 text-center">
+                          <input
+                            type="number"
+                            min={0}
+                            max={30}
+                            value={matrix[t.id]?.[d] || 0}
+                            onChange={(e) => setCell(t.id, d, e.target.value)}
+                            className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm dark:border-slate-700 dark:bg-slate-900"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+            <p className="mt-1 text-xs text-slate-400">
+              Set a count in any cell — e.g. 3 Easy MCQs + 2 Medium Matching. Leave cells at 0 to skip. Max 40 total.
+            </p>
 
             <label className="mb-1 mt-3 block text-sm font-semibold">Extra instructions (optional)</label>
             <input

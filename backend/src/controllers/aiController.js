@@ -58,22 +58,32 @@ Type-specific extra fields:
 - "table": include "tableRows" (2D array; first inner array is the header row).
 Never include image URLs. Keep questions factually correct and self-contained.`;
 
-function buildUserPrompt({ topic, count, difficulty, types, notes }) {
-  const allowed = (types && types.length ? types : ["mcq"]).join(", ");
-  const diffLine =
-    difficulty && DIFFS.includes(difficulty)
-      ? `All questions must be "${difficulty}" difficulty.`
-      : `Mix the difficulty across Easy, Medium and Hard.`;
-  return [
-    `Generate ${count} exam-prep questions.`,
-    `Topic / syllabus: ${topic}.`,
-    `Allowed question types: ${allowed}. Prefer "mcq" unless another type fits better.`,
-    diffLine,
-    notes ? `Extra instructions: ${notes}` : "",
-    `Return ONLY the JSON object {"questions":[...]}.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+function buildUserPrompt({ topic, count, difficulty, types, notes, plan }) {
+  const lines = [`Topic / syllabus: ${topic}.`];
+
+  if (Array.isArray(plan) && plan.length) {
+    // Explicit per-bucket distribution (type × difficulty). List each bucket so
+    // the model produces exactly the requested mix.
+    const total = plan.reduce((s, b) => s + b.count, 0);
+    lines.push(`Generate EXACTLY ${total} exam-prep questions, distributed precisely as follows:`);
+    plan.forEach((b) => {
+      lines.push(`- ${b.count} "${b.difficulty}" question(s) of type "${b.type}".`);
+    });
+    lines.push(`Each question's "type" and "difficulty" fields MUST match the bucket it belongs to.`);
+  } else {
+    const allowed = (types && types.length ? types : ["mcq"]).join(", ");
+    lines.push(`Generate ${count} exam-prep questions.`);
+    lines.push(`Allowed question types: ${allowed}. Prefer "mcq" unless another type fits better.`);
+    lines.push(
+      difficulty && DIFFS.includes(difficulty)
+        ? `All questions must be "${difficulty}" difficulty.`
+        : `Mix the difficulty across Easy, Medium and Hard.`
+    );
+  }
+
+  if (notes) lines.push(`Extra instructions: ${notes}`);
+  lines.push(`Return ONLY the JSON object {"questions":[...]}.`);
+  return lines.join("\n");
 }
 
 // Pull the assistant's text out of an OpenAI-compatible response. Handles the
@@ -227,25 +237,49 @@ export async function generateQuestions(req, res) {
   const topic = String(req.body?.topic || "").trim();
   if (!topic) return res.status(400).json({ message: "A topic is required." });
 
+  const notes = String(req.body?.notes || "").trim();
+  const model = resolveModel(String(req.body?.model || "").trim());
+
+  // New: explicit per-bucket plan [{ type, difficulty, count }]. Sanitize each
+  // entry and cap the overall total. Falls back to the simple count/difficulty/
+  // types path when no plan is provided (backward compatible).
+  let plan = null;
+  if (Array.isArray(req.body?.plan)) {
+    plan = req.body.plan
+      .filter((b) => b && TYPES.includes(b.type) && DIFFS.includes(b.difficulty))
+      .map((b) => ({ type: b.type, difficulty: b.difficulty, count: Math.max(0, parseInt(b.count, 10) || 0) }))
+      .filter((b) => b.count > 0);
+    // Cap total at 40 without dropping buckets entirely.
+    let running = 0;
+    plan = plan
+      .map((b) => {
+        const room = Math.max(0, 40 - running);
+        const c = Math.min(b.count, room);
+        running += c;
+        return { ...b, count: c };
+      })
+      .filter((b) => b.count > 0);
+    if (!plan.length) plan = null;
+  }
+
+  // Simple-mode fallbacks (only used when there's no plan).
   const count = Math.min(30, Math.max(1, parseInt(req.body?.count, 10) || 5));
   const difficulty = req.body?.difficulty;
   const types = Array.isArray(req.body?.types)
     ? req.body.types.filter((t) => TYPES.includes(t))
     : [];
-  const notes = String(req.body?.notes || "").trim();
-  const model = resolveModel(String(req.body?.model || "").trim());
 
-  // max_tokens is REQUIRED by Anthropic/Claude models and prevents the JSON
-  // reply from being truncated for larger batches. Scale it with the count,
-  // with generous headroom (each question carries an explanation + 4 option
-  // explanations, so output is large).
-  const maxTokens = Math.min(24000, 2000 + count * 700);
+  // Total drives the token budget. max_tokens is REQUIRED by Claude and
+  // prevents truncation; each question carries an explanation + 4 option
+  // explanations, so output is large.
+  const totalQ = plan ? plan.reduce((s, b) => s + b.count, 0) : count;
+  const maxTokens = Math.min(24000, 2000 + totalQ * 700);
 
   const payload = {
     model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt({ topic, count, difficulty, types, notes }) },
+      { role: "user", content: buildUserPrompt({ topic, count, difficulty, types, notes, plan }) },
     ],
     temperature: 0.6,
     max_tokens: maxTokens,
