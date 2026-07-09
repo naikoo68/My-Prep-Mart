@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download } from "lucide-react";
 import { practiceService, testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -32,6 +32,8 @@ export default function AdminPractice() {
   const [tqSaving, setTqSaving] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [viewQ, setViewQ] = useState(null);
+  const [viewAll, setViewAll] = useState(false);
+  const [selectedQ, setSelectedQ] = useState([]);
 
   // Visibility management for one item
   const [access, setAccess] = useState(null); // { itemId, name, visibleToAll, users:[] }
@@ -87,8 +89,32 @@ export default function AdminPractice() {
   // ---- Questions ----
   const openQuestions = (item) => {
     setQItem(item);
+    setSelectedQ([]);
     setTqLoading(true);
     testService.getQuestions(item._id).then(setTq).catch((e) => setError(e.message)).finally(() => setTqLoading(false));
+  };
+  const toggleSelectQ = (id) => setSelectedQ((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const allQSelected = tq.length > 0 && selectedQ.length === tq.length;
+  const toggleAllQ = () => setSelectedQ(allQSelected ? [] : tq.map((q) => q._id));
+  const deleteSelectedQ = async () => {
+    if (!selectedQ.length || !window.confirm(`Delete ${selectedQ.length} selected question(s)? This cannot be undone.`)) return;
+    for (const id of selectedQ) await testService.deleteQuestion(qItem._id, id);
+    setSelectedQ([]);
+    await reloadTq();
+    load("items");
+  };
+  const csvQuestions = () => (selectedQ.length ? tq.filter((q) => selectedQ.includes(q._id)) : tq);
+  const downloadCsv = () => {
+    const list = csvQuestions();
+    if (!list.length) return;
+    const url = URL.createObjectURL(new Blob([questionsToCsv(list)], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${String(qItem?.name || "questions").replace(/[^\w-]+/g, "_")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
   const reloadTq = () => testService.getQuestions(qItem._id).then(setTq).catch(() => {});
   const saveTestQuestion = async (payload) => {
@@ -108,9 +134,10 @@ export default function AdminPractice() {
     load("items");
   };
   const copyCsv = async () => {
-    if (!tq.length) return;
-    try { await navigator.clipboard.writeText(questionsToCsv(tq)); window.alert(`Copied ${tq.length} question(s) as CSV.`); }
-    catch { window.alert("Clipboard blocked."); }
+    const list = csvQuestions();
+    if (!list.length) return;
+    try { await navigator.clipboard.writeText(questionsToCsv(list)); window.alert(`Copied ${list.length} question(s) as CSV.`); }
+    catch { window.alert("Clipboard blocked — use Download CSV."); }
   };
 
   // ---- Visibility / access ----
@@ -232,29 +259,44 @@ export default function AdminPractice() {
               <button onClick={() => setQItem(null)}><X className="h-5 w-5" /></button>
             </div>
             <div className="mb-4 flex flex-wrap justify-end gap-2">
-              {tq.length > 0 && <button onClick={copyCsv} className="btn-outline"><Copy className="h-4 w-4" /> Copy CSV</button>}
+              {tq.length > 0 && <button onClick={() => setViewAll(true)} className="btn-outline"><Eye className="h-4 w-4" /> View All</button>}
+              {tq.length > 0 && <button onClick={copyCsv} className="btn-outline"><Copy className="h-4 w-4" /> Copy CSV{selectedQ.length ? ` (${selectedQ.length})` : ""}</button>}
+              {tq.length > 0 && <button onClick={downloadCsv} className="btn-outline"><Download className="h-4 w-4" /> Download CSV{selectedQ.length ? ` (${selectedQ.length})` : ""}</button>}
               <button onClick={() => setBulkOpen(true)} className="btn-outline"><Upload className="h-4 w-4" /> Bulk Upload</button>
               <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary"><Plus className="h-4 w-4" /> Add Question</button>
             </div>
             {tqLoading ? <Loading /> : tq.length === 0 ? <EmptyState message="No questions yet." /> : (
-              <div className="space-y-3">
-                {tq.map((item, i) => (
-                  <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                    <div className="min-w-0">
-                      <p className="font-medium">Q{i + 1}. {item.text}</p>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        <Badge variant="brand">{item.type || "mcq"}</Badge>
-                        {item.difficulty && <Badge variant={item.difficulty}>{item.difficulty}</Badge>}
+              <>
+                <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allQSelected} onChange={toggleAllQ} className="h-4 w-4 accent-brand-600" /> Select all</label>
+                  {selectedQ.length > 0 && (<>
+                    <span className="text-sm text-slate-500">{selectedQ.length} selected</span>
+                    <button onClick={deleteSelectedQ} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-600"><Trash2 className="h-4 w-4" /> Delete selected</button>
+                    <button onClick={() => setSelectedQ([])} className="text-sm text-slate-500 hover:underline">Clear</button>
+                  </>)}
+                </div>
+                <div className="space-y-3">
+                  {tq.map((item, i) => (
+                    <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <input type="checkbox" checked={selectedQ.includes(item._id)} onChange={() => toggleSelectQ(item._id)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600" />
+                        <div className="min-w-0">
+                          <p className="font-medium">Q{i + 1}. {item.text}</p>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            <Badge variant="brand">{item.type || "mcq"}</Badge>
+                            {item.difficulty && <Badge variant={item.difficulty}>{item.difficulty}</Badge>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-shrink-0 gap-1">
+                        <button onClick={() => setViewQ(item)} title="View" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"><Eye className="h-4 w-4" /></button>
+                        <button onClick={() => setTqModal({ mode: "edit", data: item })} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => removeTq(item._id)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
-                    <div className="flex flex-shrink-0 gap-1">
-                      <button onClick={() => setViewQ(item)} title="View" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"><Eye className="h-4 w-4" /></button>
-                      <button onClick={() => setTqModal({ mode: "edit", data: item })} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => removeTq(item._id)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
             <div className="mt-6 flex justify-end"><button onClick={() => setQItem(null)} className="btn-outline">Close</button></div>
           </div>
@@ -277,6 +319,30 @@ export default function AdminPractice() {
             <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-bold">Question</h3><button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button></div>
             <QuestionView q={viewQ} />
             <div className="mt-6 flex justify-end"><button onClick={() => setViewQ(null)} className="btn-outline">Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* View all questions (with edit/delete per question) */}
+      {viewAll && qItem && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewAll(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-3xl animate-scale-in card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">All questions — {qItem.name} ({tq.length})</h3>
+              <button onClick={() => setViewAll(false)}><X className="h-5 w-5" /></button>
+            </div>
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+              {tq.map((it, i) => (
+                <div key={it._id} className="relative rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="absolute right-2 top-2 z-10 flex gap-1">
+                    <button onClick={() => { setViewAll(false); setTqModal({ mode: "edit", data: it }); }} title="Edit" className="rounded-lg bg-white p-1.5 text-brand-600 shadow hover:bg-brand-50 dark:bg-slate-800 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => removeTq(it._id)} title="Delete" className="rounded-lg bg-white p-1.5 text-rose-600 shadow hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                  <QuestionView q={it} index={i + 1} />
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-end"><button onClick={() => setViewAll(false)} className="btn-outline">Close</button></div>
           </div>
         </div>
       )}
