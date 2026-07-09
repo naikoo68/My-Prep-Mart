@@ -225,6 +225,16 @@ function normalize(list) {
 const MAX_TOTAL = 100; // most questions per generate request
 const CHUNK_SIZE = 15; // questions generated per provider call (keeps each reply small enough to not truncate)
 
+// Pull a suggested retry wait (ms) out of a 429 response — either the
+// Retry-After header or Gemini's RetryInfo "retryDelay":"27s" body field.
+function retryWaitMs(headers, body) {
+  const ra = parseInt(headers?.get?.("retry-after") || "", 10);
+  if (ra > 0) return Math.min(ra * 1000, 20000);
+  const m = /"retryDelay"\s*:\s*"?(\d+)s/i.exec(body || "");
+  if (m) return Math.min(parseInt(m[1], 10) * 1000, 20000);
+  return 0;
+}
+
 // One provider call with transient-error retries. Returns { ok, status, content, detail }.
 async function callProvider({ key, model, userPrompt, maxTokens }) {
   const payload = {
@@ -242,22 +252,23 @@ async function callProvider({ key, model, userPrompt, maxTokens }) {
 
   const TRANSIENT = [429, 500, 502, 503, 504];
   const WAITS = [1500, 3000, 6000, 9000];
-  let resp;
   for (let attempt = 0; ; attempt++) {
-    resp = await fetch(`${BASE_URL()}/chat/completions`, {
+    const resp = await fetch(`${BASE_URL()}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify(payload),
     });
-    if (resp.ok || !TRANSIENT.includes(resp.status) || attempt >= WAITS.length) break;
-    await new Promise((r) => setTimeout(r, WAITS[attempt]));
-  }
-  if (!resp.ok) {
+    if (resp.ok) {
+      const data = await resp.json();
+      return { ok: true, content: extractContent(data) };
+    }
     const detail = await resp.text().catch(() => "");
-    return { ok: false, status: resp.status, detail };
+    const canRetry = TRANSIENT.includes(resp.status) && attempt < WAITS.length;
+    if (!canRetry) return { ok: false, status: resp.status, detail };
+    // For 429 (quota/rate) honour the server's suggested delay; else backoff.
+    const wait = resp.status === 429 ? retryWaitMs(resp.headers, detail) || WAITS[attempt] : WAITS[attempt];
+    await new Promise((r) => setTimeout(r, wait));
   }
-  const data = await resp.json();
-  return { ok: true, content: extractContent(data) };
 }
 
 // Take a sub-plan of up to `size` questions off the front of a bucket plan.
@@ -335,7 +346,13 @@ async function runGenerationJob(id, ctx) {
       calls += 1;
       const maxTokens = Math.min(16000, 1500 + n * 700);
       const r = await callProvider({ key, model, userPrompt: prompt, maxTokens });
-      if (!r.ok) { lastError = r; continue; }
+      if (!r.ok) {
+        lastError = r;
+        // A 429 means quota/rate exhausted — retrying more won't help right now.
+        // Stop and return whatever we already have.
+        if (r.status === 429) break;
+        continue;
+      }
       const qs = normalize(parseQuestions(r.content));
       for (const q of qs) {
         if (collected.length >= target) break;
@@ -345,16 +362,20 @@ async function runGenerationJob(id, ctx) {
     }
 
     if (!collected.length) {
-      const msg = lastError
-        ? `AI provider error (${lastError.status}).${
-            lastError.status === 503 || lastError.status === 429
-              ? " The model is busy — try again shortly or pick a different model."
-              : ""
-          } ${(lastError.detail || "").slice(0, 200)}`
-        : "The AI did not return any usable questions. Try again, a simpler topic, or a different model.";
+      let msg;
+      if (lastError?.status === 429) {
+        msg =
+          "Gemini quota/rate limit reached (429). The free tier allows only a limited number of requests per minute/day. Wait a minute (or until tomorrow), generate a smaller batch, switch to another model, or enable billing on your Google AI key.";
+      } else if (lastError) {
+        const busy = lastError.status === 503 ? " The model is busy — try again shortly or pick a different model." : "";
+        msg = `AI provider error (${lastError.status}).${busy} ${(lastError.detail || "").slice(0, 200)}`;
+      } else {
+        msg = "The AI did not return any usable questions. Try again, a simpler topic, or a different model.";
+      }
       save({ status: "error", error: msg });
     } else {
-      save({ status: "done", questions: collected });
+      // Finished (possibly short of target if quota ran out mid-run).
+      save({ status: "done", questions: collected, error: lastError?.status === 429 ? "quota" : null });
     }
   } catch (err) {
     save(collected.length ? { status: "done", questions: collected } : { status: "error", error: err?.message || "AI request failed." });

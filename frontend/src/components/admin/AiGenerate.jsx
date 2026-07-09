@@ -89,7 +89,16 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
         if (s.status === "done") {
           const qs = s.questions || [];
           setPreview(qs);
-          setMsg(`✓ Generated ${qs.length} of ${requested} question(s)${s.model ? ` with ${s.model}` : ""}. Review below, then Insert.`);
+          const short = qs.length < requested;
+          const quota = s.error === "quota";
+          setMsg(
+            `✓ Generated ${qs.length} of ${requested} question(s)${s.model ? ` with ${s.model}` : ""}.` +
+              (short && quota
+                ? " Stopped early — Gemini free-tier quota was reached. Insert these, then generate the rest in a minute."
+                : short
+                ? " (Some couldn't be generated — you can top up with another run.)"
+                : " Review below, then Insert.")
+          );
           done = true;
         } else if (s.status === "error") {
           setMsg(s.error || "Generation failed.");
