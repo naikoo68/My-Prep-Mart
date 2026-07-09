@@ -286,6 +286,11 @@ export default function AdminPractice() {
                             <Badge variant="brand">{item.type || "mcq"}</Badge>
                             {item.difficulty && <Badge variant={item.difficulty}>{item.difficulty}</Badge>}
                           </div>
+                          {Array.isArray(item.options) && item.correct != null && item.options[item.correct] != null && (
+                            <p className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                              Correct: {String.fromCharCode(65 + item.correct)} — {item.options[item.correct]}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-shrink-0 gap-1">
