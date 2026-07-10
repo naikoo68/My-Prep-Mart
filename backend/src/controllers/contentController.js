@@ -110,13 +110,15 @@ export async function deleteSubject(req, res) {
 
 // GET /api/subjects/:subjectId/topics — includes session count per topic
 export async function listTopics(req, res) {
-  const topics = await Topic.find({ subject: req.params.subjectId }).sort("index").lean();
+  const topics = await Topic.find({ subject: req.params.subjectId }).sort("index createdAt").lean();
   const sMap = await countMap(Session, topics.map((t) => t._id), "topic");
   res.json(topics.map((t) => ({ ...t, sessions: sMap[String(t._id)] || 0 })));
 }
 
 export async function createTopic(req, res) {
-  const topic = await Topic.create(req.body);
+  // Append at the end: index = current number of topics in this subject.
+  const index = req.body.index ?? (await Topic.countDocuments({ subject: req.body.subject }));
+  const topic = await Topic.create({ ...req.body, index });
   res.status(201).json(topic);
 }
 
@@ -143,13 +145,14 @@ export async function deleteTopic(req, res) {
 
 // GET /api/topics/:topicId/sessions — includes quiz count per session
 export async function listSessions(req, res) {
-  const sessions = await Session.find({ topic: req.params.topicId }).sort("index").lean();
+  const sessions = await Session.find({ topic: req.params.topicId }).sort("index createdAt").lean();
   const qMap = await countMap(Quiz, sessions.map((s) => s._id), "session");
   res.json(sessions.map((s) => ({ ...s, quizzes: qMap[String(s._id)] || 0 })));
 }
 
 export async function createSession(req, res) {
-  const session = await Session.create(req.body);
+  const index = req.body.index ?? (await Session.countDocuments({ topic: req.body.topic }));
+  const session = await Session.create({ ...req.body, index });
   res.status(201).json(session);
 }
 
@@ -172,13 +175,15 @@ export async function deleteSession(req, res) {
 
 // GET /api/sessions/:sessionId/quizzes — includes question count per quiz
 export async function listQuizzes(req, res) {
-  const quizzes = await Quiz.find({ session: req.params.sessionId }).sort("index").lean();
+  const quizzes = await Quiz.find({ session: req.params.sessionId }).sort("index createdAt").lean();
   const qMap = await countMap(Question, quizzes.map((q) => q._id), "quiz");
   res.json(quizzes.map((q) => ({ ...q, questions: qMap[String(q._id)] || 0 })));
 }
 
 export async function createQuiz(req, res) {
-  const quiz = await Quiz.create(req.body);
+  // Append at the end so Quiz 1 stays before Quiz 2, etc.
+  const index = req.body.index ?? (await Quiz.countDocuments({ session: req.body.session }));
+  const quiz = await Quiz.create({ ...req.body, index });
   notifyNewContent("quiz", quiz); // fire-and-forget (respects admin toggle)
   res.status(201).json(quiz);
 }
