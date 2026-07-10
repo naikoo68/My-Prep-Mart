@@ -45,6 +45,9 @@ const questionSchema = new mongoose.Schema(
 
     difficulty: { type: String, enum: ["Easy", "Medium", "Hard"], default: "Medium" },
     topic: { type: String },
+    // For test-series questions: the subject "section" this question belongs to
+    // (matches a name in the test's subjectPlan). Groups questions by subject.
+    section: { type: String, default: "" },
     explanation: { type: String }, // detailed explanation of the correct answer
     // Optional brief explanation for each option (parallel to `options`), shown
     // after answering so the student learns why each choice is right/wrong.

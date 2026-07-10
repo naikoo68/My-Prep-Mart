@@ -13,6 +13,8 @@ import QuestionView from "../../components/admin/QuestionView";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
+// Subject names from a test's typed plan (for the "Add to subject" selectors).
+const sectionsOf = (t) => (t?.subjectPlan || []).map((p) => p.subject).filter(Boolean);
 
 export default function AdminTests() {
   // Drill-down: exams → posts → tests
@@ -648,13 +650,14 @@ export default function AdminTests() {
       <BulkUploadQuestions
         open={!!bulkTest}
         title={`Bulk Upload Questions${bulkTest ? ` — ${bulkTest.name}` : ""}`}
+        sections={sectionsOf(bulkTest)}
         onClose={() => setBulkTest(null)}
         onUpload={async (questions, opts = {}) => {
           if (opts.replace) {
             const existing = await testService.getQuestions(bulkTest._id);
             for (const q of existing) await testService.deleteQuestion(bulkTest._id, q._id);
           }
-          const res = await contentService.bulkQuestions(questions, { testSeries: bulkTest._id });
+          const res = await contentService.bulkQuestions(questions, { testSeries: bulkTest._id, section: opts.section || "" });
           load(); // refresh question counts
           return res;
         }}
@@ -663,9 +666,10 @@ export default function AdminTests() {
       <AiGenerate
         open={!!aiTest}
         title={`Generate with AI${aiTest ? ` — ${aiTest.name}` : ""}`}
+        sections={sectionsOf(aiTest)}
         onClose={() => setAiTest(null)}
-        onUpload={async (questions) => {
-          const res = await contentService.bulkQuestions(questions, { testSeries: aiTest._id });
+        onUpload={async (questions, opts = {}) => {
+          const res = await contentService.bulkQuestions(questions, { testSeries: aiTest._id, section: opts.section || "" });
           load(); // refresh question counts
           return res;
         }}
@@ -674,9 +678,10 @@ export default function AdminTests() {
       <AiImport
         open={!!importTest}
         title={`Import from Web${importTest ? ` — ${importTest.name}` : ""}`}
+        sections={sectionsOf(importTest)}
         onClose={() => setImportTest(null)}
-        onUpload={async (questions) => {
-          const res = await contentService.bulkQuestions(questions, { testSeries: importTest._id });
+        onUpload={async (questions, opts = {}) => {
+          const res = await contentService.bulkQuestions(questions, { testSeries: importTest._id, section: opts.section || "" });
           load();
           return res;
         }}
@@ -685,6 +690,7 @@ export default function AdminTests() {
       <PickFromBank
         open={!!bankTest}
         testId={bankTest?._id}
+        plan={bankTest?.subjectPlan || []}
         title={`Add from Quizzes / Practice${bankTest ? ` — ${bankTest.name}` : ""}`}
         onClose={() => setBankTest(null)}
         onDone={() => load()}
@@ -699,6 +705,42 @@ export default function AdminTests() {
               <button onClick={() => setQTest(null)}><X className="h-5 w-5" /></button>
             </div>
             <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{qTest.name}</p>
+
+            {/* Per-subject progress: added vs planned vs remaining */}
+            {(qTest.subjectPlan?.length > 0 || tq.some((q) => !q.section)) && (
+              <div className="mb-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <p className="mb-2 text-sm font-semibold">Questions by subject</p>
+                <div className="space-y-1.5">
+                  {(qTest.subjectPlan || []).map((p, i) => {
+                    const added = tq.filter((q) => (q.section || "") === p.subject).length;
+                    const planned = p.count || 0;
+                    const remaining = Math.max(0, planned - added);
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">{p.subject}</span>
+                        <span className="flex items-center gap-1.5 text-xs">
+                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{added} added</span>
+                          {planned > 0 && (
+                            <>
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500 dark:bg-slate-800">{planned} planned</span>
+                              <span className={`rounded px-1.5 py-0.5 font-semibold ${remaining > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
+                                {remaining} remaining
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {tq.some((q) => !q.section) && (
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-medium text-slate-400">Unassigned</span>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-slate-800">{tq.filter((q) => !q.section).length} added</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="mb-4 flex flex-wrap justify-end gap-2">
               {tq.length > 0 && (
@@ -745,6 +787,7 @@ export default function AdminTests() {
                       <div className="min-w-0">
                       <p className="truncate text-sm font-medium"><span className="text-slate-400">Q{i + 1}.</span> {item.text}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {item.section && <Badge variant="accent">{item.section}</Badge>}
                         <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : "MCQ"}</Badge>
                         <Badge variant={item.difficulty}>{item.difficulty}</Badge>
                         {item.status && <Badge variant={item.status === "published" ? "brand" : "neutral"}>{item.status}</Badge>}
@@ -783,6 +826,7 @@ export default function AdminTests() {
           key={tqModal.mode === "edit" ? tqModal.data?._id : "new-test-question"}
           question={tqModal.mode === "edit" ? tqModal.data : null}
           saving={tqSaving}
+          sections={sectionsOf(qTest)}
           onClose={() => setTqModal(null)}
           onSave={saveTestQuestion}
         />

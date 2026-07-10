@@ -40,9 +40,10 @@ function Field({ label, children }) {
 // Reusable Add/Edit question modal supporting simple MCQs and matching MCQs.
 // `question` = existing data (edit) or null (add). `onSave(payload)` receives a
 // clean payload (the parent attaches context like quiz/testSeries + calls the API).
-export default function QuestionFormModal({ question, saving, onClose, onSave }) {
+export default function QuestionFormModal({ question, saving, onClose, onSave, sections = [] }) {
   const data = question || emptyQuestion;
   const [form, setForm] = useState(() => ({
+    section: data.section || "",
     type: data.type || "mcq",
     text: data.text || "",
     options: data.options && data.options.length ? [...data.options] : ["", "", "", ""],
@@ -134,6 +135,7 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
       // per-option note is always cleared; only the other three carry a brief.
       optionExplanations: (form.optionExplanations || []).map((x, i) => (i === form.correct ? "" : (x || "").trim())),
       status: form.status,
+      section: form.section || "",
     };
     let payload;
     if (form.type === "matching") {
@@ -216,6 +218,14 @@ export default function QuestionFormModal({ question, saving, onClose, onSave })
         )}
 
         <div className="space-y-4">
+          {sections.length > 0 && (
+            <Field label="Subject (section of this test)">
+              <select className="input" value={form.section} onChange={(e) => setForm({ ...form, section: e.target.value })}>
+                <option value="">— No subject —</option>
+                {sections.map((s, i) => <option key={i} value={s}>{s}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label="Question Type">
             <select
               className="input"

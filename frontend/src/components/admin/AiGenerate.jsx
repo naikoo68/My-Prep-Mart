@@ -18,9 +18,10 @@ const DIFFS = ["Easy", "Medium", "Hard"];
 // Reusable "Generate with AI" modal. Mirrors BulkUploadQuestions:
 // `onUpload(questions)` should return a promise (e.g. { inserted }). The AI
 // only PREVIEWS questions here — nothing is saved until the admin clicks Insert.
-export default function AiGenerate({ open, onClose, onUpload, title = "Generate Questions with AI" }) {
+export default function AiGenerate({ open, onClose, onUpload, title = "Generate Questions with AI", sections = [] }) {
   const [status, setStatus] = useState(null); // { enabled, model, models: [] }
   const [model, setModel] = useState("");
+  const [section, setSection] = useState(sections[0] || ""); // subject to tag generated questions
   const [topic, setTopic] = useState("");
   // matrix[typeId] = { Easy, Medium, Hard } counts. Default: 5 medium MCQs.
   const [matrix, setMatrix] = useState({ mcq: { Easy: 0, Medium: 5, Hard: 0 } });
@@ -120,7 +121,7 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
     setInserting(true);
     setMsg("");
     try {
-      const res = await onUpload(preview);
+      const res = await onUpload(preview, { section });
       setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s).`);
       setPreview([]);
       setTopic("");
@@ -166,6 +167,16 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
                   {status.models.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
+                </select>
+              </div>
+            )}
+
+            {sections.length > 0 && (
+              <div className="mb-3">
+                <label className="mb-1 block text-sm font-semibold">Add to subject</label>
+                <select className="input" value={section} onChange={(e) => setSection(e.target.value)}>
+                  <option value="">— No subject —</option>
+                  {sections.map((s, i) => <option key={i} value={s}>{s}</option>)}
                 </select>
               </div>
             )}

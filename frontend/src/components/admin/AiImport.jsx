@@ -8,9 +8,10 @@ const LETTERS = ["A", "B", "C", "D"];
 // questions already present (it does not invent them) and returns them in the
 // app's format for preview → insert. Reuses the same onUpload handler as the
 // bulk-upload / AI-generate modals.
-export default function AiImport({ open, onClose, onUpload, title = "Import Questions from Web" }) {
+export default function AiImport({ open, onClose, onUpload, title = "Import Questions from Web", sections = [] }) {
   const [status, setStatus] = useState(null);
   const [model, setModel] = useState("");
+  const [section, setSection] = useState(sections[0] || ""); // subject to tag imported questions
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [preview, setPreview] = useState([]);
@@ -91,7 +92,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     setInserting(true);
     setMsg("");
     try {
-      const res = await onUpload(preview);
+      const res = await onUpload(preview, { section });
       setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s).`);
       setPreview([]);
       setUrl("");
@@ -131,6 +132,16 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
                 <label className="mb-1 block text-sm font-semibold">AI model</label>
                 <select className="input" value={model} onChange={(e) => setModel(e.target.value)}>
                   {status.models.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            )}
+
+            {sections.length > 0 && (
+              <div className="mb-3">
+                <label className="mb-1 block text-sm font-semibold">Add to subject</label>
+                <select className="input" value={section} onChange={(e) => setSection(e.target.value)}>
+                  <option value="">— No subject —</option>
+                  {sections.map((s, i) => <option key={i} value={s}>{s}</option>)}
                 </select>
               </div>
             )}

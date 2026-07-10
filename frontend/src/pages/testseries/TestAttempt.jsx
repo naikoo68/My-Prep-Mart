@@ -75,7 +75,16 @@ export default function TestAttempt() {
       .get(testId)
       .then((t) => {
         setTest(t);
-        setQuestions(t.questions || []);
+        // Order questions by the test's subject plan so each subject's questions
+        // sit together (English block, then Economics block, …), unassigned last.
+        const plan = (t.subjectPlan || []).map((p) => p.subject);
+        const rank = (sec) => {
+          const i = plan.indexOf(sec || "");
+          if (i !== -1) return i;
+          return sec ? plan.length : plan.length + 1; // unknown section, then unassigned
+        };
+        const qs = [...(t.questions || [])].sort((a, b) => rank(a.section) - rank(b.section));
+        setQuestions(qs);
         setRemaining((t.duration || 30) * 60);
       })
       .catch((e) => setError(e.message))
@@ -179,6 +188,19 @@ export default function TestAttempt() {
     return c;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answers, marked, visited, questions]);
+
+  // Contiguous subject groups (for the palette + section titles).
+  const groups = useMemo(() => {
+    const out = [];
+    questions.forEach((q, i) => {
+      const sec = q.section || "";
+      let g = out[out.length - 1];
+      if (!g || g.section !== sec) { g = { section: sec, items: [] }; out.push(g); }
+      g.items.push(i);
+    });
+    return out;
+  }, [questions]);
+  const hasSections = groups.some((g) => g.section);
 
   if (loading) return <div className="container-page"><Loading label="Loading test..." /></div>;
   if (error && !result) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;
@@ -362,6 +384,12 @@ export default function TestAttempt() {
 
       <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[1fr,320px]">
         <div className="card flex flex-col p-6">
+          {hasSections && q.section && (
+            <div className="mb-3 flex items-center gap-2">
+              <span className="rounded-full bg-brand-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">{q.section}</span>
+              <span className="text-xs text-slate-400">Section</span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
             <span className="font-bold">Question {current + 1} of {questions.length}</span>
             <div className="flex items-center gap-4">
@@ -448,17 +476,28 @@ export default function TestAttempt() {
             <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-slate-300 dark:bg-slate-700" /> Not Visited ({counts.notVisited})</span>
           </div>
 
-          <div className="mt-4 grid max-h-[50vh] grid-cols-6 gap-2 overflow-y-auto pr-1">
-            {questions.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goTo(i)}
-                className={`flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold transition ${paletteColor(
-                  statusOf(i)
-                )} ${i === current ? "ring-2 ring-brand-500 ring-offset-1 dark:ring-offset-slate-900" : ""}`}
-              >
-                {i + 1}
-              </button>
+          <div className="mt-4 max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+            {groups.map((g, gi) => (
+              <div key={gi}>
+                {hasSections && (
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                    {g.section || "General"} <span className="text-slate-400">({g.items.length})</span>
+                  </p>
+                )}
+                <div className="grid grid-cols-6 gap-2">
+                  {g.items.map((i) => (
+                    <button
+                      key={i}
+                      onClick={() => goTo(i)}
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold transition ${paletteColor(
+                        statusOf(i)
+                      )} ${i === current ? "ring-2 ring-brand-500 ring-offset-1 dark:ring-offset-slate-900" : ""}`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
 

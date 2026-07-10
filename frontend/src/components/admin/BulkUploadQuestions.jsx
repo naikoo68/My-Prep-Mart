@@ -328,11 +328,12 @@ const TEMPLATE =
 
 // Reusable bulk-upload modal. `onUpload(questions)` should return a promise
 // (e.g. resolving to { inserted }). Used for both quizzes and test series.
-export default function BulkUploadQuestions({ open, onClose, onUpload, title = "Bulk Upload Questions" }) {
+export default function BulkUploadQuestions({ open, onClose, onUpload, title = "Bulk Upload Questions", sections = [] }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [replace, setReplace] = useState(false); // remove existing questions first
+  const [section, setSection] = useState(sections[0] || ""); // subject to tag uploaded questions
 
   if (!open) return null;
 
@@ -352,7 +353,7 @@ export default function BulkUploadQuestions({ open, onClose, onUpload, title = "
     setBusy(true);
     setMsg("");
     try {
-      const res = await onUpload(rows, { replace });
+      const res = await onUpload(rows, { replace, section });
       setMsg(`✓ ${replace ? "Replaced with" : "Uploaded"} ${res?.inserted ?? rows.length} question(s).`);
       setText("");
       setReplace(false);
@@ -400,6 +401,16 @@ export default function BulkUploadQuestions({ open, onClose, onUpload, title = "
             <FileText className="h-3.5 w-3.5" /> Load example
           </button>
         </div>
+
+        {sections.length > 0 && (
+          <div className="mb-3 flex items-center gap-2">
+            <label className="text-sm font-semibold text-slate-600 dark:text-slate-300">Add to subject:</label>
+            <select value={section} onChange={(e) => setSection(e.target.value)} className="input max-w-xs py-1.5 text-sm">
+              <option value="">— No subject —</option>
+              {sections.map((s, i) => <option key={i} value={s}>{s}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="mb-3 flex flex-wrap gap-2">
           <label className="btn-outline cursor-pointer">

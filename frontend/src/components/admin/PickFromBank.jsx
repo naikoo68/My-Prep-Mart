@@ -15,8 +15,9 @@ const cleanQ = (q) => {
 // Manually pick questions from existing Quizzes / Practice and copy them into a
 // test. Drill down with the selects, tick the questions you want (across
 // multiple quizzes), then "Add to test".
-export default function PickFromBank({ open, onClose, testId, title = "Add from Quizzes / Practice", onDone }) {
+export default function PickFromBank({ open, onClose, testId, plan = [], title = "Add from Quizzes / Practice", onDone }) {
   const [tab, setTab] = useState("quiz"); // quiz | practice
+  const [section, setSection] = useState(""); // subject to assign picked questions to
   const [questions, setQuestions] = useState([]);
   const [loadingQ, setLoadingQ] = useState(false);
   const [chosen, setChosen] = useState({}); // _id -> question object (persists across drilling)
@@ -44,6 +45,7 @@ export default function PickFromBank({ open, onClose, testId, title = "Add from 
     setChosen({});
     setQuestions([]);
     setMsg("");
+    setSection(plan[0]?.subject || "");
     setSel({ subject: "", topic: "", session: "", quiz: "" });
     setPSel({ stream: "", subject: "", topic: "", item: "" });
     contentService.subjects().then(setSubjects).catch(() => setSubjects([]));
@@ -89,7 +91,7 @@ export default function PickFromBank({ open, onClose, testId, title = "Add from 
     setMsg("");
     try {
       const payload = Object.values(chosen).map(cleanQ);
-      const res = await contentService.bulkQuestions(payload, { testSeries: testId });
+      const res = await contentService.bulkQuestions(payload, { testSeries: testId, section: section || "" });
       setMsg(`✓ Added ${res?.inserted ?? payload.length} question(s) to the test.`);
       onDone?.(res?.inserted ?? payload.length);
       setTimeout(onClose, 900);
@@ -113,6 +115,28 @@ export default function PickFromBank({ open, onClose, testId, title = "Add from 
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-lg font-bold"><Library className="h-5 w-5 text-brand-600" /> {title}</h3>
           <button type="button" onClick={onClose}><X className="h-5 w-5" /></button>
+        </div>
+
+        {/* Assign picked questions to a subject-section of this test */}
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-sm font-semibold text-slate-600 dark:text-slate-300">Add to subject:</label>
+          {plan.length > 0 ? (
+            <select value={section} onChange={(e) => setSection(e.target.value)} className="input max-w-xs py-1.5 text-sm">
+              {plan.map((p, i) => (
+                <option key={i} value={p.subject}>
+                  {p.subject}{p.count ? ` (plan: ${p.count})` : ""}
+                </option>
+              ))}
+              <option value="">— No subject —</option>
+            </select>
+          ) : (
+            <input
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              placeholder="Subject name (optional)"
+              className="input max-w-xs py-1.5 text-sm"
+            />
+          )}
         </div>
 
         {/* Source tabs */}
