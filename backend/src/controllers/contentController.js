@@ -275,9 +275,8 @@ export async function updateQuestion(req, res) {
   res.json(question);
 }
 
-// Normalize question text for duplicate comparison: lowercase, strip LaTeX
-// markers and punctuation, collapse whitespace. So "What is 2+2?" and
-// "what is  2 + 2" are treated as the same question.
+// Normalize a text fragment for comparison: lowercase, strip LaTeX markers and
+// punctuation, collapse whitespace. So "What is 2+2?" and "what is  2 + 2" match.
 function normalizeText(t) {
   return String(t || "")
     .toLowerCase()
@@ -287,56 +286,80 @@ function normalizeText(t) {
     .trim();
 }
 
+// A question is a duplicate only if the WHOLE thing matches — the stem text AND
+// every option AND the type. (Same title with different options is NOT a dup.)
+function questionSignature(q) {
+  const opts = (Array.isArray(q.options) ? q.options : []).map(normalizeText).join("|");
+  return `${normalizeText(q.text)}##${opts}##${q.type || "mcq"}`;
+}
+
 // GET /api/questions/duplicates  (admin)
-// Scans ALL questions (Quiz content, Test Series, and Practice) and groups
-// together those with effectively identical text. Returns only groups with
-// more than one copy, each annotated with where the copy lives.
+// Finds full-question duplicates, but ONLY within the same container so copies
+// never cross categories:
+//   • Quiz content  → grouped per SUBJECT (a subject's quizzes only)
+//   • Test Series   → grouped per test series
+//   • Practice Quiz / Practice Test → grouped per practice item
+// Returns groups (count > 1) with the full question (options + correct) so the
+// admin can view and confirm before deleting.
 export async function findDuplicates(req, res) {
   const questions = await Question.find({})
-    .select("text type difficulty status subject quiz session testSeries createdAt")
+    .select("text options correct type difficulty status subject quiz session testSeries createdAt")
     .populate("subject", "name")
     .populate("quiz", "title")
-    .populate("session", "title")
     .populate("testSeries", "name practice practiceKind")
     .lean();
 
-  const locate = (q) => {
+  // Determine which container a question belongs to (its dedup scope).
+  const meta = (q) => {
     if (q.testSeries) {
       const ts = q.testSeries;
-      const context = ts.practice
+      const category = ts.practice
         ? ts.practiceKind === "quiz"
           ? "Practice Quiz"
           : "Practice Test"
         : "Test Series";
-      return { context, location: ts.name || "Untitled" };
+      return { category, scopeId: String(ts._id), scopeName: ts.name || "Untitled", location: ts.name || "Untitled" };
     }
     if (q.subject || q.quiz) {
-      const parts = [q.subject?.name, q.quiz?.title].filter(Boolean);
-      return { context: "Quiz", location: parts.join(" › ") || "Quiz" };
+      return {
+        category: "Quiz",
+        scopeId: String(q.subject?._id || "no-subject"),
+        scopeName: q.subject?.name || "Quiz",
+        location: [q.subject?.name, q.quiz?.title].filter(Boolean).join(" › ") || "Quiz",
+      };
     }
-    return { context: "Uncategorized", location: "—" };
+    return { category: "Uncategorized", scopeId: "none", scopeName: "—", location: "—" };
   };
 
-  const groups = new Map(); // normalizedText -> { text, questions: [...] }
+  const groups = new Map();
   for (const q of questions) {
-    const key = normalizeText(q.text);
-    if (!key) continue;
-    if (!groups.has(key)) groups.set(key, { text: q.text, questions: [] });
-    const loc = locate(q);
+    if (!normalizeText(q.text)) continue;
+    const m = meta(q);
+    // Group only within the SAME category + container + identical full question.
+    const key = `${m.category}::${m.scopeId}::${questionSignature(q)}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        category: m.category,
+        scopeName: m.scopeName,
+        text: q.text,
+        options: q.options || [],
+        correct: q.correct,
+        type: q.type,
+        difficulty: q.difficulty,
+        questions: [],
+      });
+    }
     groups.get(key).questions.push({
       _id: q._id,
-      type: q.type,
-      difficulty: q.difficulty,
       status: q.status,
-      context: loc.context,
-      location: loc.location,
+      location: m.location,
       createdAt: q.createdAt,
     });
   }
 
   const dupes = [...groups.values()]
     .filter((g) => g.questions.length > 1)
-    .map((g) => ({ text: g.text, count: g.questions.length, questions: g.questions }))
+    .map((g) => ({ ...g, count: g.questions.length }))
     .sort((a, b) => b.count - a.count);
 
   const extras = dupes.reduce((s, g) => s + (g.count - 1), 0);
