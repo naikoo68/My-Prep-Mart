@@ -21,28 +21,40 @@ const CONTEXT_STYLE = {
 // Finds FULL-question duplicates (text + all options + type) scoped to each
 // container: Quiz per subject, Test Series per test, Practice per item. Lets
 // the admin view the full question and delete the extra copies.
-export default function DuplicatesModal({ open, onClose }) {
+export default function DuplicatesModal({ open, onClose, defaultSubject = "all" }) {
   const [data, setData] = useState(null); // { scanned, groups, extras, duplicates }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState({}); // id -> true
   const [filter, setFilter] = useState("All"); // category filter
   const [expanded, setExpanded] = useState({}); // groupKey -> bool
+  const [subjects, setSubjects] = useState([]); // for the subject dropdown
+  const [subjectId, setSubjectId] = useState(defaultSubject || "all"); // "all" or a subject _id
 
-  const scan = useCallback(() => {
+  const scan = useCallback((sid) => {
     setLoading(true);
     setError("");
     setExpanded({});
     contentService
-      .duplicates()
+      .duplicates(sid)
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    if (open) scan();
-  }, [open, scan]);
+    if (!open) return;
+    const sid = defaultSubject || "all";
+    setSubjectId(sid);
+    setFilter("All");
+    contentService.subjects().then(setSubjects).catch(() => setSubjects([]));
+    scan(sid);
+  }, [open, defaultSubject, scan]);
+
+  const onSubjectChange = (sid) => {
+    setSubjectId(sid);
+    scan(sid);
+  };
 
   // Category tabs come from whatever categories actually have duplicates.
   const categories = useMemo(() => {
@@ -93,7 +105,7 @@ export default function DuplicatesModal({ open, onClose }) {
             <Files className="h-5 w-5 text-brand-600" /> Duplicate Questions
           </h3>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={scan} disabled={loading} className="btn-outline px-3 py-1.5 text-sm">
+            <button type="button" onClick={() => scan(subjectId)} disabled={loading} className="btn-outline px-3 py-1.5 text-sm">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Rescan
             </button>
             <button type="button" onClick={onClose}><X className="h-5 w-5" /></button>
@@ -103,9 +115,24 @@ export default function DuplicatesModal({ open, onClose }) {
         {loading && !data ? (
           <Loading label="Scanning questions…" />
         ) : error ? (
-          <ErrorState message={error} onRetry={scan} />
+          <ErrorState message={error} onRetry={() => scan(subjectId)} />
         ) : data ? (
           <>
+            {/* Subject scope — scan only one subject (e.g. Biology) or all */}
+            <div className="mb-3 flex items-center gap-2">
+              <label className="text-sm font-semibold text-slate-600 dark:text-slate-300">Scan subject:</label>
+              <select
+                className="input max-w-xs py-1.5 text-sm"
+                value={subjectId}
+                onChange={(e) => onSubjectChange(e.target.value)}
+              >
+                <option value="all">All subjects (+ Test Series &amp; Practice)</option>
+                {subjects.map((s) => (
+                  <option key={s._id} value={s._id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="mb-3 flex flex-wrap gap-3 text-sm">
               <span className="rounded-lg bg-slate-100 px-3 py-1.5 dark:bg-slate-800">
                 Scanned <b>{data.scanned}</b> questions

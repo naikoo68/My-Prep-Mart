@@ -398,7 +398,7 @@ export default function AdminContent() {
         }}
       />
 
-      <DuplicatesModal open={dupOpen} onClose={() => setDupOpen(false)} />
+      <DuplicatesModal open={dupOpen} onClose={() => setDupOpen(false)} defaultSubject={subject?._id || "all"} />
 
       {/* View single question */}
       {viewQ && (
