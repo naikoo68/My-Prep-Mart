@@ -21,7 +21,7 @@ const CONTEXT_STYLE = {
 // Finds FULL-question duplicates (text + all options + type) scoped to each
 // container: Quiz per subject, Test Series per test, Practice per item. Lets
 // the admin view the full question and delete the extra copies.
-export default function DuplicatesModal({ open, onClose, defaultSubject = "all", defaultCategory = "All" }) {
+export default function DuplicatesModal({ open, onClose, defaultSubject = "all", defaultSubjectName = "", defaultCategory = "All" }) {
   const [data, setData] = useState(null); // { scanned, groups, extras, duplicates }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -118,6 +118,13 @@ export default function DuplicatesModal({ open, onClose, defaultSubject = "all",
           <ErrorState message={error} onRetry={() => scan(subjectId)} />
         ) : data ? (
           <>
+            {/* Scope banner — makes it clear what's being scanned */}
+            {subjectId !== "all" && (
+              <div className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 dark:bg-brand-900/20 dark:text-brand-300">
+                Scanning duplicates only in: {defaultSubjectName || subjects.find((s) => s._id === subjectId)?.name || "this subject"}
+              </div>
+            )}
+
             {/* Subject scope — scan only one subject (e.g. Biology) or all */}
             <div className="mb-3 flex items-center gap-2">
               <label className="text-sm font-semibold text-slate-600 dark:text-slate-300">Scan subject:</label>

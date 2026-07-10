@@ -226,8 +226,12 @@ export default function AdminContent() {
           <p className="text-slate-500 dark:text-slate-400">Stream → Subject → Topic → Session → Quiz → Questions. Add, edit or delete at any level.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setDupOpen(true)} className="btn-outline" title="Scan all questions for duplicates">
-            <Files className="h-4 w-4" /> Find Duplicates
+          <button
+            onClick={() => setDupOpen(true)}
+            className="btn-outline"
+            title={subject ? `Scan duplicates in ${subject.name}` : "Scan all questions for duplicates"}
+          >
+            <Files className="h-4 w-4" /> Find Duplicates{subject ? ` — ${subject.name}` : ""}
           </button>
           {view === "questions" && (
             <>
@@ -418,7 +422,12 @@ export default function AdminContent() {
         }}
       />
 
-      <DuplicatesModal open={dupOpen} onClose={() => setDupOpen(false)} defaultSubject={subject?._id || "all"} />
+      <DuplicatesModal
+        open={dupOpen}
+        onClose={() => setDupOpen(false)}
+        defaultSubject={subject?._id || "all"}
+        defaultSubjectName={subject?.name || ""}
+      />
 
       {/* View single question */}
       {viewQ && (
