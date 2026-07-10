@@ -452,6 +452,8 @@ export function jobStatus(req, res) {
     status: job.status, // pending | done | error
     count: job.questions.length,
     requested: job.requested,
+    chunksTotal: job.chunksTotal, // for import jobs (source split into pieces)
+    chunksDone: job.chunksDone,
     model: job.model,
     error: job.error,
     questions: job.status === "done" ? job.questions : undefined,
@@ -463,7 +465,32 @@ export function jobStatus(req, res) {
    The admin pastes a page URL and/or the copied text; the AI EXTRACTS the
    questions already present and returns them in the app schema for preview. */
 
-const MAX_SOURCE_CHARS = 16000; // cap the material sent to the model
+const MAX_SOURCE_CHARS = 400000; // overall cap on pasted/fetched material
+const SOURCE_CHUNK_CHARS = 11000; // size of each piece sent to the model per call
+
+// Split large source text into chunks, breaking on natural boundaries so a
+// question isn't cut in half. Handles multi-section pages in one import.
+function splitSource(text, size) {
+  const chunks = [];
+  let i = 0;
+  while (i < text.length) {
+    let end = Math.min(i + size, text.length);
+    if (end < text.length) {
+      const slice = text.slice(i, end);
+      const brk = Math.max(slice.lastIndexOf("\n\n"), slice.lastIndexOf("\n"), slice.lastIndexOf(". "));
+      if (brk > size * 0.5) end = i + brk + 1;
+    }
+    chunks.push(text.slice(i, end).trim());
+    i = end;
+  }
+  return chunks.filter(Boolean);
+}
+
+// Signature to de-duplicate questions collected across chunks/sections.
+function extractSig(q) {
+  const opts = (Array.isArray(q.options) ? q.options : []).map((o) => String(o).toLowerCase().trim()).join("|");
+  return `${String(q.text).toLowerCase().replace(/\s+/g, " ").trim()}##${opts}`;
+}
 
 // Fetch a web page and reduce it to readable plain text.
 async function fetchPageText(url) {
@@ -518,21 +545,70 @@ function buildExtractPrompt(sourceText) {
   ].join("\n");
 }
 
+// Background worker: extract questions from every source chunk and combine
+// (de-duplicated), so a multi-section page is imported in one go.
+async function runExtractionJob(id, { key, model, chunks }) {
+  const job = genJobs.get(id);
+  const deadline = Date.now() + 5 * 60 * 1000; // 5-minute budget
+  const collected = [];
+  const seen = new Set();
+  let lastError = null;
+
+  const save = (patch) => Object.assign(job, patch, { updatedAt: Date.now() });
+
+  try {
+    for (let c = 0; c < chunks.length; c++) {
+      if (Date.now() > deadline) break;
+      const r = await callProvider({
+        key,
+        model,
+        userPrompt: buildExtractPrompt(chunks[c]),
+        maxTokens: 16000,
+      });
+      save({ chunksDone: c + 1 });
+      if (!r.ok) {
+        lastError = r;
+        if (r.status === 429) break; // quota exhausted — stop, keep what we have
+        continue;
+      }
+      for (const q of normalize(parseQuestions(r.content))) {
+        const sig = extractSig(q);
+        if (seen.has(sig)) continue; // skip duplicates across chunks
+        seen.add(sig);
+        collected.push(q);
+      }
+      save({ questions: collected.slice() });
+    }
+
+    if (!collected.length) {
+      const msg =
+        lastError?.status === 429
+          ? "Gemini quota/rate limit reached before any questions were extracted. Wait a minute or use a different model."
+          : lastError
+          ? `AI provider error (${lastError.status}). ${(lastError.detail || "").slice(0, 200)}`
+          : "No questions could be extracted. Make sure the source actually contains questions.";
+      save({ status: "error", error: msg });
+    } else {
+      save({ status: "done", questions: collected, error: lastError?.status === 429 ? "quota" : null });
+    }
+  } catch (err) {
+    save(collected.length ? { status: "done", questions: collected } : { status: "error", error: err?.message || "Import failed." });
+  }
+}
+
 // POST /api/ai/extract  (admin)
-// Body: { url?, content?, model? } — returns { questions, model }.
+// Body: { url?, content?, model? } — starts a background import job over the
+// whole source (all sections) and returns { jobId }. Poll /api/ai/job/:id.
 export async function extractQuestions(req, res) {
   const key = (process.env.AI_API_KEY || "").trim();
   if (!key) {
-    return res.status(400).json({
-      message: "AI is not configured. Add AI_API_KEY to the server environment.",
-    });
+    return res.status(400).json({ message: "AI is not configured. Add AI_API_KEY to the server environment." });
   }
 
   const model = resolveModel(String(req.body?.model || "").trim());
   const url = String(req.body?.url || "").trim();
   let content = String(req.body?.content || "").trim();
 
-  // Optionally pull text from a page URL.
   if (url) {
     if (!/^https?:\/\//i.test(url)) {
       return res.status(400).json({ message: "Enter a valid http(s) URL, or paste the text instead." });
@@ -551,26 +627,23 @@ export async function extractQuestions(req, res) {
   if (!content) {
     return res.status(400).json({ message: "Provide a page URL or paste the questions text to import." });
   }
+
   const source = content.slice(0, MAX_SOURCE_CHARS);
+  const chunks = splitSource(source, SOURCE_CHUNK_CHARS);
 
-  const r = await callProvider({
-    key,
+  cleanupJobs();
+  const id = newJobId();
+  genJobs.set(id, {
+    status: "pending",
+    questions: [],
+    requested: null, // unknown for extraction
+    chunksTotal: chunks.length,
+    chunksDone: 0,
+    error: null,
     model,
-    userPrompt: buildExtractPrompt(source),
-    maxTokens: 16000,
+    updatedAt: Date.now(),
   });
-  if (!r.ok) {
-    const hint =
-      r.status === 429 ? " Quota/rate limit reached — wait a moment or use a different model." : "";
-    return res.status(502).json({ message: `AI provider error (${r.status}).${hint} ${(r.detail || "").slice(0, 200)}` });
-  }
 
-  const questions = normalize(parseQuestions(r.content));
-  if (!questions.length) {
-    return res.status(422).json({
-      message:
-        "No questions could be extracted from that source. Make sure the page/text actually contains questions, or paste them directly.",
-    });
-  }
-  res.json({ questions, model });
+  runExtractionJob(id, { key, model, chunks });
+  res.json({ jobId: id, chunks: chunks.length, model });
 }

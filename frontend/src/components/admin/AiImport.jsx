@@ -42,14 +42,43 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     setPreview([]);
     setMsg("Reading the source and extracting questions…");
     try {
-      const res = await aiService.extract({
+      const { jobId, chunks } = await aiService.extract({
         url: url.trim() || undefined,
         content: text.trim() || undefined,
         model: model || undefined,
       });
-      const qs = res?.questions || [];
-      setPreview(qs);
-      setMsg(qs.length ? `✓ Extracted ${qs.length} question(s). Review below, then Insert.` : "No questions found — try pasting the text directly.");
+      if (!jobId) throw new Error("Could not start the import.");
+
+      // Poll the background job — it processes every section of the source.
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let done = false;
+      for (let i = 0; i < 150 && !done; i++) {
+        await sleep(2000);
+        let s;
+        try {
+          s = await aiService.job(jobId);
+        } catch {
+          continue;
+        }
+        if (s.status === "done") {
+          const qs = s.questions || [];
+          setPreview(qs);
+          setMsg(
+            qs.length
+              ? `✓ Extracted ${qs.length} question(s) from ${s.chunksTotal || chunks || 1} section(s)${
+                  s.error === "quota" ? " (stopped early — quota reached; import these, then continue)" : ""
+                }. Review below, then Insert.`
+              : "No questions found — try pasting the text directly."
+          );
+          done = true;
+        } else if (s.status === "error") {
+          setMsg(s.error || "Import failed.");
+          done = true;
+        } else {
+          setMsg(`Extracting… ${s.count || 0} question(s) so far (section ${s.chunksDone || 0}/${s.chunksTotal || chunks || "?"})`);
+        }
+      }
+      if (!done) setMsg("Still working — the source is large. Try importing fewer sections at a time.");
     } catch (e) {
       setMsg(e.message || "Import failed.");
     } finally {
