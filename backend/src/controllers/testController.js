@@ -1,9 +1,68 @@
+import mongoose from "mongoose";
 import TestSeries from "../models/TestSeries.js";
 import Question from "../models/Question.js";
 import Attempt from "../models/Attempt.js";
 import User from "../models/User.js";
 import { isTestVisibleToUser, findAccessEntry } from "../utils/accessControl.js";
 import { notifyNewContent } from "../utils/notify.js";
+
+// Fields copied when pulling a question from the bank into a test.
+const COPY_FIELDS = [
+  "text", "type", "options", "correct", "difficulty", "explanation",
+  "optionExplanations", "columnA", "columnB", "tableRows", "assertion", "reason", "image",
+];
+
+// POST /api/tests/:id/populate  (admin)
+// Body: { quizPlan:[{subject,count}], practicePlan:[{practiceSubject,count}] }
+// Pulls N questions per subject from the Quiz bank and per practice-subject
+// from the Practice bank, COPIES them into this test as new question docs.
+export async function populateTest(req, res) {
+  const test = await TestSeries.findById(req.params.id);
+  if (!test) return res.status(404).json({ message: "Test not found" });
+
+  const quizPlan = Array.isArray(req.body?.quizPlan) ? req.body.quizPlan : [];
+  const practicePlan = Array.isArray(req.body?.practicePlan) ? req.body.practicePlan : [];
+
+  const oid = (v) => { try { return new mongoose.Types.ObjectId(String(v)); } catch { return null; } };
+  const sample = async (match, count) => {
+    const n = Math.max(0, Math.min(200, parseInt(count, 10) || 0));
+    if (!n) return [];
+    return Question.aggregate([{ $match: match }, { $sample: { size: n } }]);
+  };
+  const toCopy = (q) => {
+    const doc = { testSeries: test._id, status: "published" };
+    for (const f of COPY_FIELDS) if (q[f] !== undefined) doc[f] = q[f];
+    return doc;
+  };
+
+  const copies = [];
+
+  // From the Quiz bank — quiz questions carry a `subject` and no `testSeries`.
+  for (const row of quizPlan) {
+    const sid = oid(row?.subject);
+    if (!sid) continue;
+    const qs = await sample({ subject: sid, testSeries: { $exists: false } }, row.count);
+    copies.push(...qs.map(toCopy));
+  }
+
+  // From the Practice bank — practice questions live inside practice items
+  // (TestSeries) under a practice subject.
+  for (const row of practicePlan) {
+    const psid = oid(row?.practiceSubject);
+    if (!psid) continue;
+    const items = await TestSeries.find({ practice: true, practiceSubject: psid }).select("_id").lean();
+    const ids = items.map((i) => i._id);
+    if (!ids.length) continue;
+    const qs = await sample({ testSeries: { $in: ids } }, row.count);
+    copies.push(...qs.map(toCopy));
+  }
+
+  if (copies.length) {
+    const created = await Question.insertMany(copies);
+    await TestSeries.findByIdAndUpdate(test._id, { $push: { questions: { $each: created.map((c) => c._id) } } });
+  }
+  res.json({ inserted: copies.length });
+}
 
 // GET /api/tests  — list published tests visible to the requesting user
 export async function listTests(req, res) {

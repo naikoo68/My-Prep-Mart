@@ -60,6 +60,22 @@ export async function createSubject(req, res) {
   const s = await PracticeSubject.create({ ...req.body, slug: slugify(req.body.name) });
   res.status(201).json(s);
 }
+// GET /api/practice/all-subjects — flat list of every practice subject (for the
+// "Add from Practice" picker when composing a test).
+export async function allSubjects(req, res) {
+  const subs = await PracticeSubject.find({ isActive: true })
+    .populate("stream", "name kind")
+    .sort("name")
+    .lean();
+  res.json(
+    subs.map((s) => ({
+      _id: s._id,
+      name: s.name,
+      stream: s.stream?.name || "",
+      kind: s.stream?.kind || "",
+    }))
+  );
+}
 export async function updateSubject(req, res) {
   const d = { ...req.body };
   if (d.name) d.slug = slugify(d.name);

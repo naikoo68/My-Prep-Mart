@@ -5,7 +5,7 @@ import {
   listTopics, createTopic, updateTopic, deleteTopic, listTopicItems,
   listItems, createItem,
   browseStreams, browseSubjects, browseTopics, browseItems, browseTopicItems,
-  playQuiz,
+  playQuiz, allSubjects,
 } from "../controllers/practiceController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -41,6 +41,9 @@ router.post("/topics", ...admin, createTopic);
 router.put("/topics/:id", ...admin, updateTopic);
 router.delete("/topics/:id", ...admin, deleteTopic);
 router.get("/topics/:topicId/items", ...admin, listTopicItems); // My Quiz quizzes
+
+// Admin — flat list of all practice subjects (for composing tests from practice)
+router.get("/all-subjects", ...admin, allSubjects);
 
 // Admin — items (practice test-series). Questions/visibility/attempt reuse /tests.
 router.post("/items", ...admin, createItem);

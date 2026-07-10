@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download, Sparkles, Globe } from "lucide-react";
-import { testService, contentService, examService } from "../../services";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download, Sparkles, Globe, Library } from "lucide-react";
+import { testService, contentService, examService, practiceService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import BulkUploadQuestions, { questionsToCsv } from "../../components/admin/BulkUploadQuestions";
 import AiGenerate from "../../components/admin/AiGenerate";
 import AiImport from "../../components/admin/AiImport";
+import QuestionBankComposer, { rowsToPlan } from "../../components/admin/QuestionBankComposer";
+import AddFromBank from "../../components/admin/AddFromBank";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 
@@ -43,6 +45,12 @@ export default function AdminTests() {
   const [bulkTest, setBulkTest] = useState(null);
   const [aiTest, setAiTest] = useState(null); // AI-generate questions for a test
   const [importTest, setImportTest] = useState(null); // import-from-web questions for a test
+  const [bankTest, setBankTest] = useState(null); // add-from-bank (quiz/practice) for a test
+
+  // Question-bank composition for the create popup + subject lists
+  const [composition, setComposition] = useState([]);
+  const [quizSubjects, setQuizSubjects] = useState([]);
+  const [practiceSubjects, setPracticeSubjects] = useState([]);
 
   // Manage-questions state
   const [qTest, setQTest] = useState(null); // test whose questions we're editing
@@ -235,6 +243,9 @@ export default function AdminTests() {
   const openCreate = () => {
     setForm(blank);
     setEditing(null);
+    setComposition([]);
+    contentService.subjects().then(setQuizSubjects).catch(() => setQuizSubjects([]));
+    practiceService.allSubjects().then(setPracticeSubjects).catch(() => setPracticeSubjects([]));
     setModal(true);
   };
 
@@ -283,7 +294,18 @@ export default function AdminTests() {
       } else {
         // New tests belong to the current exam + post.
         const created = await testService.create({ ...payload, exam: exam?._id, post: post?._id });
-        setTests((prev) => [{ ...created, questionCount: 0 }, ...prev]);
+        // Optionally pull questions from the quiz/practice bank per the composition.
+        let questionCount = 0;
+        const plan = rowsToPlan(composition);
+        if (plan.quizPlan.length || plan.practicePlan.length) {
+          try {
+            const r = await testService.populate(created._id, plan);
+            questionCount = r?.inserted || 0;
+          } catch (e) {
+            setError(`Test created, but pulling questions failed: ${e.message}`);
+          }
+        }
+        setTests((prev) => [{ ...created, questionCount }, ...prev]);
       }
       setModal(false);
       setForm(blank);
@@ -412,6 +434,9 @@ export default function AdminTests() {
                       <button onClick={() => setImportTest(t)} title="Import questions from web" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                         <Globe className="h-4 w-4" />
                       </button>
+                      <button onClick={() => setBankTest(t)} title="Add questions from quizzes / practice" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
+                        <Library className="h-4 w-4" />
+                      </button>
                       <button onClick={() => openAccess(t)} title="Manage user access" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/30">
                         <Users className="h-4 w-4" />
                       </button>
@@ -513,8 +538,22 @@ export default function AdminTests() {
                   </select>
                 </div>
               </div>
+              {!editing && (
+                <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <label className="mb-1 block text-sm font-semibold">Add questions per subject (optional)</label>
+                  <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                    Pull questions straight from your <b>Quizzes</b> and <b>Practice</b> bank — choose each subject and how many.
+                  </p>
+                  <QuestionBankComposer
+                    rows={composition}
+                    onChange={setComposition}
+                    quizSubjects={quizSubjects}
+                    practiceSubjects={practiceSubjects}
+                  />
+                </div>
+              )}
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tip: after creating, use the <b>Manage questions</b> or <b>Bulk upload</b> button on the test row to add questions.
+                Tip: you can also add questions later with <b>Manage questions</b>, <b>Bulk upload</b>, or <b>Add from bank</b> on the test row.
               </p>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setModal(false)} className="btn-outline">Cancel</button>
@@ -655,6 +694,14 @@ export default function AdminTests() {
           load();
           return res;
         }}
+      />
+
+      <AddFromBank
+        open={!!bankTest}
+        testId={bankTest?._id}
+        title={`Add from Bank${bankTest ? ` — ${bankTest.name}` : ""}`}
+        onClose={() => setBankTest(null)}
+        onDone={() => load()}
       />
 
       {/* Manage questions modal */}

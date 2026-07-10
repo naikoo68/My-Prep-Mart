@@ -94,6 +94,8 @@ export const testService = {
   getQuestions: (id) => api.get(`/tests/${id}/questions`),
   addQuestion: (id, data) => api.post(`/tests/${id}/questions`, data),
   deleteQuestion: (id, qid) => api.del(`/tests/${id}/questions/${qid}`),
+  // pull questions from the quiz/practice bank into a test
+  populate: (id, plan) => api.post(`/tests/${id}/populate`, plan), // { quizPlan, practicePlan }
 };
 
 // ---- Practice Quizzes (My Quiz / My Test Series) ----
@@ -108,6 +110,8 @@ export const practiceService = {
   topicItems: (kind, topicId) => api.get(`/practice/browse/${kind}/topics/${topicId}/items`), // My Quiz
   // My Quiz play — full questions WITH answers for instant reveal (quiz-style)
   quizPlay: (id) => api.get(`/practice/quiz/${id}/play`),
+  // flat list of all practice subjects (for composing a test from practice)
+  allSubjects: () => api.get("/practice/all-subjects"),
   // admin — streams (kind-scoped so My Quiz & My Test Series stay separate)
   adminStreams: (kind) => api.get(`/practice/streams${kind ? `?kind=${kind}` : ""}`),
   createStream: (data) => api.post("/practice/streams", data),
