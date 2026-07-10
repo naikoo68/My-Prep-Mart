@@ -115,12 +115,12 @@ export async function deleteTopic(req, res) {
 export async function listItems(req, res) {
   const filter = { practice: true, practiceSubject: req.params.subjectId };
   if (req.query.kind) filter.practiceKind = req.query.kind;
-  const items = await TestSeries.find(filter).sort("-createdAt").lean();
+  const items = await TestSeries.find(filter).sort("createdAt").lean();
   res.json(items.map((t) => ({ ...t, questionCount: t.questions?.length || 0, questions: undefined })));
 }
 // My Quiz: items live under a topic.
 export async function listTopicItems(req, res) {
-  const items = await TestSeries.find({ practice: true, practiceTopic: req.params.topicId }).sort("-createdAt").lean();
+  const items = await TestSeries.find({ practice: true, practiceTopic: req.params.topicId }).sort("createdAt").lean();
   res.json(items.map((t) => ({ ...t, questionCount: t.questions?.length || 0, questions: undefined })));
 }
 export async function createItem(req, res) {
@@ -187,7 +187,7 @@ export async function browseSubjects(req, res) {
 export async function browseItems(req, res) {
   const { kind, subjectId } = req.params;
   const items = await TestSeries.find({ practice: true, practiceKind: kind, status: "published", practiceSubject: subjectId })
-    .sort("-createdAt")
+    .sort("createdAt")
     .lean();
   res.json(
     items
@@ -208,7 +208,7 @@ export async function browseTopics(req, res) {
 // My Quiz: quizzes under a topic.
 export async function browseTopicItems(req, res) {
   const items = await TestSeries.find({ practice: true, practiceKind: "quiz", status: "published", practiceTopic: req.params.topicId })
-    .sort("-createdAt")
+    .sort("createdAt")
     .lean();
   res.json(
     items
