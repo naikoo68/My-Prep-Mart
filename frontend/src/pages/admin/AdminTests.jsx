@@ -8,6 +8,8 @@ import AiGenerate from "../../components/admin/AiGenerate";
 import AiImport from "../../components/admin/AiImport";
 import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
 import PickFromBank from "../../components/admin/PickFromBank";
+import DuplicatesModal from "../../components/admin/DuplicatesModal";
+import { Files } from "lucide-react";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 
@@ -48,6 +50,7 @@ export default function AdminTests() {
   const [aiTest, setAiTest] = useState(null); // AI-generate questions for a test
   const [importTest, setImportTest] = useState(null); // import-from-web questions for a test
   const [bankTest, setBankTest] = useState(null); // manual pick-from-bank for a test
+  const [dupTest, setDupTest] = useState(null); // find-duplicates within a test
 
   // Manual subject plan (typed) for the create/edit popup
   const [composition, setComposition] = useState([]);
@@ -430,6 +433,9 @@ export default function AdminTests() {
                       <button onClick={() => setBankTest(t)} title="Add questions from quizzes / practice" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                         <Library className="h-4 w-4" />
                       </button>
+                      <button onClick={() => setDupTest(t)} title="Find duplicate questions in this test" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
+                        <Files className="h-4 w-4" />
+                      </button>
                       <button onClick={() => openAccess(t)} title="Manage user access" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/30">
                         <Users className="h-4 w-4" />
                       </button>
@@ -696,6 +702,14 @@ export default function AdminTests() {
         onDone={() => load()}
       />
 
+      <DuplicatesModal
+        open={!!dupTest}
+        scope={dupTest ? { testSeries: dupTest._id } : null}
+        scopeName={dupTest?.name || ""}
+        hideSubjectPicker
+        onClose={() => { setDupTest(null); load(); if (qTest) reloadTq(); }}
+      />
+
       {/* Manage questions modal */}
       {qTest && (
         <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
@@ -755,6 +769,11 @@ export default function AdminTests() {
                     <Download className="h-4 w-4" /> Download CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
                   </button>
                 </>
+              )}
+              {tq.length > 0 && (
+                <button onClick={() => setDupTest(qTest)} className="btn-outline">
+                  <Files className="h-4 w-4" /> Find Duplicates
+                </button>
               )}
               <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary">
                 <Plus className="h-4 w-4" /> Add Question
