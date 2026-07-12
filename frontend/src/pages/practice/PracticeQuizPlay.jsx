@@ -22,6 +22,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { practiceService, testService } from "../../services";
+import { useAuth } from "../../context/AuthContext";
 import ProgressBar from "../../components/ui/ProgressBar";
 import Badge from "../../components/ui/Badge";
 import MathText from "../../components/ui/MathText";
@@ -61,6 +62,8 @@ const TIMER_OPTIONS = [
 export default function PracticeQuizPlay() {
   const { itemId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isClient = user?.role === "client"; // clients return to their own workspace
 
   const [questions, setQuestions] = useState([]);
   const [title, setTitle] = useState("Practice Quiz");
@@ -211,8 +214,14 @@ export default function PracticeQuizPlay() {
             <button onClick={() => setShowReview((v) => !v)} className="btn-accent">
               <Lightbulb className="h-4 w-4" /> {showReview ? "Hide Answers" : "Review Answers"}
             </button>
-            <button onClick={() => navigate(-1)} className="btn-primary">Back to Quizzes</button>
-            <button onClick={() => navigate("/dashboard")} className="btn-outline">My Progress</button>
+            {isClient ? (
+              <button onClick={() => navigate("/client")} className="btn-primary">Back to My Practice</button>
+            ) : (
+              <>
+                <button onClick={() => navigate(-1)} className="btn-primary">Back to Quizzes</button>
+                <button onClick={() => navigate("/dashboard")} className="btn-outline">My Progress</button>
+              </>
+            )}
           </div>
         </div>
 

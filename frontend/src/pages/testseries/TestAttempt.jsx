@@ -17,6 +17,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { testService } from "../../services";
+import { useAuth } from "../../context/AuthContext";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
 import StatementPairView from "../../components/ui/StatementPairView";
@@ -48,6 +49,8 @@ const STATUS = {
 export default function TestAttempt() {
   const { testId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isClient = user?.role === "client"; // clients return to their own workspace
 
   const [test, setTest] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -251,8 +254,14 @@ export default function TestAttempt() {
                 </button>
               )}
               <FeedbackButton context="test" source={testSource} label="Give Feedback" className="btn-outline" />
-              <button onClick={() => navigate("/dashboard")} className="btn-primary">Go to Dashboard</button>
-              <button onClick={() => navigate("/test-series")} className="btn-outline">More Tests</button>
+              {isClient ? (
+                <button onClick={() => navigate("/client")} className="btn-primary">Back to My Practice</button>
+              ) : (
+                <>
+                  <button onClick={() => navigate("/dashboard")} className="btn-primary">Go to Dashboard</button>
+                  <button onClick={() => navigate("/test-series")} className="btn-outline">More Tests</button>
+                </>
+              )}
             </div>
           </div>
 
