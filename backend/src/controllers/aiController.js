@@ -1,31 +1,48 @@
 // AI Question Generator — talks to any OpenAI-compatible provider
-// (TokenLab, OpenAI, Groq, DeepSeek, …). Configure via server env vars:
-//   AI_API_KEY   — your provider key (required to enable the feature)
-//   AI_BASE_URL  — base URL, default https://api.tokenlab.sh/v1
-//   AI_MODEL     — one OR MANY model ids, comma-separated.
-//                  e.g. "gpt-4o-mini, llama-3.3-70b, deepseek-chat"
-//                  The first one is the default; the admin can pick any of
-//                  them per-generation from a dropdown in the UI.
-// The key lives ONLY on the server; the browser never sees it.
+// Works with any OpenAI-compatible provider (Gemini, TokenLab, OpenAI, Groq,
+// DeepSeek, …). You can configure UP TO 6 API keys, each with its own base URL
+// and models, using numbered env-var "slots":
+//   Slot 1: AI_API_KEY      AI_BASE_URL      AI_MODEL
+//   Slot 2: AI_API_KEY_2    AI_BASE_URL_2    AI_MODEL_2
+//   Slot 3: AI_API_KEY_3    AI_BASE_URL_3    AI_MODEL_3   … up to _6
+// AI_MODEL(_n) may list several models, comma-separated. Every model from every
+// configured key appears in the admin dropdown; each generation uses the key +
+// base URL that owns the chosen model. Keys live ONLY on the server.
+const MAX_SLOTS = 6;
 
-const BASE_URL = () => (process.env.AI_BASE_URL || "https://api.tokenlab.sh/v1").replace(/\/$/, "");
-
-// Parse AI_MODEL into a clean list of model ids. Falls back to gpt-4o-mini.
-function MODELS() {
-  const raw = process.env.AI_MODEL || "gpt-4o-mini";
-  const list = raw
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
-  return list.length ? list : ["gpt-4o-mini"];
+function providers() {
+  const out = [];
+  for (let i = 1; i <= MAX_SLOTS; i++) {
+    const sfx = i === 1 ? "" : `_${i}`;
+    const key = (process.env[`AI_API_KEY${sfx}`] || "").trim();
+    if (!key) continue;
+    const baseUrl = (process.env[`AI_BASE_URL${sfx}`] || "https://api.tokenlab.sh/v1").replace(/\/$/, "");
+    const models = (process.env[`AI_MODEL${sfx}`] || "gpt-4o-mini")
+      .split(",").map((m) => m.trim()).filter(Boolean);
+    out.push({ slot: i, key, baseUrl, models: models.length ? models : ["gpt-4o-mini"] });
+  }
+  return out;
 }
-const DEFAULT_MODEL = () => MODELS()[0];
 
-// If the client asked for a specific model, only honour it when it is one of
-// the configured models (prevents arbitrary model injection from the browser).
+// Flat list of every available model with the key + base URL that serves it.
+function modelRegistry() {
+  const reg = [];
+  for (const p of providers()) {
+    for (const m of p.models) {
+      if (!reg.some((r) => r.model === m)) reg.push({ model: m, key: p.key, baseUrl: p.baseUrl });
+    }
+  }
+  return reg;
+}
+
+const DEFAULT_MODEL = () => modelRegistry()[0]?.model || "";
+
+// Resolve a requested model → { model, key, baseUrl }. Only honours a model that
+// is actually configured (no arbitrary model injection); falls back to the first.
 function resolveModel(requested) {
-  const models = MODELS();
-  return models.includes(requested) ? requested : models[0];
+  const reg = modelRegistry();
+  if (!reg.length) return null;
+  return reg.find((r) => r.model === requested) || reg[0];
 }
 
 const TYPES = ["mcq", "matching", "statement", "pair", "pairselect", "assertion", "table"];
@@ -39,11 +56,12 @@ const stripListMarker = (x) =>
 // GET /api/ai/status — lets the admin UI show/hide the "Generate with AI"
 // button and populate the model dropdown.
 export function aiStatus(req, res) {
+  const reg = modelRegistry();
   res.json({
-    enabled: !!process.env.AI_API_KEY,
-    model: DEFAULT_MODEL(), // default / first configured model
-    models: MODELS(), // full list for the dropdown
-    baseUrl: BASE_URL(),
+    enabled: reg.length > 0,
+    model: reg[0]?.model || "", // default / first configured model
+    models: reg.map((r) => r.model), // every model across all keys (dropdown)
+    keys: providers().length, // how many API keys are configured
   });
 }
 
@@ -256,7 +274,7 @@ function retryWaitMs(headers, body) {
 }
 
 // One provider call with transient-error retries. Returns { ok, status, content, detail }.
-async function callProvider({ key, model, userPrompt, maxTokens }) {
+async function callProvider({ key, baseUrl, model, userPrompt, maxTokens }) {
   const payload = {
     model,
     messages: [
@@ -273,7 +291,7 @@ async function callProvider({ key, model, userPrompt, maxTokens }) {
   const TRANSIENT = [429, 500, 502, 503, 504];
   const WAITS = [1500, 3000, 6000, 9000];
   for (let attempt = 0; ; attempt++) {
-    const resp = await fetch(`${BASE_URL()}/chat/completions`, {
+    const resp = await fetch(`${(baseUrl || "https://api.tokenlab.sh/v1").replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify(payload),
@@ -337,7 +355,7 @@ function cleanupJobs() {
 }
 
 async function runGenerationJob(id, ctx) {
-  const { key, model, topic, notes, plan, count, difficulty, types, target } = ctx;
+  const { key, baseUrl, model, topic, notes, plan, count, difficulty, types, target } = ctx;
   const job = genJobs.get(id);
   const deadline = Date.now() + 4 * 60 * 1000; // 4-minute overall budget
   const MAX_CALLS = Math.ceil(target / CHUNK_SIZE) + 5; // headroom for retries/top-ups
@@ -365,7 +383,7 @@ async function runGenerationJob(id, ctx) {
       }
       calls += 1;
       const maxTokens = Math.min(16000, 1500 + n * 700);
-      const r = await callProvider({ key, model, userPrompt: prompt, maxTokens });
+      const r = await callProvider({ key, baseUrl, model, userPrompt: prompt, maxTokens });
       if (!r.ok) {
         lastError = r;
         // A 429 means quota/rate exhausted — retrying more won't help right now.
@@ -406,19 +424,19 @@ async function runGenerationJob(id, ctx) {
 // Body: { topic, notes, model, plan:[{type,difficulty,count}] }  (or legacy { count, difficulty, types })
 // Starts a background job and returns { jobId, requested }. Poll /api/ai/job/:id.
 export async function generateQuestions(req, res) {
-  const key = (process.env.AI_API_KEY || "").trim();
-  if (!key) {
+  const chosen = resolveModel(String(req.body?.model || "").trim());
+  if (!chosen) {
     return res.status(400).json({
       message:
         "AI is not configured. Add AI_API_KEY (and optionally AI_BASE_URL, AI_MODEL) to the server environment.",
     });
   }
+  const { model, key, baseUrl } = chosen;
 
   const topic = String(req.body?.topic || "").trim();
   if (!topic) return res.status(400).json({ message: "A topic is required." });
 
   const notes = String(req.body?.notes || "").trim();
-  const model = resolveModel(String(req.body?.model || "").trim());
 
   // Explicit per-bucket plan — sanitized and capped at MAX_TOTAL. Falls back to
   // the legacy count/difficulty/types path when no plan is provided.
@@ -459,7 +477,7 @@ export async function generateQuestions(req, res) {
   });
 
   // Fire-and-forget — the client polls /api/ai/job/:id for progress.
-  runGenerationJob(id, { key, model, topic, notes, plan, count, difficulty, types, target });
+  runGenerationJob(id, { key, baseUrl, model, topic, notes, plan, count, difficulty, types, target });
 
   res.json({ jobId: id, requested: target, model });
 }
@@ -567,7 +585,7 @@ function buildExtractPrompt(sourceText) {
 
 // Background worker: extract questions from every source chunk and combine
 // (de-duplicated), so a multi-section page is imported in one go.
-async function runExtractionJob(id, { key, model, chunks }) {
+async function runExtractionJob(id, { key, baseUrl, model, chunks }) {
   const job = genJobs.get(id);
   const deadline = Date.now() + 5 * 60 * 1000; // 5-minute budget
   const collected = [];
@@ -581,6 +599,7 @@ async function runExtractionJob(id, { key, model, chunks }) {
       if (Date.now() > deadline) break;
       const r = await callProvider({
         key,
+        baseUrl,
         model,
         userPrompt: buildExtractPrompt(chunks[c]),
         maxTokens: 16000,
@@ -620,12 +639,11 @@ async function runExtractionJob(id, { key, model, chunks }) {
 // Body: { url?, content?, model? } — starts a background import job over the
 // whole source (all sections) and returns { jobId }. Poll /api/ai/job/:id.
 export async function extractQuestions(req, res) {
-  const key = (process.env.AI_API_KEY || "").trim();
-  if (!key) {
+  const chosen = resolveModel(String(req.body?.model || "").trim());
+  if (!chosen) {
     return res.status(400).json({ message: "AI is not configured. Add AI_API_KEY to the server environment." });
   }
-
-  const model = resolveModel(String(req.body?.model || "").trim());
+  const { model, key, baseUrl } = chosen;
   const url = String(req.body?.url || "").trim();
   let content = String(req.body?.content || "").trim();
 
@@ -664,6 +682,6 @@ export async function extractQuestions(req, res) {
     updatedAt: Date.now(),
   });
 
-  runExtractionJob(id, { key, model, chunks });
+  runExtractionJob(id, { key, baseUrl, model, chunks });
   res.json({ jobId: id, chunks: chunks.length, model });
 }
