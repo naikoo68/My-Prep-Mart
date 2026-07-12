@@ -57,10 +57,15 @@ Each question object uses these fields:
 - "difficulty": one of "Easy", "Medium", "Hard".
 - "explanation": a detailed explanation of why the correct option is right.
 - "optionExplanations": array of EXACTLY 4 short strings, one per option, explaining why each is right/wrong. Leave the correct option's entry an empty string "".
-Type-specific extra fields:
-- "matching"/"pair"/"pairselect": also include "columnA" (array) and "columnB" (array) to match. Each option in "options" is a mapping like "1-III, 2-I, 3-IV, 4-II". Do NOT prefix columnA/columnB items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4) and Column B (I,II,III,IV) automatically.
-- "assertion": include "assertion" (Assertion A text) and "reason" (Reason R text). The 4 options should be the standard A&R choices.
-- "table": include "tableRows" (2D array; first inner array is the header row).
+Type-specific rules — each type needs specific extra fields AND a specific style of "options":
+- "mcq": a normal question with 4 plausible options; "correct" is the right one. No extra fields.
+- "matching": include "columnA" (array) and "columnB" (array) — the two lists to match. The 4 "options" are FULL MAPPING SEQUENCES like "1-III, 2-I, 3-IV, 4-II" (Column A is auto-numbered 1,2,3,4; Column B is I,II,III,IV). Exactly one option is the correct complete mapping; the others are wrong mappings.
+- "statement": put the individual statements in "columnA" (an array of 2-4 statement strings). "text" is the intro line, e.g. "Consider the following statements:". The 4 "options" are COMBINATIONS like "1 only", "2 only", "1 and 2 only", "Neither 1 nor 2".
+- "pair": include "columnA" (left items) and "columnB" (right items); item i is paired with item i. "text" is the intro. The 4 "options" state HOW MANY pairs are correctly matched, e.g. "Only one pair", "Only two pairs", "Only three pairs", "All four pairs".
+- "pairselect": include "columnA" and "columnB" (candidate pairs). "text" is the intro. The 4 "options" state WHICH pairs are correct, e.g. "1 and 2 only", "2 and 3 only", "1, 3 and 4 only", "All of the above".
+- "assertion": include "assertion" (Assertion A text) and "reason" (Reason R text); "text" may be empty. The 4 "options" MUST be exactly: "Both A and R are true and R is the correct explanation of A", "Both A and R are true but R is NOT the correct explanation of A", "A is true but R is false", "A is false but R is true".
+- "table": include "tableRows" (a 2D array; the first inner array is the header row). "text" is the intro. 4 normal options.
+Do NOT prefix columnA / columnB / statement items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4), Column B (I,II,III,IV) and statements (1,2,3) automatically.
 Never include image URLs. Keep questions factually correct and self-contained.`;
 
 function buildUserPrompt({ topic, count, difficulty, types, notes, plan }) {
@@ -213,6 +218,14 @@ function normalize(list) {
         // Column A (1,2,3,4) and Column B (I,II,III,IV) automatically.
         out.columnA = arrStr(q?.columnA).map(stripListMarker);
         out.columnB = arrStr(q?.columnB).map(stripListMarker);
+      }
+      if (type === "statement") {
+        // Statements live in columnA (models may also send them as "statements").
+        let stmts = arrStr(q?.columnA);
+        if (!stmts.length && Array.isArray(q?.statements)) stmts = arrStr(q.statements);
+        out.columnA = stmts.map(stripListMarker);
+        out.columnB = [];
+        if (!out.text) out.text = "Consider the following statements:";
       }
       if (type === "assertion") {
         out.assertion = asStr(q?.assertion).trim();
