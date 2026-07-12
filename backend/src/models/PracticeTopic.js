@@ -5,6 +5,8 @@ import mongoose from "mongoose";
 const practiceTopicSchema = new mongoose.Schema(
   {
     subject: { type: mongoose.Schema.Types.ObjectId, ref: "PracticeSubject", required: true },
+    // Owner (client) — null/absent for platform content. See PracticeStream.
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     name: { type: String, required: true, trim: true },
     slug: { type: String, default: "" },
     icon: { type: String, default: "Layers" },

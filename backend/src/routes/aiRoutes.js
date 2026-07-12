@@ -7,11 +7,14 @@ import { protect, authorize } from "../middleware/auth.js";
 
 const router = Router();
 const admin = [protect, authorize("admin")];
+// Clients may generate/import questions with AI too (they use the shared keys
+// the platform owner configured). Key MANAGEMENT stays admin-only below.
+const manage = [protect, authorize("admin", "client")];
 
-router.get("/status", ...admin, aiStatus);
-router.post("/generate", ...admin, generateQuestions);
-router.get("/job/:id", ...admin, jobStatus);
-router.post("/extract", ...admin, extractQuestions);
+router.get("/status", ...manage, aiStatus);
+router.post("/generate", ...manage, generateQuestions);
+router.get("/job/:id", ...manage, jobStatus);
+router.post("/extract", ...manage, extractQuestions);
 
 // AI key management (admin)
 router.get("/keys", ...admin, listKeys);

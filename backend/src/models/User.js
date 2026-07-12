@@ -8,7 +8,9 @@ const userSchema = new mongoose.Schema(
     password: { type: String, minlength: 6, select: false },
     googleId: { type: String },
     avatar: { type: String },
-    role: { type: String, enum: ["student", "admin"], default: "student" },
+    // "client" = a self-service account that can ONLY use the My Practice
+    // section, where it builds & practices its own private content.
+    role: { type: String, enum: ["student", "admin", "client"], default: "student" },
     plan: { type: String, enum: ["Free", "Premium", "Pro"], default: "Free" },
     status: { type: String, enum: ["active", "blocked"], default: "active" },
     isEmailVerified: { type: Boolean, default: false },

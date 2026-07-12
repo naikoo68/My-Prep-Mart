@@ -6,6 +6,7 @@ import Quiz from "../models/Quiz.js";
 import Question from "../models/Question.js";
 import TestSeries from "../models/TestSeries.js";
 import { notifyNewContent } from "../utils/notify.js";
+import { ownerValue, ownerFilter, isClient } from "../utils/ownership.js";
 
 const slugify = (s) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -263,7 +264,16 @@ export async function bulkCreateQuestions(req, res) {
   if (!Array.isArray(questions) || !questions.length) {
     return res.status(400).json({ message: "questions array is required" });
   }
-  const docs = questions.map((q) => ({ status: "published", ...q, ...context }));
+  // A client may only bulk-add into their OWN test/practice item.
+  if (context.testSeries) {
+    const ts = await TestSeries.findById(context.testSeries).select("owner");
+    if (!ts) return res.status(404).json({ message: "Target item not found" });
+    if (isClient(req) && String(ts.owner || "") !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not your content" });
+    }
+  }
+  const owner = ownerValue(req);
+  const docs = questions.map((q) => ({ status: "published", ...q, ...context, owner }));
   const created = await Question.insertMany(docs, { ordered: false });
 
   // Attach to the test series' question list when uploading test questions.
@@ -276,7 +286,10 @@ export async function bulkCreateQuestions(req, res) {
 }
 
 export async function updateQuestion(req, res) {
-  const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const patch = { ...req.body };
+  delete patch.owner;
+  const question = await Question.findOneAndUpdate({ _id: req.params.id, ...ownerFilter(req) }, patch, { new: true });
+  if (!question) return res.status(404).json({ message: "Question not found" });
   res.json(question);
 }
 
@@ -328,7 +341,7 @@ export async function findDuplicates(req, res) {
   //   ?subject=<id>          → one quiz subject (e.g. Economics)
   //   ?practiceSubject=<id>  → all practice items under one practice subject
   //   ?testSeries=<id>       → a single test-series / practice item
-  const filter = {};
+  const filter = { ...ownerFilter(req) }; // clients scan only their own bank
   if (req.query.subject && req.query.subject !== "all") filter.subject = req.query.subject;
   if (req.query.testSeries) filter.testSeries = req.query.testSeries;
   if (req.query.practiceSubject) {
@@ -408,6 +421,10 @@ export async function findDuplicates(req, res) {
 }
 
 export async function deleteQuestion(req, res) {
+  const q = await Question.findOne({ _id: req.params.id, ...ownerFilter(req) });
+  if (!q) return res.status(404).json({ message: "Question not found" });
+  // Keep the owning test's question list tidy if this belonged to one.
+  if (q.testSeries) await TestSeries.findByIdAndUpdate(q.testSeries, { $pull: { questions: q._id } });
   await Question.findByIdAndDelete(req.params.id);
   res.json({ message: "Question deleted" });
 }

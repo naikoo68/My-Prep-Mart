@@ -16,6 +16,9 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   const dest = location.state?.from || "/dashboard";
+  // Route each role to its home: admins → admin panel, clients → My Practice
+  // workspace, students → their intended destination.
+  const homeFor = (role) => (role === "admin" ? "/admin" : role === "client" ? "/client" : dest);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -23,7 +26,7 @@ export default function Login() {
     setBusy(true);
     try {
       const profile = await login(form.email, form.password);
-      navigate(profile?.role === "admin" ? "/admin" : dest, { replace: true });
+      navigate(homeFor(profile?.role), { replace: true });
     } catch (err) {
       // Unverified account → move to the OTP verification step
       if (err.status === 403 && err.data?.needsVerification) {
@@ -42,7 +45,7 @@ export default function Login() {
         <OtpVerify
           email={otpStep.email}
           autoResend
-          onVerified={(profile) => navigate(profile?.role === "admin" ? "/admin" : dest, { replace: true })}
+          onVerified={(profile) => navigate(homeFor(profile?.role), { replace: true })}
         />
       </AuthShell>
     );
@@ -126,6 +129,12 @@ export default function Login() {
         Don't have an account?{" "}
         <Link to="/register" className="font-semibold text-brand-600 hover:underline dark:text-brand-400">
           Sign up
+        </Link>
+      </p>
+      <p className="mt-2 text-center text-sm text-slate-600 dark:text-slate-300">
+        Want to build your own quizzes &amp; tests?{" "}
+        <Link to="/client/register" className="font-semibold text-accent-600 hover:underline dark:text-accent-400">
+          Create a My Practice account
         </Link>
       </p>
     </AuthShell>

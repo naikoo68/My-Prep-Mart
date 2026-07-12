@@ -40,7 +40,10 @@ const TestAttempt = lazy(() => import("./pages/testseries/TestAttempt"));
 
 const Login = lazy(() => import("./pages/auth/Login"));
 const Register = lazy(() => import("./pages/auth/Register"));
+const ClientRegister = lazy(() => import("./pages/auth/ClientRegister"));
 const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword"));
+
+const ClientWorkspace = lazy(() => import("./pages/client/ClientWorkspace"));
 
 const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
@@ -98,6 +101,7 @@ const router = createBrowserRouter([
 
       { path: "/login", element: S(Login) },
       { path: "/register", element: S(Register) },
+      { path: "/client/register", element: S(ClientRegister) },
       { path: "/forgot-password", element: S(ForgotPassword) },
 
       {
@@ -111,6 +115,16 @@ const router = createBrowserRouter([
   {
     path: "/test-series/attempt/:testId",
     element: <ProtectedRoute>{S(TestAttempt)}</ProtectedRoute>,
+  },
+
+  // Client "My Practice" workspace (separate shell, own content only)
+  {
+    path: "/client",
+    element: (
+      <ProtectedRoute role="client">
+        {S(ClientWorkspace)}
+      </ProtectedRoute>
+    ),
   },
 
   // Admin (separate shell)

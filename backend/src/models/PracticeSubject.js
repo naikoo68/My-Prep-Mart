@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 const practiceSubjectSchema = new mongoose.Schema(
   {
     stream: { type: mongoose.Schema.Types.ObjectId, ref: "PracticeStream", required: true },
+    // Owner (client) — null/absent for platform content. See PracticeStream.
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     name: { type: String, required: true, trim: true },
     slug: { type: String, default: "" },
     icon: { type: String, default: "BookOpen" },

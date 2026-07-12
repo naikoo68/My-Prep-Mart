@@ -5,6 +5,12 @@ import Attempt from "../models/Attempt.js";
 import User from "../models/User.js";
 import { isTestVisibleToUser, findAccessEntry } from "../utils/accessControl.js";
 import { notifyNewContent } from "../utils/notify.js";
+import { ownerValue } from "../utils/ownership.js";
+
+// A caller may manage a test/question only within their own space: clients only
+// their own owned items; admins only the shared (ownerless) platform items.
+const canManage = (req, doc) =>
+  req.user?.role === "client" ? String(doc?.owner || "") === String(req.user._id) : !doc?.owner;
 
 // Fields copied when pulling a question from the bank into a test.
 const COPY_FIELDS = [
@@ -106,9 +112,10 @@ export async function getTest(req, res) {
     .populate("exam", "name")
     .populate("post", "name");
   if (!test) return res.status(404).json({ message: "Test not found" });
-  // Admins can always open a test; students must have access (and it must not
-  // be hidden or past its validity for them).
-  if (req.user?.role !== "admin" && !isTestVisibleToUser(test.toObject(), req.user?._id)) {
+  // Admins can always open a test; the owning client can open their own item;
+  // students must have access (and it must not be hidden or past validity).
+  const isOwner = req.user?.role === "client" && String(test.owner || "") === String(req.user._id);
+  if (req.user?.role !== "admin" && !isOwner && !isTestVisibleToUser(test.toObject(), req.user?._id)) {
     return res.status(403).json({ message: "You don't have access to this test, or your access has expired." });
   }
   const obj = test.toObject();
@@ -173,9 +180,14 @@ export async function createTest(req, res) {
   res.status(201).json(test);
 }
 
-// PUT /api/tests/:id  (admin)
+// PUT /api/tests/:id  (admin or owning client)
 export async function updateTest(req, res) {
-  const test = await TestSeries.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const existing = await TestSeries.findById(req.params.id);
+  if (!existing) return res.status(404).json({ message: "Test not found" });
+  if (!canManage(req, existing)) return res.status(403).json({ message: "Not your content" });
+  const patch = { ...req.body };
+  delete patch.owner; // ownership is immutable from the client
+  const test = await TestSeries.findByIdAndUpdate(req.params.id, patch, { new: true });
   res.json(test);
 }
 
@@ -188,8 +200,13 @@ export async function togglePublish(req, res) {
   res.json(test);
 }
 
-// DELETE /api/tests/:id  (admin)
+// DELETE /api/tests/:id  (admin or owning client)
 export async function deleteTest(req, res) {
+  const test = await TestSeries.findById(req.params.id);
+  if (!test) return res.status(404).json({ message: "Test not found" });
+  if (!canManage(req, test)) return res.status(403).json({ message: "Not your content" });
+  // Also remove the item's questions so nothing is orphaned.
+  if (test.questions?.length) await Question.deleteMany({ _id: { $in: test.questions } });
   await TestSeries.findByIdAndDelete(req.params.id);
   res.json({ message: "Test deleted" });
 }
@@ -272,23 +289,31 @@ export async function submitTest(req, res) {
 
 /* ---------------- Test questions (admin) ---------------- */
 
-// GET /api/tests/:id/questions  (admin) — full questions incl. correct answers
+// GET /api/tests/:id/questions  (admin or owning client) — full questions incl. answers
 export async function getTestQuestions(req, res) {
+  const test = await TestSeries.findById(req.params.id).select("owner");
+  if (!test) return res.status(404).json({ message: "Test not found" });
+  if (!canManage(req, test)) return res.status(403).json({ message: "Not your content" });
   const questions = await Question.find({ testSeries: req.params.id }).sort("createdAt");
   res.json(questions);
 }
 
-// POST /api/tests/:id/questions  (admin) — add one question to a test
+// POST /api/tests/:id/questions  (admin or owning client) — add one question
 export async function addTestQuestion(req, res) {
   const test = await TestSeries.findById(req.params.id);
   if (!test) return res.status(404).json({ message: "Test not found" });
-  const question = await Question.create({ ...req.body, testSeries: test._id });
+  if (!canManage(req, test)) return res.status(403).json({ message: "Not your content" });
+  // Stamp the question with the same owner as its test so it stays isolated.
+  const question = await Question.create({ ...req.body, testSeries: test._id, owner: ownerValue(req) });
   await TestSeries.findByIdAndUpdate(test._id, { $push: { questions: question._id } });
   res.status(201).json(question);
 }
 
-// DELETE /api/tests/:id/questions/:qid  (admin) — remove a question from a test
+// DELETE /api/tests/:id/questions/:qid  (admin or owning client)
 export async function deleteTestQuestion(req, res) {
+  const test = await TestSeries.findById(req.params.id).select("owner");
+  if (!test) return res.status(404).json({ message: "Test not found" });
+  if (!canManage(req, test)) return res.status(403).json({ message: "Not your content" });
   await TestSeries.findByIdAndUpdate(req.params.id, { $pull: { questions: req.params.qid } });
   await Question.findByIdAndDelete(req.params.qid);
   res.json({ message: "Question removed from test" });

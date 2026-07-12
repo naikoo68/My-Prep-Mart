@@ -56,8 +56,12 @@ export async function register(req, res) {
   const exists = await User.findOne({ email });
   if (exists) return res.status(409).json({ message: "Email already registered" });
 
+  // A client account (self-service) only accesses the My Practice section.
+  // Only "client" can be self-selected here; "admin" can never be self-assigned.
+  const role = req.body.role === "client" ? "client" : "student";
+
   // Create the account UNVERIFIED — the user must confirm the OTP to activate it.
-  const user = await User.create({ name, email, password, isEmailVerified: false });
+  const user = await User.create({ name, email, password, role, isEmailVerified: false });
   const otp = await issueOtp(user);
   const emailSent = await sendOtpEmail(email, name, otp).catch(() => false);
 

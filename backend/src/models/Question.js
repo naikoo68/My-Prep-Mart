@@ -7,6 +7,9 @@ import mongoose from "mongoose";
 // Text/options/columns may contain LaTeX between $...$ for equation rendering.
 const questionSchema = new mongoose.Schema(
   {
+    // Multi-tenant owner. null/absent = platform (admin) content; a User id =
+    // a client's private question, isolated to that client's My Practice.
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     // Optional: test-series questions may not belong to a subject.
     subject: { type: mongoose.Schema.Types.ObjectId, ref: "Subject" },
     session: { type: mongoose.Schema.Types.ObjectId, ref: "Session" },

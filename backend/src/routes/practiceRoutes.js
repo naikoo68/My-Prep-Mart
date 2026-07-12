@@ -10,7 +10,9 @@ import {
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
 const router = Router();
-const admin = [protect, authorize("admin")];
+// Content-management routes are shared by admins (platform content) and clients
+// (their own private content) — every controller scopes results by owner.
+const admin = [protect, authorize("admin", "client")];
 
 // Student browse (visibility-filtered). Attempting an item reuses /tests/:id.
 router.get("/browse/:kind/streams", optionalAuth, browseStreams);

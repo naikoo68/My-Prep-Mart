@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download, Sparkles, Globe } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download, Sparkles, Globe, Play } from "lucide-react";
 import { practiceService, testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -16,7 +17,12 @@ const KINDS = [
   { key: "test", label: "My Test", icon: FileStack },
 ];
 
-export default function AdminPractice() {
+// `clientMode` renders this same manager for a self-service CLIENT account:
+// the backend scopes everything to that client's own content, so we just hide
+// the per-student "Visibility" control (irrelevant — a client is the only
+// viewer) and add a "Practice" button so they can take their own quizzes/tests.
+export default function AdminPractice({ clientMode = false }) {
+  const navigate = useNavigate();
   const [kind, setKind] = useState("quiz");
   const [view, setView] = useState("streams"); // streams | subjects | topics | items
   const [stream, setStream] = useState(null);
@@ -176,7 +182,11 @@ export default function AdminPractice() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold">My Practice</h1>
-          <p className="text-slate-500 dark:text-slate-400">Hidden by default — grant access per student. Adding content here never notifies anyone.</p>
+          <p className="text-slate-500 dark:text-slate-400">
+            {clientMode
+              ? "Build your own quizzes and tests, then practice them. This content is private to you."
+              : "Hidden by default — grant access per student. Adding content here never notifies anyone."}
+          </p>
         </div>
         <button
           onClick={() => {
@@ -267,7 +277,16 @@ export default function AdminPractice() {
               {view === "items" && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => openQuestions(item)} className="btn-outline py-1.5 text-xs"><HelpCircle className="h-3.5 w-3.5" /> Questions</button>
-                  <button onClick={() => openAccess(item)} className="btn-outline py-1.5 text-xs"><Users className="h-3.5 w-3.5" /> Visibility</button>
+                  {clientMode ? (
+                    <button
+                      onClick={() => navigate(kind === "quiz" ? `/practice/quiz/play/${item._id}` : `/test-series/attempt/${item._id}`)}
+                      className="btn-outline py-1.5 text-xs text-emerald-600"
+                    >
+                      <Play className="h-3.5 w-3.5" /> Practice
+                    </button>
+                  ) : (
+                    <button onClick={() => openAccess(item)} className="btn-outline py-1.5 text-xs"><Users className="h-3.5 w-3.5" /> Visibility</button>
+                  )}
                   <button onClick={() => { setDupScope({ params: { testSeries: item._id }, name: item.name }); setDupOpen(true); }} className="btn-outline py-1.5 text-xs"><Files className="h-3.5 w-3.5" /> Duplicates</button>
                   <button onClick={() => setModal({ type: "item", mode: "edit", data: item })} className="btn-outline py-1.5 text-xs"><Pencil className="h-3.5 w-3.5" /> Edit</button>
                 </div>

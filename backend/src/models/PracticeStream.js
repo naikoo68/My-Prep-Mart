@@ -5,6 +5,9 @@ import mongoose from "mongoose";
 const practiceStreamSchema = new mongoose.Schema(
   {
     kind: { type: String, enum: ["quiz", "test"], default: "quiz" }, // My Quiz vs My Test Series — kept separate
+    // Multi-tenant owner. null/absent = platform (admin) content; a User id =
+    // a client's private content, visible only to that client.
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     name: { type: String, required: true, trim: true },
     slug: { type: String, default: "" },
     icon: { type: String, default: "GraduationCap" },

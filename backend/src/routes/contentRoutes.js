@@ -34,6 +34,8 @@ import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
 const router = Router();
 const admin = [protect, authorize("admin")];
+// Question endpoints shared by admins and clients (owner-scoped in controllers).
+const manage = [protect, authorize("admin", "client")];
 
 // Streams (top level)
 router.get("/streams", listStreams);
@@ -69,11 +71,11 @@ router.get("/quizzes/:quizId/questions", optionalAuth, listQuizQuestions);
 
 // Questions
 router.get("/questions", ...admin, listAllQuestions);
-router.get("/questions/duplicates", ...admin, findDuplicates);
+router.get("/questions/duplicates", ...manage, findDuplicates);
 router.get("/sessions/:sessionId/questions", listQuestions);
 router.post("/questions", ...admin, createQuestion);
-router.post("/questions/bulk", ...admin, bulkCreateQuestions);
-router.put("/questions/:id", ...admin, updateQuestion);
-router.delete("/questions/:id", ...admin, deleteQuestion);
+router.post("/questions/bulk", ...manage, bulkCreateQuestions);
+router.put("/questions/:id", ...manage, updateQuestion);
+router.delete("/questions/:id", ...manage, deleteQuestion);
 
 export default router;

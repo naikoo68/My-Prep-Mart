@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 const testSeriesSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    // Multi-tenant owner. null/absent = platform (admin) content; a User id =
+    // a client's private practice item, visible/editable only by that client.
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     // Hierarchy: Exam → Post → Category → Test.
     exam: { type: mongoose.Schema.Types.ObjectId, ref: "Exam" },
     post: { type: mongoose.Schema.Types.ObjectId, ref: "ExamPost" },
