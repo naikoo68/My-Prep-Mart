@@ -13,7 +13,7 @@ import { Files } from "lucide-react";
 
 const KINDS = [
   { key: "quiz", label: "My Quiz", icon: ListChecks },
-  { key: "test", label: "My Test Series", icon: FileStack },
+  { key: "test", label: "My Test", icon: FileStack },
 ];
 
 export default function AdminPractice() {
@@ -175,7 +175,7 @@ export default function AdminPractice() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold">Practice Quizzes</h1>
+          <h1 className="text-2xl font-extrabold">My Practice</h1>
           <p className="text-slate-500 dark:text-slate-400">Hidden by default — grant access per student. Adding content here never notifies anyone.</p>
         </div>
         <button

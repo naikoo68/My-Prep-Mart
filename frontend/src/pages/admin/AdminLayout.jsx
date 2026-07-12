@@ -29,7 +29,7 @@ const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/content", label: "Content", icon: BookCopy },
   { to: "/admin/tests", label: "Test Series", icon: FileStack },
-  { to: "/admin/practice", label: "Practice Quizzes", icon: GraduationCap },
+  { to: "/admin/practice", label: "My Practice", icon: GraduationCap },
   { to: "/admin/study", label: "Study Material", icon: BookMarked },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/performance", label: "Performance", icon: Trophy },

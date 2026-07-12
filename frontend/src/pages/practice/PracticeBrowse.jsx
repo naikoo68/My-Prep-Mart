@@ -6,7 +6,7 @@ import { practiceService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
-const KIND_LABEL = { quiz: "My Quiz", test: "My Test Series" };
+const KIND_LABEL = { quiz: "My Quiz", test: "My Test" };
 
 // Handles the three practice browse levels based on the URL params:
 //   /practice/:kind                         → streams

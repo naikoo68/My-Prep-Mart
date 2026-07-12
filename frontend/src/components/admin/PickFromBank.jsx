@@ -167,7 +167,7 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
               {["quiz", "test"].map((k) => (
                 <button key={k} onClick={() => setPKind(k)}
                   className={`rounded-lg px-3 py-1 text-xs font-semibold ${pKind === k ? "bg-accent-500 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                  {k === "quiz" ? "My Quiz" : "My Test Series"}
+                  {k === "quiz" ? "My Quiz" : "My Test"}
                 </button>
               ))}
             </div>

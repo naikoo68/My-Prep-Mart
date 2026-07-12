@@ -5,12 +5,12 @@ import { ListChecks, FileStack, ArrowRight } from "lucide-react";
 export default function PracticeHome() {
   const cards = [
     { to: "/practice/quiz", label: "My Quiz", desc: "Curated practice quizzes shared with you.", Icon: ListChecks, cls: "from-violet-500 to-fuchsia-600" },
-    { to: "/practice/test", label: "My Test Series", desc: "Personal test series shared with you.", Icon: FileStack, cls: "from-brand-600 to-indigo-600" },
+    { to: "/practice/test", label: "My Test", desc: "Personal tests shared with you.", Icon: FileStack, cls: "from-brand-600 to-indigo-600" },
   ];
   return (
     <div className="container-page py-12">
       <div className="mx-auto max-w-2xl text-center">
-        <h1 className="text-3xl font-extrabold sm:text-4xl">Practice Quizzes</h1>
+        <h1 className="text-3xl font-extrabold sm:text-4xl">My Practice</h1>
         <p className="mt-2 text-slate-600 dark:text-slate-300">Your assigned practice content. Pick a category to begin.</p>
       </div>
       <div className="mx-auto mt-10 grid max-w-3xl gap-5 sm:grid-cols-2">
