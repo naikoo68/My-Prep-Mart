@@ -125,6 +125,11 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
             <div className="mb-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
               Paste a page link <b>or</b> the copied questions text. The AI extracts the questions into your format —
               review before inserting. Only import content you have the right to use.
+              {typeof status?.keys === "number" && (
+                <span className="ml-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                  {status.keys} API key{status.keys === 1 ? "" : "s"} active.
+                </span>
+              )}
             </div>
 
             {status?.models && status.models.length > 1 && (

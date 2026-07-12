@@ -158,6 +158,11 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
             <div className="mb-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
               Describe a topic and the AI drafts questions in your app's format. Nothing is saved
               until you review and click <b>Insert</b>.
+              {typeof status?.keys === "number" && (
+                <span className="ml-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                  {status.keys} API key{status.keys === 1 ? "" : "s"} active.
+                </span>
+              )}
             </div>
 
             {status?.models && status.models.length > 1 && (
