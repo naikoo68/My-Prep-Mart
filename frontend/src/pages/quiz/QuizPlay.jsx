@@ -473,10 +473,17 @@ export default function QuizPlay() {
                     {locked && idx === q.correct && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
                     {locked && idx === answers[current] && idx !== q.correct && <XCircle className="h-5 w-5 text-rose-500" />}
                   </button>
-                  {/* Brief note for the wrong option the student selected. The
-                      correct answer is explained in detail in the box below. */}
-                  {locked && idx === answers[current] && idx !== q.correct && optExp && optExp.trim() && (
-                    <p className="ml-9 mt-1 rounded-lg bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+                  {/* Once locked, show WHY each incorrect option is wrong — not
+                      just the one the student picked. The chosen wrong option is
+                      highlighted in red; the other wrong options use a neutral
+                      tone. The correct answer's full explanation is in the box
+                      below. */}
+                  {locked && idx !== q.correct && optExp && optExp.trim() && (
+                    <p className={`ml-9 mt-1 rounded-lg px-3 py-1.5 text-xs ${
+                      idx === answers[current]
+                        ? "bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300"
+                        : "bg-slate-50 text-slate-500 dark:bg-slate-800/60 dark:text-slate-400"
+                    }`}>
                       <MathText>{optExp}</MathText>
                     </p>
                   )}

@@ -258,6 +258,7 @@ export default function PracticeQuizPlay() {
 
                   <div className="mt-3 space-y-2">
                     {(q.options || []).map((opt, idx) => {
+                      const optExp = q.optionExplanations?.[idx];
                       const cls =
                         idx === q.correct
                           ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
@@ -265,11 +266,19 @@ export default function PracticeQuizPlay() {
                           ? "border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200"
                           : "border-slate-200 dark:border-slate-700";
                       return (
-                        <div key={idx} className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm ${cls}`}>
-                          <span className="flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold">{optionLabels[idx]}</span>
-                          <span className="flex-1"><MathText>{opt}</MathText></span>
-                          {idx === q.correct && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                          {idx === userAns && idx !== q.correct && <XCircle className="h-4 w-4 text-rose-500" />}
+                        <div key={idx}>
+                          <div className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2 text-sm ${cls}`}>
+                            <span className="flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold">{optionLabels[idx]}</span>
+                            <span className="flex-1"><MathText>{opt}</MathText></span>
+                            {idx === q.correct && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                            {idx === userAns && idx !== q.correct && <XCircle className="h-4 w-4 text-rose-500" />}
+                          </div>
+                          {/* Why each incorrect option is wrong */}
+                          {idx !== q.correct && optExp && optExp.trim() && (
+                            <p className={`ml-8 mt-1 text-xs ${idx === userAns ? "text-rose-500 dark:text-rose-400" : "text-slate-400 dark:text-slate-500"}`}>
+                              <MathText>{optExp}</MathText>
+                            </p>
+                          )}
                         </div>
                       );
                     })}
@@ -487,8 +496,15 @@ export default function PracticeQuizPlay() {
                     {locked && idx === q.correct && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
                     {locked && idx === answers[current] && idx !== q.correct && <XCircle className="h-5 w-5 text-rose-500" />}
                   </button>
-                  {locked && idx === answers[current] && idx !== q.correct && optExp && optExp.trim() && (
-                    <p className="ml-9 mt-1 rounded-lg bg-rose-50 px-3 py-1.5 text-xs text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+                  {/* Reveal WHY each incorrect option is wrong once locked, not
+                      just the student's pick. Chosen wrong option is red; other
+                      wrong options are neutral. */}
+                  {locked && idx !== q.correct && optExp && optExp.trim() && (
+                    <p className={`ml-9 mt-1 rounded-lg px-3 py-1.5 text-xs ${
+                      idx === answers[current]
+                        ? "bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300"
+                        : "bg-slate-50 text-slate-500 dark:bg-slate-800/60 dark:text-slate-400"
+                    }`}>
                       <MathText>{optExp}</MathText>
                     </p>
                   )}

@@ -251,8 +251,8 @@ export default function QuizResult() {
                             {r.type === "matching" && <span className="font-bold">({String.fromCharCode(97 + idx)})</span>}
                             <MathText>{opt}</MathText>
                           </div>
-                          {isChosen && !isCorrect && optExp && optExp.trim() && (
-                            <p className="ml-6 mt-0.5 text-xs text-rose-500 dark:text-rose-400"><MathText>{optExp}</MathText></p>
+                          {!isCorrect && optExp && optExp.trim() && (
+                            <p className={`ml-6 mt-0.5 text-xs ${isChosen ? "text-rose-500 dark:text-rose-400" : "text-slate-400 dark:text-slate-500"}`}><MathText>{optExp}</MathText></p>
                           )}
                         </div>
                       );
