@@ -115,7 +115,7 @@ export default function Login() {
       </form>
 
       <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2.5 text-center text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-        Demo student login: <b>student@myprepmart.com</b> / <b>student123</b>
+        Demo student login: <b>student@mystudyguide.com</b> / <b>student123</b>
       </p>
 
       <div className="my-5 flex items-center gap-3 text-xs text-slate-400">

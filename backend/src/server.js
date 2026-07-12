@@ -54,7 +54,7 @@ async function start() {
 
   // Start listening immediately so the host detects an open port quickly.
   app.listen(PORT, () => {
-    console.log(`✔ My Prep Mart API running on http://localhost:${PORT}`);
+    console.log(`✔ My Study Guide API running on http://localhost:${PORT}`);
   });
 
   // Auto-delete expired temporary accounts.
@@ -73,7 +73,7 @@ async function start() {
   if (process.env.AUTO_SEED !== "off") {
     seedIfEmpty()
       .then((seeded) => {
-        if (seeded) console.log("✔ Database was empty — seeded sample data (admin@myprepmart.com / admin123).");
+        if (seeded) console.log("✔ Database was empty — seeded sample data (admin@mystudyguide.com / admin123).");
       })
       .catch((err) => console.error("Auto-seed skipped:", err.message))
       // After seeding, ensure the env-configured admin exists (create/recover)

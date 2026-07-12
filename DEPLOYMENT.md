@@ -1,4 +1,4 @@
-# Deploying My Prep Mart (Real Mode)
+# Deploying My Study Guide (Real Mode)
 
 This guide publishes the **full application**: a live backend API + MongoDB database, and the frontend connected to it. You'll deploy three things:
 
@@ -18,7 +18,7 @@ Do them in this order.
 4. **Network Access** → Add IP → **Allow access from anywhere** (`0.0.0.0/0`).
 5. **Connect → Drivers** → copy the connection string and insert your password and database name:
    ```
-   mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/myprepmart?retryWrites=true&w=majority
+   mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/mystudyguide?retryWrites=true&w=majority
    ```
 
 ---
@@ -26,7 +26,7 @@ Do them in this order.
 ## 2. Backend API — Render
 
 1. Sign up at [render.com](https://render.com) with GitHub.
-2. **New → Web Service** → connect the **My-Prep-Mart** repo.
+2. **New → Web Service** → connect the **My-Study-Guide** repo.
 3. Configure:
    - **Root Directory:** `backend`
    - **Build Command:** `npm install`
@@ -38,11 +38,11 @@ Do them in this order.
    | `MONGO_URI` | your Atlas connection string |
    | `JWT_SECRET` | any long random text |
    | `JWT_EXPIRES_IN` | `7d` |
-   | `CLIENT_URL` | your Vercel URL (add after step 3, e.g. `https://my-prep-mart.vercel.app`) |
+   | `CLIENT_URL` | your Vercel URL (add after step 3, e.g. `https://my-study-guide.vercel.app`) |
    | `NODE_ENV` | `production` |
 
 5. Click **Create Web Service**. When it's live you'll get a URL like
-   `https://my-prep-mart-api.onrender.com`.
+   `https://my-study-guide-api.onrender.com`.
 6. Test it: open `https://YOUR-API.onrender.com/api/health` → should show `{"status":"ok"}`.
 
 ### Seed the database (one time)
@@ -51,8 +51,8 @@ In Render → your service → **Shell** tab, run:
 npm run seed
 ```
 This creates sample data + the accounts:
-- Admin: `admin@myprepmart.com` / `admin123`
-- Student: `student@myprepmart.com` / `student123`
+- Admin: `admin@mystudyguide.com` / `admin123`
+- Student: `student@mystudyguide.com` / `student123`
 
 > ⚠️ Change the admin password after first login in production.
 
@@ -61,7 +61,7 @@ This creates sample data + the accounts:
 ## 3. Frontend — Vercel
 
 1. Sign up at [vercel.com](https://vercel.com) with GitHub.
-2. **Add New → Project** → import **My-Prep-Mart**.
+2. **Add New → Project** → import **My-Study-Guide**.
 3. Configure:
    - **Root Directory:** `frontend`
    - Framework Preset: **Vite** (auto-detected)
@@ -71,7 +71,7 @@ This creates sample data + the accounts:
    |-----|-------|
    | `VITE_API_URL` | `https://YOUR-API.onrender.com/api` |
 
-5. Click **Deploy**. You'll get a URL like `https://my-prep-mart.vercel.app`.
+5. Click **Deploy**. You'll get a URL like `https://my-study-guide.vercel.app`.
 
 ### Final step — connect CORS
 Go back to **Render → Environment** and set `CLIENT_URL` to your exact Vercel URL, then save (the service redeploys). This allows the browser to call the API.

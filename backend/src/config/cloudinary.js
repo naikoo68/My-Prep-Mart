@@ -13,7 +13,7 @@ export function isCloudinaryConfigured() {
 
 // Uploads a base64 / data URI or remote URL to Cloudinary.
 // resource_type "auto" lets Cloudinary accept images AND raw files (PDF, docs).
-export async function uploadToCloudinary(fileStr, folder = "myprepmart") {
+export async function uploadToCloudinary(fileStr, folder = "mystudyguide") {
   const result = await cloudinary.uploader.upload(fileStr, { folder, resource_type: "auto" });
   return { url: result.secure_url, format: result.format, bytes: result.bytes };
 }

@@ -1,7 +1,7 @@
 {
-  "name": "my-prep-mart-backend",
+  "name": "my-study-guide-backend",
   "version": "1.0.0",
-  "description": "REST API for My Prep Mart — quizzes & test series platform",
+  "description": "REST API for My Study Guide — quizzes & test series platform",
   "type": "module",
   "main": "src/server.js",
   "scripts": {

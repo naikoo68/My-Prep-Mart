@@ -44,7 +44,7 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50 });
 app.get("/api/health", (req, res) =>
   res.json({
     status: "ok",
-    service: "my-prep-mart-api",
+    service: "my-study-guide-api",
     mailConfigured: isMailConfigured(),
     uploadConfigured: isCloudinaryConfigured(),
   })
