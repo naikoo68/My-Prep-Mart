@@ -138,7 +138,7 @@ Type-specific rules — each type needs specific extra fields AND a specific sty
 Do NOT prefix columnA / columnB / statement items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4), Column B (I,II,III,IV) and statements (1,2,3) automatically.
 Never include image URLs. Keep questions factually correct and self-contained.`;
 
-function buildUserPrompt({ topic, count, difficulty, types, notes, plan }) {
+function buildUserPrompt({ topic, count, difficulty, types, notes, plan, avoid }) {
   const lines = [`Topic / syllabus: ${topic}.`];
 
   if (Array.isArray(plan) && plan.length) {
@@ -165,6 +165,12 @@ function buildUserPrompt({ topic, count, difficulty, types, notes, plan }) {
   lines.push(
     `For every question write a rich, complete "explanation" that includes all relevant facts (dates, years, historical context, definitions, formulas with calculations, named laws/principles) — not a single line. Whenever a term/place/concept/option has a local or alternative name (common name, vernacular/Hindi/regional name, synonym, abbreviation's full form, or old name), add it in brackets. Write the explanation across several short lines — each point on its own line, not one paragraph. Vary which option (A/B/C/D) is correct across the set.`
   );
+  if (Array.isArray(avoid) && avoid.length) {
+    const list = avoid.slice(0, 40).map((s, i) => `${i + 1}) ${String(s).slice(0, 120)}`).join("\n");
+    lines.push(
+      `IMPORTANT — these questions ALREADY EXIST. Do NOT repeat, restate or paraphrase any of them; generate ENTIRELY DIFFERENT questions covering other facts/aspects of the topic:\n${list}`
+    );
+  }
   lines.push(`Return ONLY the JSON object {"questions":[...]}.`);
   return lines.join("\n");
 }
@@ -382,7 +388,7 @@ function reorderNoConsecutiveTypes(list) {
   return out;
 }
 
-const MAX_TOTAL = 100; // most questions per generate request
+const MAX_TOTAL = 30; // most questions per generate request
 const CHUNK_SIZE = 12; // questions generated per provider call — smaller so the richer, detailed explanations don't truncate the JSON reply
 
 // Pull a suggested retry wait (ms) out of a 429 response — either the
@@ -496,9 +502,17 @@ function planGaps(planArr, collected, reserved) {
 }
 
 async function runGenerationJob(id, ctx) {
-  const { workers, model, topic, notes, plan, count, difficulty, types, target } = ctx;
+  const { workers, model, topic, notes, plan, count, difficulty, types, target, avoid } = ctx;
   const job = genJobs.get(id);
   const deadline = Date.now() + 8 * 60 * 1000; // overall time budget
+
+  // Signature of a question (normalised stem) used to guarantee NO duplicates —
+  // neither within this batch nor against questions from an earlier batch
+  // (the caller passes their stems in `avoid`). This is the reliable no-repeat
+  // guarantee; the prompt instruction just reduces wasted regeneration.
+  const qSig = (q) => String(q?.text || q || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const seen = new Set((avoid || []).map(qSig).filter(Boolean));
+  const avoidForPrompt = (avoid || []).slice(0, 40);
   const MAX_QUOTA_WAITS = 6; // per key: how many per-minute 429s we ride out before retiring it
   const MAX_ATTEMPTS = Math.ceil(target / CHUNK_SIZE) + 12 + (workers?.length || 1) * MAX_QUOTA_WAITS; // global safety cap
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -541,15 +555,21 @@ async function runGenerationJob(id, ctx) {
       const res = reserveChunk();
       if (!res) break; // nothing left to generate
       const prompt = plan
-        ? buildUserPrompt({ topic, notes, plan: res.chunk })
-        : buildUserPrompt({ topic, notes, count: res.n, difficulty, types });
+        ? buildUserPrompt({ topic, notes, plan: res.chunk, avoid: avoidForPrompt })
+        : buildUserPrompt({ topic, notes, count: res.n, difficulty, types, avoid: avoidForPrompt });
       const maxTokens = Math.min(16000, 1800 + res.n * 1000);
       attempts += 1;
       const r = await callProvider({ key: ep.key, baseUrl: ep.baseUrl, model: ep.model || model, userPrompt: prompt, maxTokens });
       release(res); // free the reservation — any shortfall gets re-targeted next round
       if (r.ok) {
         AiKey.updateOne({ key: ep.key }, { $inc: { usedRequests: 1, usedTokens: r.tokens || 0 } }).catch(() => {});
-        for (const q of normalize(parseQuestions(r.content))) { if (collected.length >= target) break; collected.push(q); }
+        for (const q of normalize(parseQuestions(r.content))) {
+          if (collected.length >= target) break;
+          const sig = qSig(q);
+          if (!sig || seen.has(sig)) continue; // skip blanks + any duplicate (this batch or earlier)
+          seen.add(sig);
+          collected.push(q);
+        }
         save({ questions: collected.slice() });
         continue;
       }
@@ -661,8 +681,14 @@ export async function generateQuestions(req, res) {
     updatedAt: Date.now(),
   });
 
+  // Stems of questions that already exist (from earlier batches) — the generator
+  // must not repeat these. Capped to keep the request reasonable.
+  const avoid = Array.isArray(req.body?.avoid)
+    ? req.body.avoid.filter((s) => typeof s === "string" && s.trim()).slice(0, 300)
+    : [];
+
   // Fire-and-forget — the client polls /api/ai/job/:id for progress.
-  runGenerationJob(id, { workers, model, topic, notes, plan, count, difficulty, types, target });
+  runGenerationJob(id, { workers, model, topic, notes, plan, count, difficulty, types, target, avoid });
 
   res.json({ jobId: id, requested: target, model });
 }
