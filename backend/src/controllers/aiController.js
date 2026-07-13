@@ -580,7 +580,9 @@ async function runGenerationJob(id, ctx) {
         continue;
       }
       lastError = r;
-      if ([401, 403].includes(r.status)) break; // this key is dead/unauthorized — retire the worker
+      // 401/403 = key dead/unauthorized; 404 = this key's model doesn't exist.
+      // Retire the worker instead of looping on a model that can never succeed.
+      if ([401, 403, 404].includes(r.status)) break;
       if (r.status === 429) {
         // This key hit its per-minute limit. Wait it out; the other key-workers
         // keep generating in parallel meanwhile.
@@ -603,6 +605,9 @@ async function runGenerationJob(id, ctx) {
       if (lastError?.status === 429) {
         msg =
           "All configured API keys hit their quota/rate limit (429). Free tiers allow only limited requests per minute/day. Add another API key (Admin → AI Keys), wait a minute (or until tomorrow), use a smaller batch, or enable billing on your key.";
+      } else if (lastError?.status === 404) {
+        msg =
+          "The selected AI model isn't available for your key (404). Go to Admin → AI Keys, click 'Show models' on the key to see valid model ids, click one to set it, then pick that model in the generator.";
       } else if (lastError) {
         const busy = lastError.status === 503 ? " The model is busy — try again shortly or pick a different model." : "";
         msg = `AI provider error (${lastError.status}).${busy} ${(lastError.detail || "").slice(0, 200)}`;
