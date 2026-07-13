@@ -10,6 +10,9 @@ const PRESETS = [
   { label: "TokenLab", baseUrl: "https://api.tokenlab.sh/v1", models: "gpt-4o-mini" },
   { label: "Groq", baseUrl: "https://api.groq.com/openai/v1", models: "llama-3.3-70b-versatile" },
   { label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", models: "deepseek-chat" },
+  // Kiro has no official public API — it works via a self-hosted "Kiro gateway"
+  // (OpenAI-compatible). Replace the Base URL with YOUR gateway's public address.
+  { label: "Kiro", baseUrl: "https://your-kiro-gateway/v1", models: "claude-sonnet-4" },
 ];
 
 const blank = { label: "", baseUrl: GEMINI_BASE, models: "gemini-flash-latest", key: "", creditLimit: "" };
