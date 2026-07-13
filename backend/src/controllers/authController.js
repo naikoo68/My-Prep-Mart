@@ -122,6 +122,11 @@ export async function computeOffer({ planKey, couponCode, referralCode, selfEmai
     }
   }
 
+  // A PAID plan must always keep at least ₹1 payable — stacked coupon + referral
+  // (or a large coupon) can NEVER discount it to ₹0. Otherwise the "free" path
+  // would activate the plan and extend validity with no payment taken. Only the
+  // ₹0 trial plan is genuinely free.
+  if (base > 0 && discount > base - 1) discount = base - 1;
   const finalPrice = Math.max(0, base - discount);
   return { plan: { key: plan.key, label: plan.label, months: plan.months }, basePrice: base, discount, finalPrice, applied };
 }
