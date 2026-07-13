@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, LogIn, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
 import OtpVerify from "../../components/auth/OtpVerify";
+import AccountTypeTabs from "../../components/auth/AccountTypeTabs";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
@@ -10,6 +11,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [showPw, setShowPw] = useState(false);
+  const [acctType, setAcctType] = useState("student"); // guides the sign-up link
   const [otpStep, setOtpStep] = useState(null); // { email } when account needs verification
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -52,7 +54,8 @@ export default function Login() {
   }
 
   return (
-    <AuthShell title="Welcome back" subtitle="Log in to access your dashboard and test series.">
+    <AuthShell title="Welcome back" subtitle="Log in to your account.">
+      <AccountTypeTabs active={acctType} onSelect={setAcctType} />
       <form onSubmit={submit} className="space-y-4">
         {error && (
           <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
@@ -114,10 +117,6 @@ export default function Login() {
         </button>
       </form>
 
-      <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2.5 text-center text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
-        Demo student login: <b>student@mystudyguide.com</b> / <b>student123</b>
-      </p>
-
       <div className="my-5 flex items-center gap-3 text-xs text-slate-400">
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" /> OR
         <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
@@ -125,18 +124,21 @@ export default function Login() {
 
       <GoogleButton />
 
-      <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">
-        Don't have an account?{" "}
-        <Link to="/register" className="font-semibold text-brand-600 hover:underline dark:text-brand-400">
-          Sign up
-        </Link>
-      </p>
-      <p className="mt-2 text-center text-sm text-slate-600 dark:text-slate-300">
-        Want to build your own quizzes &amp; tests?{" "}
-        <Link to="/client/register" className="font-semibold text-accent-600 hover:underline dark:text-accent-400">
-          Create a My Practice account
-        </Link>
-      </p>
+      {acctType === "client" ? (
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">
+          New client?{" "}
+          <Link to="/client/register" className="font-semibold text-accent-600 hover:underline dark:text-accent-400">
+            Pick a plan &amp; sign up
+          </Link>
+        </p>
+      ) : (
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">
+          New here?{" "}
+          <Link to="/register" className="font-semibold text-brand-600 hover:underline dark:text-brand-400">
+            Create a student account
+          </Link>
+        </p>
+      )}
     </AuthShell>
   );
 }

@@ -3,11 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { User, Mail, Lock, Eye, EyeOff, UserPlus, Loader2, AlertCircle } from "lucide-react";
 import AuthShell, { GoogleButton } from "../../components/auth/AuthShell";
 import OtpVerify from "../../components/auth/OtpVerify";
+import AccountTypeTabs from "../../components/auth/AccountTypeTabs";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  // Switching to "Client" jumps to the plan-based client registration.
+  const onType = (k) => { if (k === "client") navigate("/client/register"); };
   const [showPw, setShowPw] = useState(false);
   const [otpStep, setOtpStep] = useState(null); // { email, devOtp, emailSent }
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -44,6 +47,7 @@ export default function Register() {
 
   return (
     <AuthShell title="Create your account" subtitle="Join 1,20,000+ students preparing the smart way.">
+      <AccountTypeTabs active="student" onSelect={onType} />
       <form onSubmit={submit} className="space-y-4">
         {error && (
           <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
