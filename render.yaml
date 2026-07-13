@@ -3,7 +3,7 @@
 # creates the web service. You only fill in MONGO_URI (and CLIENT_URL later).
 services:
   - type: web
-    name: my-study-guide-api
+    name: my-prep-mart-api   # keep matching the EXISTING Render service — its name/URL are immutable
     runtime: node
     plan: free
     rootDir: backend
