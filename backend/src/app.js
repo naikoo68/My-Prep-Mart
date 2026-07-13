@@ -22,6 +22,7 @@ import practiceRoutes from "./routes/practiceRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import couponRoutes from "./routes/couponRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import { isMailConfigured, verifyMail } from "./config/mailer.js";
 import { isCloudinaryConfigured } from "./config/cloudinary.js";
@@ -75,6 +76,7 @@ app.use("/api/practice", practiceRoutes); // "Practice Quizzes" section (My Quiz
 app.use("/api/ai", aiRoutes); // AI question generator (admin)
 app.use("/api/coupons", couponRoutes); // discount coupons (admin manage; used at client checkout)
 app.use("/api/payments", paymentRoutes); // Razorpay: create orders + config for client checkout
+app.use("/api/subscriptions", subscriptionRoutes); // client self-serve upgrade/renew (works when expired)
 
 // Errors
 app.use(notFound);

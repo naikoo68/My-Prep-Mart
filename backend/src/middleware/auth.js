@@ -28,6 +28,26 @@ export async function protect(req, res, next) {
   }
 }
 
+// Like `protect`, but does NOT block EXPIRED accounts — it only requires a
+// valid token and a non-blocked user. Used for endpoints an expired client
+// must still reach: viewing their profile and upgrading/renewing their plan.
+export async function attachUser(req, res, next) {
+  let token;
+  const header = req.headers.authorization;
+  if (header && header.startsWith("Bearer ")) token = header.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "Not authorized, no token" });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(401).json({ message: "User no longer exists" });
+    if (user.status === "blocked") return res.status(403).json({ message: "Your account has been blocked" });
+    req.user = user;
+    next();
+  } catch {
+    return res.status(401).json({ message: "Not authorized, token failed" });
+  }
+}
+
 // Restricts a route to specific roles, e.g. authorize("admin").
 export function authorize(...roles) {
   return (req, res, next) => {

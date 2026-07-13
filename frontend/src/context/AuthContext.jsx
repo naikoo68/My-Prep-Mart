@@ -74,6 +74,12 @@ export function AuthProvider({ children }) {
 
   const resendOtp = (email) => authService.resendOtp(email);
 
+  // Re-fetch the current profile (e.g. after an upgrade extends validity).
+  const refreshUser = useCallback(async () => {
+    const res = await authService.me();
+    return persist(res.user);
+  }, [persist]);
+
   const loginWithGoogle = async (profile) => {
     const { user: u, token } = await authService.google(profile);
     setToken(token);
@@ -87,7 +93,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, verifyOtp, resendOtp, loginWithGoogle, logout, applySession, isAuthenticated: !!user }}
+      value={{ user, loading, login, register, verifyOtp, resendOtp, loginWithGoogle, logout, applySession, refreshUser, isAuthenticated: !!user }}
     >
       {children}
     </AuthContext.Provider>

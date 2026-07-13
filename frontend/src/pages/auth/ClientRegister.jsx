@@ -22,6 +22,7 @@ function loadRazorpay() {
 // Prices mirror the backend (single source of truth) — used only until the
 // live /auth/plans response arrives, so the form never renders empty.
 const FALLBACK_PLANS = [
+  { key: "trial", label: "1-Day Free Trial", months: 0, price: 0, trial: true },
   { key: "1m", label: "1 Month", months: 1, price: 299 },
   { key: "2m", label: "2 Months", months: 2, price: 499 },
   { key: "6m", label: "6 Months", months: 6, price: 699 },
@@ -37,7 +38,7 @@ export default function ClientRegister() {
   const [otpStep, setOtpStep] = useState(null); // { email, devOtp, emailSent }
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [plans, setPlans] = useState(FALLBACK_PLANS);
-  const [planKey, setPlanKey] = useState("6m");
+  const [planKey, setPlanKey] = useState("trial"); // default: free 1-day trial
   const [coupon, setCoupon] = useState("");
   const [referral, setReferral] = useState("");
   const [offer, setOffer] = useState(null); // { basePrice, discount, finalPrice, applied }
@@ -243,7 +244,7 @@ export default function ClientRegister() {
                 >
                   {active && <Check className="absolute right-2 top-2 h-4 w-4 text-brand-600" />}
                   <p className="text-sm font-semibold">{p.label}</p>
-                  <p className="text-lg font-extrabold">₹{p.price}</p>
+                  <p className="text-lg font-extrabold">{p.price > 0 ? `₹${p.price}` : "Free"}</p>
                 </button>
               );
             })}
@@ -315,10 +316,18 @@ export default function ClientRegister() {
 
         <button type="submit" disabled={busy} className="btn-primary w-full">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-          {busy ? "Processing..." : payEnabled && total > 0 ? `Pay ₹${total} & Create account` : `Create account · ₹${total}`}
+          {busy
+            ? "Processing..."
+            : planKey === "trial"
+            ? "Start 1-day free trial"
+            : payEnabled && total > 0
+            ? `Pay ₹${total} & Create account`
+            : `Create account · ₹${total}`}
         </button>
         <p className="text-center text-xs text-slate-400">
-          {payEnabled && total > 0
+          {planKey === "trial"
+            ? "Free 1-day trial — no payment needed. You can upgrade to a paid plan anytime."
+            : payEnabled && total > 0
             ? "You'll pay securely via Razorpay, then your account activates instantly for the selected duration."
             : "After verifying your email, your account is active for the selected duration."}
         </p>

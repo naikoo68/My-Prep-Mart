@@ -12,7 +12,7 @@ import {
   getPlans,
   validateOffer,
 } from "../controllers/authController.js";
-import { protect } from "../middleware/auth.js";
+import { attachUser } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -26,6 +26,6 @@ router.post("/google", googleLogin);
 router.get("/verify-email/:token", verifyEmail);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:token", resetPassword);
-router.get("/me", protect, getMe);
+router.get("/me", attachUser, getMe); // expired clients can still load their profile (to upgrade)
 
 export default router;

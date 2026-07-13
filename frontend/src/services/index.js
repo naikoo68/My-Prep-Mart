@@ -268,3 +268,9 @@ export const paymentService = {
   config: () => api.get("/payments/config", { auth: false }), // { enabled, keyId }
   createOrder: (data) => api.post("/payments/create-order", data, { auth: false }),
 };
+
+// ---- Subscription upgrade / renew (logged-in client, works when expired) ----
+export const subscriptionService = {
+  order: (data) => api.post("/subscriptions/order", data),
+  activate: (data) => api.post("/subscriptions/activate", data),
+};

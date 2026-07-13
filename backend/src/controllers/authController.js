@@ -48,10 +48,12 @@ const sanitize = (u) => ({
   streak: u.streak,
   referralCode: u.referralCode,
   subscriptionPlan: u.subscriptionPlan,
+  isTrial: u.isTrial,
 });
 
 // ---- Client subscription plans (single source of truth for pricing) ----
 export const CLIENT_PLANS = [
+  { key: "trial", label: "1-Day Free Trial", months: 0, price: 0, trial: true },
   { key: "1m", label: "1 Month", months: 1, price: 299 },
   { key: "2m", label: "2 Months", months: 2, price: 499 },
   { key: "6m", label: "6 Months", months: 6, price: 699 },
@@ -142,11 +144,15 @@ export async function register(req, res) {
   // code. Store the selection; validity (expiresAt) starts when they verify.
   let paidActive = false;
   if (role === "client") {
-    const offer = await computeOffer({ planKey: req.body.plan, couponCode: req.body.couponCode, referralCode: req.body.referralCode, selfEmail: email });
+    // Default to the free 1-day trial when no (valid) plan is chosen.
+    const offer =
+      (await computeOffer({ planKey: req.body.plan, couponCode: req.body.couponCode, referralCode: req.body.referralCode, selfEmail: email })) ||
+      (await computeOffer({ planKey: "trial", selfEmail: email }));
     if (offer) {
       doc.subscriptionPlan = offer.plan.key;
       doc.subscriptionMonths = offer.plan.months;
       doc.subscriptionPrice = offer.finalPrice;
+      doc.isTrial = offer.plan.key === "trial";
       if (offer.applied?.coupon && !offer.applied.coupon.invalid) doc.couponCode = offer.applied.coupon.code;
       if (offer.applied?.referral && !offer.applied.referral.invalid) doc.referredBy = offer.applied.referral.code;
 
@@ -232,9 +238,10 @@ export async function verifyOtp(req, res) {
     user.otpHash = undefined;
     user.otpExpires = undefined;
     // Start a client's subscription clock now that the account is active.
-    if (user.role === "client" && user.subscriptionMonths && !user.expiresAt) {
+    if (user.role === "client" && user.subscriptionPlan && !user.expiresAt) {
       const exp = new Date();
-      exp.setMonth(exp.getMonth() + user.subscriptionMonths);
+      if (user.subscriptionPlan === "trial") exp.setDate(exp.getDate() + 1); // 1-day free trial
+      else exp.setMonth(exp.getMonth() + (user.subscriptionMonths || 0));
       user.expiresAt = exp;
     }
     await user.save();

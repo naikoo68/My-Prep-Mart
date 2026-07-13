@@ -7,6 +7,7 @@ import { useSettings } from "../../context/SettingsContext";
 import { useZoom } from "../../context/ZoomContext";
 import AdminPractice from "../admin/AdminPractice";
 import ClientDashboard from "./ClientDashboard";
+import ClientUpgrade from "./ClientUpgrade";
 
 // The self-service CLIENT workspace. A client only ever sees the My Practice
 // section (their own private content) — no other part of the site. It reuses
@@ -19,6 +20,9 @@ export default function ClientWorkspace() {
   const { zoom, zoomIn, zoomOut } = useZoom();
   const navigate = useNavigate();
   const [tab, setTab] = useState("dashboard"); // "dashboard" (practice) | "build"
+
+  // Trial/plan finished → lock the workspace behind the upgrade screen.
+  const expired = user?.expiresAt && new Date(user.expiresAt).getTime() < Date.now();
 
   const handleLogout = () => {
     logout();
@@ -66,6 +70,7 @@ export default function ClientWorkspace() {
           </div>
         </div>
         {/* Tabs: Dashboard (practice + validity) vs Build (create content) */}
+        {!expired && (
         <div className="mx-auto mt-3 flex max-w-6xl gap-2">
           {tabs.map((t) => (
             <button
@@ -79,10 +84,17 @@ export default function ClientWorkspace() {
             </button>
           ))}
         </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-6xl p-4 sm:p-6">
-        {tab === "dashboard" ? <ClientDashboard onBuild={() => setTab("build")} /> : <AdminPractice clientMode />}
+        {expired ? (
+          <ClientUpgrade />
+        ) : tab === "dashboard" ? (
+          <ClientDashboard onBuild={() => setTab("build")} />
+        ) : (
+          <AdminPractice clientMode />
+        )}
       </main>
     </div>
   );
