@@ -35,7 +35,7 @@ async function providers() {
       return {
         key: k.key.trim(),
         baseUrl: (k.baseUrl || DEFAULT_BASE).replace(/\/$/, ""),
-        models: models.length ? models : ["gemini-flash-latest"],
+        models: models.length ? models : ["gemini-2.5-flash"],
       };
     });
   // DB keys first, then env slots — de-duplicated by key value so the same key
@@ -985,7 +985,7 @@ export async function createKey(req, res) {
   const doc = await AiKey.create({
     label: String(label || "").trim(),
     baseUrl: String(baseUrl || "").trim() || "https://generativelanguage.googleapis.com/v1beta/openai",
-    models: String(models || "").trim() || "gemini-flash-latest",
+    models: String(models || "").trim() || "gemini-2.5-flash",
     key: String(key).trim(),
     creditLimit: Math.max(0, parseInt(creditLimit, 10) || 0),
     enabled: true,

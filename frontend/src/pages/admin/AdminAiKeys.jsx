@@ -5,7 +5,7 @@ import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState"
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai";
 const PRESETS = [
-  { label: "Google Gemini", baseUrl: GEMINI_BASE, models: "gemini-flash-latest" },
+  { label: "Google Gemini", baseUrl: GEMINI_BASE, models: "gemini-2.5-flash" },
   { label: "OpenAI", baseUrl: "https://api.openai.com/v1", models: "gpt-4o-mini" },
   { label: "TokenLab", baseUrl: "https://api.tokenlab.sh/v1", models: "gpt-4o-mini" },
   { label: "Groq", baseUrl: "https://api.groq.com/openai/v1", models: "llama-3.3-70b-versatile" },
@@ -15,7 +15,7 @@ const PRESETS = [
   { label: "Kiro", baseUrl: "https://your-kiro-gateway/v1", models: "claude-sonnet-4" },
 ];
 
-const blank = { label: "", baseUrl: GEMINI_BASE, models: "gemini-flash-latest", key: "", creditLimit: "" };
+const blank = { label: "", baseUrl: GEMINI_BASE, models: "gemini-2.5-flash", key: "", creditLimit: "" };
 
 // Compact number formatter (1234567 -> "1.23M", 12345 -> "12.3K").
 const fmt = (n) => {
@@ -328,7 +328,7 @@ export default function AdminAiKeys() {
 
               <div>
                 <label className="mb-1 block text-sm font-semibold">Model(s)</label>
-                <input className="input" value={form.models} onChange={(e) => setForm({ ...form, models: e.target.value })} placeholder="gemini-flash-latest" />
+                <input className="input" value={form.models} onChange={(e) => setForm({ ...form, models: e.target.value })} placeholder="gemini-2.5-flash" />
                 <p className="mt-1 text-xs text-slate-400">Comma-separate multiple models. Use the <b>same</b> model on several keys to make them quota fallbacks.</p>
               </div>
 
