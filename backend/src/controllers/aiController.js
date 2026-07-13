@@ -349,6 +349,38 @@ function balanceCorrectOptions(list) {
   return list;
 }
 
+// Reorder the finished batch so the SAME question type never sits back-to-back
+// when avoidable (no run of consecutive MCQs, then all matching, etc.). Each
+// type's questions are shuffled and the types are interleaved, so the order is
+// fresh and varied on EVERY run. (Adjacency is only unavoidable when a single
+// type makes up more than half the batch.)
+function reorderNoConsecutiveTypes(list) {
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const groups = new Map();
+  for (const q of list) {
+    const t = q.type || "mcq";
+    if (!groups.has(t)) groups.set(t, []);
+    groups.get(t).push(q);
+  }
+  for (const arr of groups.values()) shuffle(arr); // fresh random order within each type
+
+  const out = [];
+  let lastType = null;
+  while (out.length < list.length) {
+    const buckets = [...groups.entries()].filter(([, arr]) => arr.length > 0);
+    let eligible = buckets.filter(([t]) => t !== lastType);
+    if (!eligible.length) eligible = buckets; // only the same type remains — unavoidable
+    // Prefer the type with the most left (keeps spacing feasible); break ties
+    // randomly so the sequence differs every time.
+    const maxLeft = Math.max(...eligible.map(([, arr]) => arr.length));
+    const top = eligible.filter(([, arr]) => arr.length === maxLeft);
+    const [type, arr] = top[Math.floor(Math.random() * top.length)];
+    out.push(arr.pop());
+    lastType = type;
+  }
+  return out;
+}
+
 const MAX_TOTAL = 100; // most questions per generate request
 const CHUNK_SIZE = 12; // questions generated per provider call — smaller so the richer, detailed explanations don't truncate the JSON reply
 
@@ -556,10 +588,10 @@ async function runGenerationJob(id, ctx) {
       // the correct-answer positions across the whole batch before returning.
       // Only flag "quota" when we actually fell short.
       const short = collected.length < target;
-      save({ status: "done", questions: balanceCorrectOptions(collected), error: short && lastError?.status === 429 ? "quota" : null });
+      save({ status: "done", questions: balanceCorrectOptions(reorderNoConsecutiveTypes(collected)), error: short && lastError?.status === 429 ? "quota" : null });
     }
   } catch (err) {
-    save(collected.length ? { status: "done", questions: balanceCorrectOptions(collected) } : { status: "error", error: err?.message || "AI request failed." });
+    save(collected.length ? { status: "done", questions: balanceCorrectOptions(reorderNoConsecutiveTypes(collected)) } : { status: "error", error: err?.message || "AI request failed." });
   }
 }
 
