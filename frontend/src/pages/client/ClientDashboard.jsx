@@ -17,6 +17,7 @@ import {
   Layers,
   Gift,
   Copy,
+  Crown,
 } from "lucide-react";
 import { practiceService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
@@ -61,7 +62,7 @@ function uniqueNodes(list, key) {
 // The client's home. Shows profile + validity, then lets them browse and
 // practice the quizzes and tests they built (this is where practicing happens,
 // not the builder). `onBuild` switches to the builder tab to add/edit content.
-export default function ClientDashboard({ onBuild }) {
+export default function ClientDashboard({ onBuild, onUpgrade }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
@@ -202,8 +203,25 @@ export default function ClientDashboard({ onBuild }) {
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Your account has no expiry date.</p>
             </div>
           )}
+          {onUpgrade && user?.expiresAt && (
+            <button onClick={onUpgrade} className="btn-primary mt-4 w-full py-1.5 text-xs">
+              <Crown className="h-3.5 w-3.5" /> {user?.isTrial ? "Upgrade plan" : "Renew / change plan"}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Trial banner — nudge trial users to upgrade before it ends */}
+      {user?.isTrial && !expired && onUpgrade && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-900/20">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            <span className="font-semibold">You're on a free 1-day trial.</span> Upgrade to a paid plan for uninterrupted access.
+          </p>
+          <button onClick={onUpgrade} className="btn-primary py-1.5 text-xs">
+            <Crown className="h-3.5 w-3.5" /> Upgrade plan
+          </button>
+        </div>
+      )}
 
       {/* Practice browser */}
       <div className="card p-5">

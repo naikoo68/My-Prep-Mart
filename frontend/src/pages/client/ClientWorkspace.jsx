@@ -21,6 +21,8 @@ export default function ClientWorkspace() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("dashboard"); // "dashboard" (practice) | "build"
 
+  const [showUpgrade, setShowUpgrade] = useState(false); // opened voluntarily from the dashboard
+
   // Trial/plan finished → lock the workspace behind the upgrade screen.
   const expired = user?.expiresAt && new Date(user.expiresAt).getTime() < Date.now();
 
@@ -75,7 +77,7 @@ export default function ClientWorkspace() {
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => { setTab(t.key); setShowUpgrade(false); }}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
                 tab === t.key ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               }`}
@@ -88,10 +90,10 @@ export default function ClientWorkspace() {
       </header>
 
       <main className="mx-auto max-w-6xl p-4 sm:p-6">
-        {expired ? (
-          <ClientUpgrade />
+        {expired || showUpgrade ? (
+          <ClientUpgrade onClose={expired ? undefined : () => setShowUpgrade(false)} />
         ) : tab === "dashboard" ? (
-          <ClientDashboard onBuild={() => setTab("build")} />
+          <ClientDashboard onBuild={() => setTab("build")} onUpgrade={() => setShowUpgrade(true)} />
         ) : (
           <AdminPractice clientMode />
         )}

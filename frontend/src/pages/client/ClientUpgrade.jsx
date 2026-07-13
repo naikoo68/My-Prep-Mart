@@ -23,7 +23,7 @@ function loadRazorpay() {
 
 // Shown to a client whose trial/plan has expired. Lets them pick a paid plan,
 // apply a coupon/referral, pay via Razorpay, and instantly regain access.
-export default function ClientUpgrade() {
+export default function ClientUpgrade({ onClose }) {
   const { user, refreshUser } = useAuth();
   const [plans, setPlans] = useState(FALLBACK_PLANS);
   const [planKey, setPlanKey] = useState("1m");
@@ -57,6 +57,7 @@ export default function ClientUpgrade() {
   const discount = offer?.discount ?? 0;
   const total = offer?.finalPrice ?? selectedPlan?.price ?? 0;
   const wasTrial = user?.isTrial;
+  const expired = user?.expiresAt && new Date(user.expiresAt).getTime() < Date.now();
 
   const codes = () => ({ plan: planKey, couponCode: coupon.trim() || undefined, referralCode: referral.trim() || undefined });
 
@@ -109,14 +110,23 @@ export default function ClientUpgrade() {
 
   return (
     <div className="mx-auto max-w-lg">
+      {onClose && (
+        <button onClick={onClose} className="mb-3 text-sm font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400">
+          ← Back to dashboard
+        </button>
+      )}
       <div className="card p-6">
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300">
-            <AlarmClock className="h-6 w-6" />
+          <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${expired ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300" : "bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"}`}>
+            {expired ? <AlarmClock className="h-6 w-6" /> : <Crown className="h-6 w-6" />}
           </span>
           <div>
-            <h1 className="text-xl font-extrabold">{wasTrial ? "Your free trial has ended" : "Your plan has expired"}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Upgrade to keep building and taking your quizzes & tests.</p>
+            <h1 className="text-xl font-extrabold">
+              {expired ? (wasTrial ? "Your free trial has ended" : "Your plan has expired") : (wasTrial ? "Upgrade from your free trial" : "Renew or change your plan")}
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {expired ? "Upgrade to keep building and taking your quizzes & tests." : "Get more time and full access to your quizzes & tests."}
+            </p>
           </div>
         </div>
 
