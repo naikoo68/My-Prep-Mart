@@ -22,7 +22,7 @@ export async function upgradeOrder(req, res) {
   try {
     const order = await createRazorpayOrder({
       amount: offer.finalPrice,
-      receipt: `up_${req.user._id}_${Date.now()}`,
+      receipt: `up_${String(req.user._id).slice(-8)}_${Date.now()}`,
       notes: { plan: offer.plan.key, userId: String(req.user._id) },
     });
     res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId: razorpayKeyId(), finalPrice: offer.finalPrice });

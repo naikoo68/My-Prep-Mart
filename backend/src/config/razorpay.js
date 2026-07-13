@@ -10,10 +10,12 @@ export const razorpayKeyId = () => process.env.RAZORPAY_KEY_ID || "";
 // Create an order. `amount` is in rupees; Razorpay expects the smallest unit.
 export async function createRazorpayOrder({ amount, currency = "INR", receipt, notes }) {
   const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString("base64");
+  // Razorpay caps `receipt` at 40 characters — never send a longer one.
+  const safeReceipt = receipt ? String(receipt).slice(0, 40) : undefined;
   const resp = await fetch("https://api.razorpay.com/v1/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
-    body: JSON.stringify({ amount: Math.round(amount * 100), currency, receipt, notes, payment_capture: 1 }),
+    body: JSON.stringify({ amount: Math.round(amount * 100), currency, receipt: safeReceipt, notes, payment_capture: 1 }),
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data?.error?.description || "Could not create the payment order.");
