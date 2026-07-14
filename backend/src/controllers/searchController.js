@@ -10,7 +10,10 @@ import TestSeries from "../models/TestSeries.js";
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const NAME_LIMIT = 8; // max results per metadata type
-const Q_CANDIDATES = 3000; // question docs to score in the regex fallback
+// The primary full-text search scans the WHOLE collection (relevance-ranked).
+// This cap only bounds the temporary regex fallback used while the text index
+// is still building — set high enough to cover the entire bank in practice.
+const Q_CANDIDATES = 50000;
 const Q_RESULTS = 15; // max question results returned
 
 // Option labels that must NOT count as search words (roman numerals ii–xv;
