@@ -136,6 +136,8 @@ export const practiceService = {
   adminItems: (subjectId, kind) => api.get(`/practice/subjects/${subjectId}/items${kind ? `?kind=${kind}` : ""}`),
   adminTopicItems: (topicId) => api.get(`/practice/topics/${topicId}/items`),
   createItem: (data) => api.post("/practice/items", data),
+  // move an item (My Quiz / My Test) to a different stream/subject/topic
+  moveItem: (id, target) => api.patch(`/practice/items/${id}/move`, target),
 };
 
 // ---- Dashboard / analytics ----

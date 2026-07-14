@@ -12,7 +12,8 @@ import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import QuestionView from "../../components/admin/QuestionView";
 import WeightageFill from "../../components/admin/WeightageFill";
 import PickFromBank from "../../components/admin/PickFromBank";
-import { Files } from "lucide-react";
+import MoveItemModal from "../../components/admin/MoveItemModal";
+import { Files, Move } from "lucide-react";
 
 const KINDS = [
   { key: "quiz", label: "My Quiz", icon: ListChecks },
@@ -46,6 +47,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [importOpen, setImportOpen] = useState(false);
   const [weightOpen, setWeightOpen] = useState(false); // add by subject (weightage)
   const [bankOpen, setBankOpen] = useState(false); // hand-pick questions from the bank
+  const [moveTarget, setMoveTarget] = useState(null); // item being moved
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ params: null, name: "" }); // duplicate-scan target
   const [viewQ, setViewQ] = useState(null);
@@ -284,6 +286,7 @@ export default function AdminPractice({ clientMode = false }) {
               {view === "items" && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => openQuestions(item)} className="btn-outline py-1.5 text-xs"><HelpCircle className="h-3.5 w-3.5" /> Questions</button>
+                  <button onClick={() => setMoveTarget(item)} className="btn-outline py-1.5 text-xs" title="Move to another stream / subject / topic"><Move className="h-3.5 w-3.5" /> Move</button>
                   {!clientMode && (
                     <button onClick={() => openAccess(item)} className="btn-outline py-1.5 text-xs"><Users className="h-3.5 w-3.5" /> Visibility</button>
                   )}
@@ -422,6 +425,13 @@ export default function AdminPractice({ clientMode = false }) {
           </div>
         </div>
       )}
+
+      <MoveItemModal
+        open={!!moveTarget}
+        item={moveTarget}
+        onClose={() => setMoveTarget(null)}
+        onDone={() => load(view)}
+      />
 
       <WeightageFill
         open={weightOpen}
