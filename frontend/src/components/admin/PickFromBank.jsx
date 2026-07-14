@@ -15,8 +15,8 @@ const cleanQ = (q) => {
 // Manually pick questions from existing Quizzes / Practice and copy them into a
 // test. Drill down with the selects, tick the questions you want (across
 // multiple quizzes), then "Add to test".
-export default function PickFromBank({ open, onClose, testId, plan = [], title = "Add from Quizzes / Practice", onDone }) {
-  const [tab, setTab] = useState("quiz"); // quiz | practice
+export default function PickFromBank({ open, onClose, testId, plan = [], title = "Add from Quizzes / Practice", onDone, practiceOnly = false }) {
+  const [tab, setTab] = useState(practiceOnly ? "practice" : "quiz"); // quiz | practice
   const [section, setSection] = useState(""); // subject to assign picked questions to
   const [questions, setQuestions] = useState([]);
   const [loadingQ, setLoadingQ] = useState(false);
@@ -41,14 +41,14 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
 
   useEffect(() => {
     if (!open) return;
-    setTab("quiz");
+    setTab(practiceOnly ? "practice" : "quiz");
     setChosen({});
     setQuestions([]);
     setMsg("");
     setSection(plan[0]?.subject || "");
     setSel({ subject: "", topic: "", session: "", quiz: "" });
     setPSel({ stream: "", subject: "", topic: "", item: "" });
-    contentService.subjects().then(setSubjects).catch(() => setSubjects([]));
+    if (!practiceOnly) contentService.subjects().then(setSubjects).catch(() => setSubjects([]));
   }, [open]);
 
   useEffect(() => {
@@ -139,15 +139,17 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
           )}
         </div>
 
-        {/* Source tabs */}
-        <div className="mb-3 flex gap-2">
-          {["quiz", "practice"].map((t) => (
-            <button key={t} onClick={() => { setTab(t); setQuestions([]); }}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-              {t === "quiz" ? "From Quizzes" : "From Practice"}
-            </button>
-          ))}
-        </div>
+        {/* Source tabs (hidden in practice-only mode — clients pick from their own) */}
+        {!practiceOnly && (
+          <div className="mb-3 flex gap-2">
+            {["quiz", "practice"].map((t) => (
+              <button key={t} onClick={() => { setTab(t); setQuestions([]); }}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
+                {t === "quiz" ? "From Quizzes" : "From Practice"}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Drill-down selects */}
         {tab === "quiz" ? (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download, Sparkles, Globe, Clock, Scale } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download, Sparkles, Globe, Clock, Scale, Library } from "lucide-react";
 import { questionDateText, searchQuestions } from "../../lib/questions";
 import { practiceService, testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
@@ -11,6 +11,7 @@ import AiImport from "../../components/admin/AiImport";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import QuestionView from "../../components/admin/QuestionView";
 import WeightageFill from "../../components/admin/WeightageFill";
+import PickFromBank from "../../components/admin/PickFromBank";
 import { Files } from "lucide-react";
 
 const KINDS = [
@@ -44,6 +45,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [aiOpen, setAiOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [weightOpen, setWeightOpen] = useState(false); // add by subject (weightage)
+  const [bankOpen, setBankOpen] = useState(false); // hand-pick questions from the bank
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ params: null, name: "" }); // duplicate-scan target
   const [viewQ, setViewQ] = useState(null);
@@ -313,6 +315,9 @@ export default function AdminPractice({ clientMode = false }) {
               <button onClick={() => setAiOpen(true)} className="btn-outline text-brand-600"><Sparkles className="h-4 w-4" /> Generate with AI</button>
               <button onClick={() => setImportOpen(true)} className="btn-outline text-brand-600"><Globe className="h-4 w-4" /> Import from Web</button>
               {kind === "test" && (
+                <button onClick={() => setBankOpen(true)} className="btn-outline text-brand-600" title="Hand-pick specific questions from your quizzes / tests"><Library className="h-4 w-4" /> Pick questions</button>
+              )}
+              {kind === "test" && (
                 <button onClick={() => setWeightOpen(true)} className="btn-outline text-brand-600" title="Add by subject (weightage) — auto-pull N questions per subject from your quizzes"><Scale className="h-4 w-4" /> By subject</button>
               )}
               <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary"><Plus className="h-4 w-4" /> Add Question</button>
@@ -424,6 +429,16 @@ export default function AdminPractice({ clientMode = false }) {
         includeQuizBank={!clientMode}
         title={`Add by subject (weightage) — ${qItem?.name || ""}`}
         onClose={() => setWeightOpen(false)}
+        onDone={async () => { await reloadTq(); load(view); }}
+      />
+
+      <PickFromBank
+        open={bankOpen}
+        testId={qItem?._id}
+        plan={qItem?.subjectPlan || []}
+        practiceOnly={clientMode}
+        title={`Hand-pick questions — ${qItem?.name || ""}`}
+        onClose={() => setBankOpen(false)}
         onDone={async () => { await reloadTq(); load(view); }}
       />
 
