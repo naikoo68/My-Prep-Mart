@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { X, Library, Loader2, CheckCircle2 } from "lucide-react";
+import { X, Library, Loader2, CheckCircle2, Eye } from "lucide-react";
 import { contentService, practiceService, testService } from "../../services";
 import MathText from "../ui/MathText";
+import QuestionView from "./QuestionView";
 
 const LETTERS = ["A", "B", "C", "D"];
 const CONTENT_FIELDS = ["text", "type", "options", "correct", "difficulty", "explanation", "optionExplanations", "columnA", "columnB", "tableRows", "assertion", "reason", "image"];
@@ -23,6 +24,7 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
   const [chosen, setChosen] = useState({}); // _id -> question object (persists across drilling)
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [viewQ, setViewQ] = useState(null); // preview a question before picking
 
   // Quiz drill
   const [subjects, setSubjects] = useState([]);
@@ -116,6 +118,7 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
   );
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
       <div className="my-8 w-full max-w-2xl animate-scale-in card p-6">
         <div className="mb-4 flex items-center justify-between">
@@ -210,13 +213,18 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
               <p className="py-8 text-center text-sm text-slate-400">Pick a {tab === "quiz" ? "quiz" : "item"} above to see its questions.</p>
             ) : (
               questions.map((q) => (
-                <label key={q._id} className="flex cursor-pointer items-start gap-2 rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/60">
-                  <input type="checkbox" checked={!!chosen[q._id]} onChange={() => toggle(q)} className="mt-0.5 h-4 w-4 accent-brand-600" />
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium text-slate-700 dark:text-slate-200"><MathText>{q.text}</MathText></span>
-                    <span className="ml-2 text-slate-400">{q.type} · {q.difficulty} · Ans {LETTERS[q.correct] ?? "?"}</span>
-                  </span>
-                </label>
+                <div key={q._id} className="flex items-start gap-2 rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/60">
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                    <input type="checkbox" checked={!!chosen[q._id]} onChange={() => toggle(q)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600" />
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium text-slate-700 dark:text-slate-200"><MathText>{q.text}</MathText></span>
+                      <span className="ml-2 text-slate-400">{q.type} · {q.difficulty} · Ans {LETTERS[q.correct] ?? "?"}</span>
+                    </span>
+                  </label>
+                  <button type="button" onClick={() => setViewQ(q)} title="View full question" className="flex-shrink-0 rounded-lg p-1 text-slate-500 hover:bg-slate-200 hover:text-brand-600 dark:hover:bg-slate-700">
+                    <Eye className="h-4 w-4" />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -237,5 +245,25 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
         </div>
       </div>
     </div>
+
+    {/* Full-question preview before picking (works for admins & clients). */}
+    {viewQ && (
+      <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewQ(null)}>
+        <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-2xl animate-scale-in card p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-bold">Question preview</h3>
+            <button type="button" onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button>
+          </div>
+          <QuestionView q={viewQ} />
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button type="button" onClick={() => toggle(viewQ)} className={chosen[viewQ._id] ? "btn-primary" : "btn-outline"}>
+              {chosen[viewQ._id] ? "✓ Selected — deselect" : "Select this question"}
+            </button>
+            <button type="button" onClick={() => setViewQ(null)} className="btn-outline">Close</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
