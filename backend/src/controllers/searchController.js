@@ -136,8 +136,8 @@ export async function globalSearch(req, res) {
 
       const candidates = await Question.find(qFilter)
         .limit(Q_CANDIDATES)
-        .populate("subject", "name")
-        .populate("session", "title topic")
+        .populate({ path: "subject", select: "name stream", populate: { path: "stream", select: "name" } })
+        .populate({ path: "session", select: "title topic", populate: { path: "topic", select: "title" } })
         .populate("quiz", "title")
         .populate("testSeries", "name practice practiceKind")
         .lean();
@@ -151,6 +151,11 @@ export async function globalSearch(req, res) {
       questionsMatched = scored.length;
 
       for (const { qq, m } of scored) {
+        const streamName = qq.subject?.stream?.name || "";
+        const subjName = qq.subject?.name || "";
+        const topicTitle = qq.session?.topic?.title || qq.topic || "";
+        const sessTitle = qq.session?.title || "";
+        const quizTitle = qq.quiz?.title || "";
         let path = "/quiz";
         let adminPath = "/admin/content";
         let subtitle = "Question";
@@ -161,11 +166,23 @@ export async function globalSearch(req, res) {
           path = "/test-series";
           subtitle = ts.name ? `${ts.name} · Question` : "Test question";
         } else {
-          const subjId = qq.subject?._id, sessId = qq.session?._id, topicId = qq.session?.topic, quizId = qq.quiz?._id;
+          const subjId = qq.subject?._id, sessId = qq.session?._id, topicId = qq.session?.topic?._id, quizId = qq.quiz?._id;
           if (subjId && sessId && topicId && quizId) path = `/quiz/${subjId}/${topicId}/${sessId}/${quizId}`;
-          subtitle = [qq.subject?.name, qq.quiz?.title].filter(Boolean).join(" · ") || "Question";
+          subtitle = [streamName, subjName, quizTitle].filter(Boolean).join(" · ") || "Question";
         }
-        results.push({ type: "Question", id: String(qq._id), title: preview(qq.text), subtitle, match: m, path, adminPath, active: qq.status === "published" });
+        const result = { type: "Question", id: String(qq._id), title: preview(qq.text), subtitle, match: m, path, adminPath, active: qq.status === "published" };
+        // For admins, ship the full question so the UI can show it in a detail panel.
+        if (isAdmin) {
+          result.raw = {
+            _id: String(qq._id), type: qq.type, text: qq.text, image: qq.image,
+            options: qq.options, correct: qq.correct, optionExplanations: qq.optionExplanations,
+            columnA: qq.columnA, columnB: qq.columnB, tableRows: qq.tableRows,
+            assertion: qq.assertion, reason: qq.reason, explanation: qq.explanation,
+            difficulty: qq.difficulty, status: qq.status, section: qq.section, createdAt: qq.createdAt,
+            stream: streamName, subject: subjName, topicName: topicTitle, session: sessTitle, quiz: quizTitle,
+          };
+        }
+        results.push(result);
       }
     }
 

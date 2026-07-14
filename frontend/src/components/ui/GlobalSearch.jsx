@@ -77,29 +77,42 @@ export default function GlobalSearch({
     const t = setTimeout(async () => {
       try {
         if (mode === "admin") {
-          // 1) Questions — client-side over the full bank (reliable).
+          // 1) Questions — client-side over the recent bank (instant, has full data).
           const list = await loadQuestions();
-          const qHits = (searchQuestions(list, query) || []).slice(0, 15).map((qq) => ({
-            type: "Question",
-            id: qq._id,
-            title: preview(qq.text),
-            subtitle:
-              [qq.stream, qq.subject, qq.quiz].filter((x) => x && x !== "—").join(" · ") || "Question",
-            match: qq._match,
-            raw: qq, // full question → shown in a detail panel on tap
-          }));
-          // 2) Names (streams/subjects/…) — best effort from the search API.
+          const qMap = new Map();
+          for (const qq of searchQuestions(list, query) || []) {
+            qMap.set(String(qq._id), {
+              type: "Question",
+              id: qq._id,
+              title: preview(qq.text),
+              subtitle:
+                [qq.stream, qq.subject, qq.quiz].filter((x) => x && x !== "—").join(" · ") || "Question",
+              match: qq._match,
+              raw: qq, // full question → shown in a detail panel on tap
+            });
+          }
+          // 2) Whole-library matches + name matches from the search API. This
+          //    covers questions older than the locally-loaded set.
           let nameHits = [];
+          let wholeLibrary = false;
           try {
             const r = await searchService.query(query);
-            nameHits = (r.results || []).filter((x) => x.type !== "Question");
+            wholeLibrary = r?.meta?.version === "search-v3";
+            for (const x of r.results || []) {
+              if (x.type === "Question") {
+                if (!qMap.has(String(x.id))) qMap.set(String(x.id), x); // adds older questions (with raw for admin)
+              } else {
+                nameHits.push(x);
+              }
+            }
           } catch {
             /* search API optional in admin mode */
           }
+          const qHits = [...qMap.values()].sort((a, b) => (b.match || 0) - (a.match || 0)).slice(0, 25);
           if (!cancelled) {
             setResults([...nameHits, ...qHits]);
             setErr("");
-            setNote(`${list.length} questions searched`);
+            setNote(`${list.length} recent · ${wholeLibrary ? "full library" : "local only"}`);
           }
         } else {
           const r = await searchService.query(query);

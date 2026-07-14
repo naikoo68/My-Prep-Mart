@@ -235,7 +235,7 @@ export async function listQuestions(req, res) {
 export async function listAllQuestions(req, res) {
   const questions = await Question.find()
     .sort("-createdAt")
-    .limit(500)
+    .limit(2000)
     .populate({ path: "subject", select: "name stream", populate: { path: "stream", select: "name" } })
     .populate({ path: "session", select: "title topic", populate: { path: "topic", select: "title" } })
     .populate("quiz", "title")
