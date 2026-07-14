@@ -60,4 +60,15 @@ const questionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Full-text search index across all searchable question fields (incl. the
+// options and matching columns). Powers relevance-ranked search so the exact
+// question always surfaces, no matter how large the question bank is.
+questionSchema.index(
+  { text: "text", options: "text", assertion: "text", reason: "text", explanation: "text", columnA: "text", columnB: "text" },
+  {
+    name: "question_fulltext",
+    weights: { text: 10, options: 6, assertion: 6, reason: 6, columnA: 4, columnB: 4, explanation: 2 },
+  }
+);
+
 export default mongoose.model("Question", questionSchema);

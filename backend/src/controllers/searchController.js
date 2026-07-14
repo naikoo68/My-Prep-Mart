@@ -10,8 +10,8 @@ import TestSeries from "../models/TestSeries.js";
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const NAME_LIMIT = 8; // max results per metadata type
-const Q_CANDIDATES = 300; // question docs to score
-const Q_RESULTS = 12; // max question results returned
+const Q_CANDIDATES = 3000; // question docs to score in the regex fallback
+const Q_RESULTS = 15; // max question results returned
 
 // Option labels that must NOT count as search words (roman numerals ii–xv;
 // single letters a/b/c/d and lone digits 1/2 are dropped by the length rule).
@@ -76,7 +76,7 @@ export async function globalSearch(req, res) {
   try {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) {
-      return res.json({ query: q, count: 0, results: [], meta: { version: "search-v3", scope: "n/a" } });
+      return res.json({ query: q, count: 0, results: [], meta: { version: "search-v4", scope: "n/a" } });
     }
 
     const rx = new RegExp(escapeRegex(q), "i");
@@ -123,25 +123,44 @@ export async function globalSearch(req, res) {
     let questionsMatched = 0;
 
     if (candidateWords.length) {
-      const or = [];
-      for (const w of candidateWords) {
-        const wrx = new RegExp(escapeRegex(w), "i");
-        or.push({ text: wrx }, { options: wrx }, { assertion: wrx }, { reason: wrx }, { explanation: wrx }, { columnA: wrx }, { columnB: wrx });
-      }
-      const qFilter = { $or: or };
+      const visibility = {};
       if (!isAdmin) {
-        qFilter.status = "published";
-        qFilter.owner = req.user ? { $in: [null, req.user._id] } : null;
+        visibility.status = "published";
+        visibility.owner = req.user ? { $in: [null, req.user._id] } : null;
       }
+      const withRefs = (query) =>
+        query
+          .populate({ path: "subject", select: "name stream", populate: { path: "stream", select: "name" } })
+          .populate({ path: "session", select: "title topic", populate: { path: "topic", select: "title" } })
+          .populate("quiz", "title")
+          .populate("testSeries", "name practice practiceKind")
+          .lean();
 
-      const candidates = await Question.find(qFilter)
-        .limit(Q_CANDIDATES)
-        .populate({ path: "subject", select: "name stream", populate: { path: "stream", select: "name" } })
-        .populate({ path: "session", select: "title topic", populate: { path: "topic", select: "title" } })
-        .populate("quiz", "title")
-        .populate("testSeries", "name practice practiceKind")
-        .lean();
+      let candidates = [];
+      let via = "text";
+      // Primary: relevance-ranked full-text search — the exact question ranks
+      // first regardless of how many questions exist.
+      try {
+        candidates = await withRefs(
+          Question.find({ $text: { $search: q }, ...visibility })
+            .sort({ score: { $meta: "textScore" } })
+            .limit(150)
+        );
+      } catch {
+        candidates = [];
+      }
+      // Fallback: word regexes (used only if the text index isn't ready yet).
+      if (!candidates.length) {
+        via = "regex";
+        const or = [];
+        for (const w of candidateWords) {
+          const wrx = new RegExp(escapeRegex(w), "i");
+          or.push({ text: wrx }, { options: wrx }, { assertion: wrx }, { reason: wrx }, { explanation: wrx }, { columnA: wrx }, { columnB: wrx });
+        }
+        candidates = await withRefs(Question.find({ $or: or, ...visibility }).limit(Q_CANDIDATES));
+      }
       questionsScanned = candidates.length;
+      void via;
 
       const scored = candidates
         .map((qq) => ({ qq, m: questionMatchPercent(queryLower, allWords, qq) }))
@@ -192,7 +211,7 @@ export async function globalSearch(req, res) {
       results,
       // Open /api/search?q=... in a browser to read these diagnostics.
       meta: {
-        version: "search-v3",
+        version: "search-v4",
         scope: isAdmin ? "admin (all content)" : req.user ? "user (published + own)" : "public (published only)",
         candidateWords,
         questionsScanned,
@@ -201,6 +220,6 @@ export async function globalSearch(req, res) {
     });
   } catch (err) {
     // Never 500 the search — return the error text so it's visible in the UI.
-    res.status(200).json({ query: String(req.query.q || ""), count: 0, results: [], error: err.message, meta: { version: "search-v3", scope: "error" } });
+    res.status(200).json({ query: String(req.query.q || ""), count: 0, results: [], error: err.message, meta: { version: "search-v4", scope: "error" } });
   }
 }

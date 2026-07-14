@@ -97,7 +97,7 @@ export default function GlobalSearch({
           let wholeLibrary = false;
           try {
             const r = await searchService.query(query);
-            wholeLibrary = r?.meta?.version === "search-v3";
+            wholeLibrary = !!r?.meta?.version?.startsWith?.("search-v");
             for (const x of r.results || []) {
               if (x.type === "Question") {
                 if (!qMap.has(String(x.id))) qMap.set(String(x.id), x); // adds older questions (with raw for admin)
