@@ -16,6 +16,7 @@ import {
   ZoomIn,
   ZoomOut,
   Search,
+  LogOut,
 } from "lucide-react";
 import { testService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
@@ -135,6 +136,15 @@ export default function TestAttempt() {
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Leave the test. After submitting, just go back; mid-test, confirm first
+  // (answers are not saved) and drop out of fullscreen.
+  const exitTest = () => {
+    const dest = isClient ? "/client" : "/test-series";
+    if (!result && !window.confirm("Exit the test? Your answers won't be submitted or saved.")) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    navigate(dest);
+  };
 
   const toggleFullscreen = () => {
     if (!fullscreen) {
@@ -425,6 +435,9 @@ export default function TestAttempt() {
             </div>
             <button onClick={toggleFullscreen} className="btn-outline px-3">
               {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </button>
+            <button onClick={exitTest} className="btn-outline px-3" title="Exit the test (answers won't be saved)">
+              <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Exit</span>
             </button>
             <button onClick={() => setConfirmOpen(true)} className="btn-accent">Submit</button>
           </div>
