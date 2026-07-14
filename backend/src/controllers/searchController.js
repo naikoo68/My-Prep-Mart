@@ -193,17 +193,16 @@ export async function globalSearch(req, res) {
           subtitle = [streamName, subjName, quizTitle].filter(Boolean).join(" · ") || "Question";
         }
         const result = { type: "Question", id: String(qq._id), title: preview(qq.text), subtitle, match: m, path, adminPath, active: qq.status === "published" };
-        // For admins, ship the full question so the UI can show it in a detail panel.
-        if (isAdmin) {
-          result.raw = {
-            _id: String(qq._id), type: qq.type, text: qq.text, image: qq.image,
-            options: qq.options, correct: qq.correct, optionExplanations: qq.optionExplanations,
-            columnA: qq.columnA, columnB: qq.columnB, tableRows: qq.tableRows,
-            assertion: qq.assertion, reason: qq.reason, explanation: qq.explanation,
-            difficulty: qq.difficulty, status: qq.status, section: qq.section, createdAt: qq.createdAt,
-            stream: streamName, subject: subjName, topicName: topicTitle, session: sessTitle, quiz: quizTitle,
-          };
-        }
+        // Ship the full question for EVERYONE (students, clients, admin) so the
+        // UI can open the detail panel on tap, site-wide.
+        result.raw = {
+          _id: String(qq._id), type: qq.type, text: qq.text, image: qq.image,
+          options: qq.options, correct: qq.correct, optionExplanations: qq.optionExplanations,
+          columnA: qq.columnA, columnB: qq.columnB, tableRows: qq.tableRows,
+          assertion: qq.assertion, reason: qq.reason, explanation: qq.explanation,
+          difficulty: qq.difficulty, status: qq.status, section: qq.section, createdAt: qq.createdAt,
+          stream: streamName, subject: subjName, topicName: topicTitle, session: sessTitle, quiz: quizTitle,
+        };
         results.push(result);
       }
     }
