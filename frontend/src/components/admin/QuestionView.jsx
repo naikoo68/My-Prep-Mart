@@ -1,5 +1,6 @@
 import { CheckCircle2, Clock } from "lucide-react";
 import MathText from "../ui/MathText";
+import { questionDateText } from "../../lib/questions";
 import StatementPairView from "../ui/StatementPairView";
 import TableView from "../ui/TableView";
 import AssertionReasonView from "../ui/AssertionReasonView";
@@ -23,9 +24,9 @@ export default function QuestionView({ q, index }) {
         {q.correct !== undefined && (
           <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Correct: {String.fromCharCode(65 + q.correct)}</span>
         )}
-        {q.createdAt && (
+        {questionDateText(q) && (
           <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-            <Clock className="h-3 w-3" /> Uploaded {new Date(q.createdAt).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}
+            <Clock className="h-3 w-3" /> Uploaded {questionDateText(q)}
           </span>
         )}
       </div>

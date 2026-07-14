@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download, Sparkles, Globe } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Upload, Eye, Users, Copy, Search, Download, Sparkles, Globe, Clock } from "lucide-react";
+import { questionDateText, searchQuestions } from "../../lib/questions";
 import { practiceService, testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -46,6 +47,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [viewQ, setViewQ] = useState(null);
   const [viewAll, setViewAll] = useState(false);
   const [selectedQ, setSelectedQ] = useState([]);
+  const [qSearch, setQSearch] = useState(""); // question search query
 
   // Visibility management for one item
   const [access, setAccess] = useState(null); // { itemId, name, visibleToAll, users:[] }
@@ -102,12 +104,15 @@ export default function AdminPractice({ clientMode = false }) {
   const openQuestions = (item) => {
     setQItem(item);
     setSelectedQ([]);
+    setQSearch("");
     setTqLoading(true);
     testService.getQuestions(item._id).then(setTq).catch((e) => setError(e.message)).finally(() => setTqLoading(false));
   };
   const toggleSelectQ = (id) => setSelectedQ((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const allQSelected = tq.length > 0 && selectedQ.length === tq.length;
   const toggleAllQ = () => setSelectedQ(allQSelected ? [] : tq.map((q) => q._id));
+  const qResults = searchQuestions(tq, qSearch); // 40%+ matches (null when not searching)
+  const shownQ = qResults || tq;
   const deleteSelectedQ = async () => {
     if (!selectedQ.length || !window.confirm(`Delete ${selectedQ.length} selected question(s)? This cannot be undone.`)) return;
     for (const id of selectedQ) await testService.deleteQuestion(qItem._id, id);
@@ -309,27 +314,42 @@ export default function AdminPractice({ clientMode = false }) {
             </div>
             {tqLoading ? <Loading /> : tq.length === 0 ? <EmptyState message="No questions yet." /> : (
               <>
+                <div className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+                  <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                  <input value={qSearch} onChange={(e) => setQSearch(e.target.value)} placeholder="Search questions…  (shows matches 40%–100%)" className="w-full bg-transparent text-sm outline-none" />
+                  {qSearch && <button onClick={() => setQSearch("")} title="Clear" className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="h-4 w-4" /></button>}
+                </div>
                 <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allQSelected} onChange={toggleAllQ} className="h-4 w-4 accent-brand-600" /> Select all</label>
+                  {qResults && <span className="text-sm font-medium text-slate-500">{qResults.length} match{qResults.length === 1 ? "" : "es"} (40%+)</span>}
                   {selectedQ.length > 0 && (<>
                     <span className="text-sm text-slate-500">{selectedQ.length} selected</span>
                     <button onClick={deleteSelectedQ} className="inline-flex items-center gap-1 text-sm font-semibold text-rose-600"><Trash2 className="h-4 w-4" /> Delete selected</button>
                     <button onClick={() => setSelectedQ([])} className="text-sm text-slate-500 hover:underline">Clear</button>
                   </>)}
                 </div>
+                {qResults && qResults.length === 0 && (
+                  <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700">No questions match “{qSearch}” at 40%+.</p>
+                )}
                 <div className="space-y-3">
-                  {tq.map((item, i) => (
+                  {shownQ.map((item, i) => (
                     <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                       <div className="flex min-w-0 items-start gap-2">
                         <input type="checkbox" checked={selectedQ.includes(item._id)} onChange={() => toggleSelectQ(item._id)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600" />
                         <div className="min-w-0">
                           <p className="font-medium">Q{i + 1}. {item.text}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
+                            {item._match != null && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{item._match}% match</span>
+                            )}
                             <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : (item.type || "mcq") === "mcq" ? "MCQ" : item.type}</Badge>
                             {item.difficulty && <Badge variant={item.difficulty}>{item.difficulty}</Badge>}
                             {item.status && <Badge variant={item.status === "published" ? "brand" : "neutral"}>{item.status}</Badge>}
                             {item.correct != null && (
                               <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
+                            )}
+                            {questionDateText(item) && (
+                              <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Clock className="h-3 w-3" /> {questionDateText(item)}</span>
                             )}
                           </div>
                         </div>

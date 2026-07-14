@@ -7,6 +7,7 @@ import BulkUploadQuestions, { questionsToCsv } from "../../components/admin/Bulk
 import AiGenerate from "../../components/admin/AiGenerate";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
+import { questionDateText, searchQuestions } from "../../lib/questions";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import { Sparkles, Files, Globe } from "lucide-react";
@@ -23,27 +24,7 @@ const COLORS = [
 // Singular type name for each drill-down level (used by the form modal).
 const VIEW_TYPE = { streams: "stream", subjects: "subject", topics: "topic", sessions: "session", quizzes: "quiz", questions: "question" };
 
-// Upload date + time of a question.
-const fmtDateTime = (d) =>
-  d ? new Date(d).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
 
-// How well a question matches a search query, as a 0–100%. Full phrase present
-// → 100%; otherwise the share of query words found in the question's text,
-// options, explanation, topic, etc. The UI only shows results at 40%+.
-function matchPercent(query, item) {
-  const q = String(query || "").toLowerCase().trim();
-  if (!q) return 0;
-  const hay = [item.text, ...(item.options || []), item.explanation, item.topic, item.section, item.assertion, item.reason]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  if (!hay) return 0;
-  if (hay.includes(q)) return 100;
-  const words = q.split(/\s+/).filter(Boolean);
-  if (!words.length) return 0;
-  const matched = words.filter((w) => hay.includes(w)).length;
-  return Math.round((matched / words.length) * 100);
-}
 
 export default function AdminContent() {
   // Drill-down context
@@ -242,16 +223,9 @@ export default function AdminContent() {
     URL.revokeObjectURL(url);
   };
 
-  // Fuzzy question search: score each question and show only 40%+ matches, best first.
-  const searchQ = search.trim();
-  const questionResults =
-    view === "questions" && searchQ
-      ? items
-          .map((it) => ({ it, score: matchPercent(searchQ, it) }))
-          .filter((r) => r.score >= 40)
-          .sort((a, b) => b.score - a.score)
-      : null;
-  const shown = questionResults ? questionResults.map((r) => ({ ...r.it, _match: r.score })) : items;
+  // Fuzzy question search: 40%+ matches, best first (null when not searching).
+  const questionResults = view === "questions" ? searchQuestions(items, search) : null;
+  const shown = questionResults || items;
 
   return (
     <div className="space-y-5">
@@ -364,8 +338,8 @@ export default function AdminContent() {
                       {item.correct !== undefined && (
                         <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
                       )}
-                      {item.createdAt && (
-                        <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Clock className="h-3 w-3" /> {fmtDateTime(item.createdAt)}</span>
+                      {questionDateText(item) && (
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Clock className="h-3 w-3" /> {questionDateText(item)}</span>
                       )}
                     </div>
                   </>
