@@ -22,16 +22,40 @@ export const questionDateText = (item) => {
   return d ? fmtDateTime(d) : "";
 };
 
-// Search relevance 0–100%. Full phrase present → 100%; otherwise the share of
-// query words found in the question's text/options/explanation/etc. The UI
-// shows results at 40%+.
+// Every piece of searchable text for a question, covering ALL question types:
+//  - mcq:        text, options, per-option explanations, explanation
+//  - assertion:  assertion (A) + reason (R) statements
+//  - matching:   columnA + columnB (the two matched columns)
+//  - statement:  columnA (the numbered statements)
+//  - pair/pairselect: columnA + columnB (the left/right pairs)
+//  - table:      every cell in tableRows (header + body)
+//  plus shared metadata (topic, section). So a search hits meaning found in the
+//  question body OR the options OR any type-specific part — not just the stem.
+function questionHaystack(item) {
+  const parts = [
+    item.text,
+    item.explanation,
+    item.topic,
+    item.section,
+    item.assertion,
+    item.reason,
+    ...(item.options || []),
+    ...(item.optionExplanations || []),
+    ...(item.columnA || []),
+    ...(item.columnB || []),
+    ...(Array.isArray(item.tableRows) ? item.tableRows.flat(Infinity) : []),
+  ];
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+// Search relevance 0–100%. Full phrase present anywhere in the question → 100%;
+// otherwise the share of query WORDS found (word-level, not whole-phrase), so a
+// query matches even when its words are split across the body and the options.
+// The UI shows results at 40%+.
 export function matchPercent(query, item) {
   const q = String(query || "").toLowerCase().trim();
   if (!q) return 0;
-  const hay = [item.text, ...(item.options || []), item.explanation, item.topic, item.section, item.assertion, item.reason]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+  const hay = questionHaystack(item);
   if (!hay) return 0;
   if (hay.includes(q)) return 100;
   const words = q.split(/\s+/).filter(Boolean);
