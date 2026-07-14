@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Search, X, Loader2 } from "lucide-react";
-import { searchService } from "../../services";
+import { searchService, contentService } from "../../services";
+import { searchQuestions } from "../../lib/questions";
 
 // Colour chip per result type.
 const TYPE_STYLES = {
@@ -17,13 +18,17 @@ const TYPE_STYLES = {
   Question: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
 };
 
-// Reusable metadata search box with a live results dropdown. Calls the
-// role-aware /api/search endpoint. `mode` controls navigation targets:
-//   • "public" → the public browse route (path)
-//   • "admin"  → the matching admin screen (adminPath)
-// The dropdown renders in a PORTAL with fixed positioning so it is never
-// clipped by an ancestor's `overflow-hidden` (e.g. the landing-page hero) or
-// hidden behind another stacking context.
+const preview = (t, n = 90) => {
+  const s = String(t || "").replace(/\$/g, "").replace(/\s+/g, " ").trim();
+  return s.length > n ? s.slice(0, n) + "…" : s;
+};
+
+// Reusable metadata + question search box with a live results dropdown.
+//   • mode="public" → calls /api/search (names + published questions)
+//   • mode="admin"  → searches ALL your questions CLIENT-SIDE via the existing
+//                     /api/questions endpoint (works even if the new search API
+//                     hasn't redeployed), and adds name matches from /api/search.
+// The dropdown renders in a portal so it is never clipped by a parent.
 export default function GlobalSearch({
   mode = "public",
   placeholder = "Search streams, subjects, topics, quizzes, tests…",
@@ -34,17 +39,25 @@ export default function GlobalSearch({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [err, setErr] = useState("");
-  const [meta, setMeta] = useState(null);
+  const [note, setNote] = useState("");
   const [rect, setRect] = useState(null);
   const boxRef = useRef(null);
   const panelRef = useRef(null);
+  const questionCache = useRef(null); // admin: cached /api/questions list
   const navigate = useNavigate();
 
-  // Position the portal dropdown right under the input box (viewport coords).
   const measure = useCallback(() => {
     if (!boxRef.current) return;
     const r = boxRef.current.getBoundingClientRect();
     setRect({ left: r.left, top: r.bottom + 6, width: r.width });
+  }, []);
+
+  // Load (and cache) all questions for admin client-side search.
+  const loadQuestions = useCallback(async () => {
+    if (questionCache.current) return questionCache.current;
+    const list = await contentService.allQuestions();
+    questionCache.current = Array.isArray(list) ? list : [];
+    return questionCache.current;
   }, []);
 
   // Debounced search (300ms). Needs at least 2 characters.
@@ -53,29 +66,64 @@ export default function GlobalSearch({
     if (query.length < 2) {
       setResults([]);
       setErr("");
+      setNote("");
       setLoading(false);
       return;
     }
+    let cancelled = false;
     setLoading(true);
-    const t = setTimeout(() => {
-      searchService
-        .query(query)
-        .then((r) => {
-          setResults(r.results || []);
-          setErr(r.error || "");
-          setMeta(r.meta || null);
-        })
-        .catch((e) => {
+    const t = setTimeout(async () => {
+      try {
+        if (mode === "admin") {
+          // 1) Questions — client-side over the full bank (reliable).
+          const list = await loadQuestions();
+          const qHits = (searchQuestions(list, query) || []).slice(0, 15).map((qq) => ({
+            type: "Question",
+            id: qq._id,
+            title: preview(qq.text),
+            subtitle: [qq.subject, qq.quiz].filter((x) => x && x !== "—").join(" · ") || "Question",
+            match: qq._match,
+            path: "/admin/content",
+            adminPath: "/admin/content",
+          }));
+          // 2) Names (streams/subjects/…) — best effort from the search API.
+          let nameHits = [];
+          try {
+            const r = await searchService.query(query);
+            nameHits = (r.results || []).filter((x) => x.type !== "Question");
+          } catch {
+            /* search API optional in admin mode */
+          }
+          if (!cancelled) {
+            setResults([...nameHits, ...qHits]);
+            setErr("");
+            setNote(`${list.length} questions searched`);
+          }
+        } else {
+          const r = await searchService.query(query);
+          if (!cancelled) {
+            setResults(r.results || []);
+            setErr(r.error || "");
+            setNote(r.meta ? `${r.meta.version || ""} · ${r.meta.scope || ""}` : "");
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
           setErr(e.message || "Search failed");
           setResults([]);
-          setMeta(null);
-        })
-        .finally(() => setLoading(false));
+          setNote("");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }, 300);
-    return () => clearTimeout(t);
-  }, [q]);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [q, mode, loadQuestions]);
 
-  // Close on outside click (ignore clicks inside the box or the portal panel).
+  // Close on outside click (ignore clicks in the box or the portal panel).
   useEffect(() => {
     const onDoc = (e) => {
       if (boxRef.current?.contains(e.target)) return;
@@ -86,7 +134,7 @@ export default function GlobalSearch({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // Keep the dropdown aligned while open (scroll / resize).
+  // Keep the dropdown aligned while open.
   useEffect(() => {
     if (!open) return;
     measure();
@@ -159,18 +207,13 @@ export default function GlobalSearch({
             ) : results.length === 0 ? (
               <div className="px-3 py-4 text-center">
                 <p className="text-sm text-slate-500">No matches for “{q.trim()}”.</p>
-                {meta && (
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {meta.version ? `${meta.version} · ` : ""}
-                    {meta.scope}
-                    {meta.questionsScanned != null ? ` · scanned ${meta.questionsScanned} question${meta.questionsScanned === 1 ? "" : "s"}` : ""}
-                  </p>
-                )}
+                {note && <p className="mt-1 text-[11px] text-slate-400">{note}</p>}
               </div>
             ) : (
               <>
                 <p className="px-3 py-1 text-xs font-semibold text-slate-400">
                   {results.length} result{results.length === 1 ? "" : "s"}
+                  {note ? ` · ${note}` : ""}
                 </p>
                 {results.map((item) => (
                   <button
@@ -197,11 +240,6 @@ export default function GlobalSearch({
                         </span>
                       )}
                     </span>
-                    {mode === "admin" && item.active === false && (
-                      <span className="flex-shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500 dark:bg-slate-700 dark:text-slate-300">
-                        Draft
-                      </span>
-                    )}
                   </button>
                 ))}
               </>
