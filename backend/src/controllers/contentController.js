@@ -278,15 +278,24 @@ export async function bulkCreateQuestions(req, res) {
   }
   const owner = ownerValue(req);
   const docs = questions.map((q) => ({ status: "published", ...q, ...context, owner }));
-  const created = await Question.insertMany(docs, { ordered: false });
+
+  // ordered:false keeps inserting past any invalid row. If some rows fail
+  // validation, Mongoose still inserts the good ones and throws — recover the
+  // inserted docs from the error so a few bad questions never block the add.
+  let created = [];
+  try {
+    created = await Question.insertMany(docs, { ordered: false });
+  } catch (err) {
+    created = Array.isArray(err?.insertedDocs) ? err.insertedDocs : [];
+  }
 
   // Attach to the test series' question list when uploading test questions.
-  if (context.testSeries) {
+  if (context.testSeries && created.length) {
     await TestSeries.findByIdAndUpdate(context.testSeries, {
       $push: { questions: { $each: created.map((c) => c._id) } },
     });
   }
-  res.status(201).json({ inserted: created.length });
+  res.status(201).json({ inserted: created.length, requested: docs.length });
 }
 
 export async function updateQuestion(req, res) {

@@ -92,9 +92,15 @@ export default function PickFromBank({ open, onClose, testId, plan = [], title =
     try {
       const payload = Object.values(chosen).map(cleanQ);
       const res = await contentService.bulkQuestions(payload, { testSeries: testId, section: section || "" });
-      setMsg(`✓ Added ${res?.inserted ?? payload.length} question(s) to the test.`);
-      onDone?.(res?.inserted ?? payload.length);
-      setTimeout(onClose, 900);
+      const n = res?.inserted ?? 0;
+      const skipped = (res?.requested ?? payload.length) - n;
+      if (n > 0) {
+        setMsg(`✓ Added ${n} question(s) to the test${skipped > 0 ? ` (${skipped} skipped)` : ""}.`);
+        onDone?.(n);
+        setTimeout(onClose, 1000);
+      } else {
+        setMsg("No questions could be added — please try different questions.");
+      }
     } catch (e) {
       setMsg(e.message || "Couldn't add questions.");
     } finally {
