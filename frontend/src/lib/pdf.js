@@ -20,6 +20,32 @@ function loadPdfjs() {
   return libPromise;
 }
 
+// Rebuild readable, line-broken text from pdf.js text items. pdf.js returns
+// small text fragments with position info; joining them all with spaces (the
+// old behaviour) destroyed line breaks, so numbered questions ("1.", "2.") no
+// longer started a line and the question detector/splitter couldn't find them.
+// Here we start a new line when pdf.js flags an end-of-line (hasEOL) or when the
+// vertical position (transform[5]) jumps between fragments.
+function itemsToText(items) {
+  const lines = [];
+  let cur = "";
+  let lastY = null;
+  for (const it of items) {
+    if (!it || typeof it.str !== "string") continue;
+    const y = Array.isArray(it.transform) ? it.transform[5] : null;
+    const yJumped = lastY !== null && y !== null && Math.abs(y - lastY) > 2;
+    if (yJumped) { lines.push(cur); cur = it.str; }
+    else { cur += it.str; }
+    if (it.hasEOL) { lines.push(cur); cur = ""; lastY = null; }
+    else if (y !== null) lastY = y;
+  }
+  if (cur) lines.push(cur);
+  return lines
+    .map((l) => l.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 // Extract plain text from a PDF File/Blob. onProgress(page, totalPages) fires
 // once per page so the caller can show progress. Returns the combined text
 // (empty string for image-only / scanned PDFs that have no selectable text).
@@ -32,7 +58,7 @@ export async function extractPdfText(file, onProgress) {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      pages.push(content.items.map((it) => (it && "str" in it ? it.str : "")).join(" "));
+      pages.push(itemsToText(content.items));
       onProgress?.(i, pdf.numPages);
     }
   } finally {
