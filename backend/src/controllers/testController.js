@@ -11,6 +11,7 @@ import PracticeSubject from "../models/PracticeSubject.js";
 import PracticeTopic from "../models/PracticeTopic.js";
 import Quiz from "../models/Quiz.js";
 import Session from "../models/Session.js";
+import { duplicateQuestions } from "../utils/duplicateQuestions.js";
 
 // A caller may manage a test/question only within their own space: clients only
 // their own owned items; admins only the shared (ownerless) platform items.
@@ -319,8 +320,21 @@ export async function submitTest(req, res) {
 export async function toTestSeries(req, res) {
   const item = await TestSeries.findOne({ _id: req.params.id, owner: null });
   if (!item || !item.practice || item.practiceKind !== "test") return res.status(404).json({ message: "My Test not found" });
-  const { exam, post, category } = req.body;
+  const { exam, post, category, copy } = req.body;
   if (!exam || !post) return res.status(400).json({ message: "Choose an exam and post." });
+
+  if (copy) {
+    const newTest = await TestSeries.create({
+      name: `${item.name} (copy)`, owner: null, practice: false,
+      exam, post, category: category || item.category || "Full-Length",
+      duration: item.duration, marks: item.marks, difficulty: item.difficulty,
+      status: item.status || "draft", visibleToAll: item.visibleToAll ?? false,
+    });
+    const created = await duplicateQuestions({ testSeries: item._id }, { testSeries: newTest._id, owner: null });
+    if (created.length) await TestSeries.findByIdAndUpdate(newTest._id, { $push: { questions: { $each: created.map((c) => c._id) } } });
+    return res.json({ message: "Copied to Test Series", _id: newTest._id });
+  }
+
   item.practice = false;
   item.practiceKind = undefined;
   item.practiceStream = undefined;
@@ -340,6 +354,19 @@ export async function toMyTest(req, res) {
   const stream = await PracticeStream.findOne({ _id: req.body.practiceStream, owner: null });
   const subject = await PracticeSubject.findOne({ _id: req.body.practiceSubject, owner: null });
   if (!stream || !subject) return res.status(400).json({ message: "Choose a My Test stream and subject." });
+
+  if (req.body.copy) {
+    const newItem = await TestSeries.create({
+      name: `${test.name} (copy)`, owner: null, practice: true, practiceKind: "test",
+      practiceStream: stream._id, practiceSubject: subject._id,
+      category: "Full-Length", duration: test.duration, marks: test.marks, difficulty: test.difficulty,
+      status: "published", visibleToAll: false,
+    });
+    const created = await duplicateQuestions({ testSeries: test._id }, { testSeries: newItem._id, owner: null });
+    if (created.length) await TestSeries.findByIdAndUpdate(newItem._id, { $push: { questions: { $each: created.map((c) => c._id) } } });
+    return res.json({ message: "Copied to My Test", _id: newItem._id });
+  }
+
   test.practice = true;
   test.practiceKind = "test";
   test.practiceStream = stream._id;
@@ -356,8 +383,20 @@ export async function toMyTest(req, res) {
 export async function moveTestSeries(req, res) {
   const test = await TestSeries.findOne({ _id: req.params.id, owner: null, practice: { $ne: true } });
   if (!test) return res.status(404).json({ message: "Test Series not found" });
-  const { exam, post } = req.body;
+  const { exam, post, copy } = req.body;
   if (!exam || !post) return res.status(400).json({ message: "Choose an exam and post." });
+
+  if (copy) {
+    const newTest = await TestSeries.create({
+      name: `${test.name} (copy)`, owner: null, practice: false, exam, post,
+      category: test.category || "Full-Length", duration: test.duration, marks: test.marks, difficulty: test.difficulty,
+      status: test.status || "draft", visibleToAll: test.visibleToAll ?? false,
+    });
+    const created = await duplicateQuestions({ testSeries: test._id }, { testSeries: newTest._id, owner: null });
+    if (created.length) await TestSeries.findByIdAndUpdate(newTest._id, { $push: { questions: { $each: created.map((c) => c._id) } } });
+    return res.json({ message: "Copied", _id: newTest._id });
+  }
+
   test.exam = exam;
   test.post = post;
   await test.save();
@@ -372,6 +411,12 @@ export async function toQuiz(req, res) {
   if (!session) return res.status(400).json({ message: "Choose a destination session." });
   const index = await Quiz.countDocuments({ session: session._id });
   const quiz = await Quiz.create({ title: item.name, subject: session.subject, session: session._id, index });
+
+  if (req.body.copy) {
+    await duplicateQuestions({ testSeries: item._id }, { quiz: quiz._id, subject: session.subject, session: session._id });
+    return res.json({ message: "Copied to Quiz", _id: quiz._id });
+  }
+
   await Question.updateMany(
     { testSeries: item._id },
     { $set: { quiz: quiz._id, subject: session.subject, session: session._id }, $unset: { testSeries: "" } }
@@ -393,6 +438,13 @@ export async function quizToMyQuiz(req, res) {
     practiceStream: stream._id, practiceSubject: subject._id, practiceTopic: topic._id,
     category: "Full-Length", status: "published", visibleToAll: false,
   });
+
+  if (req.body.copy) {
+    const created = await duplicateQuestions({ quiz: quiz._id }, { testSeries: item._id, owner: null });
+    if (created.length) await TestSeries.findByIdAndUpdate(item._id, { $push: { questions: { $each: created.map((c) => c._id) } } });
+    return res.json({ message: "Copied to My Quiz", _id: item._id });
+  }
+
   const qs = await Question.find({ quiz: quiz._id }).select("_id");
   await Question.updateMany(
     { quiz: quiz._id },

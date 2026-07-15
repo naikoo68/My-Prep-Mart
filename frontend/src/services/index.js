@@ -27,7 +27,7 @@ export const contentService = {
   quizQuestions: (quizId) => api.get(`/quizzes/${quizId}/questions`),
   questions: (sessionId) => api.get(`/sessions/${sessionId}/questions`),
   allQuestions: () => api.get("/questions"),
-  moveQuiz: (id, session) => api.patch(`/quizzes/${id}/move`, { session }), // internal quiz migration
+  moveQuiz: (id, data) => api.patch(`/quizzes/${id}/move`, data), // { session, copy }
   // streams (admin)
   createStream: (data) => api.post("/streams", data),
   updateStream: (id, data) => api.put(`/streams/${id}`, data),

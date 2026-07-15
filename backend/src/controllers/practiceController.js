@@ -5,6 +5,7 @@ import TestSeries from "../models/TestSeries.js";
 import Question from "../models/Question.js";
 import { isTestVisibleToUser } from "../utils/accessControl.js";
 import { ownerFilter, ownerValue } from "../utils/ownership.js";
+import { duplicateQuestions } from "../utils/duplicateQuestions.js";
 
 // True when the caller owns this document (or is an admin working in the shared
 // space). Used to guard edits/plays of a specific record.
@@ -191,7 +192,7 @@ export async function createItem(req, res) {
 export async function moveItem(req, res) {
   const item = await TestSeries.findOne({ _id: req.params.id, practice: true, ...ownerFilter(req) });
   if (!item) return res.status(404).json({ message: "Item not found" });
-  const { practiceStream, practiceSubject, practiceTopic } = req.body;
+  const { practiceStream, practiceSubject, practiceTopic, copy } = req.body;
   const stream = await PracticeStream.findOne({ _id: practiceStream, ...ownerFilter(req) });
   if (!stream) return res.status(400).json({ message: "Choose a target stream." });
   if (stream.kind && stream.kind !== item.practiceKind) {
@@ -199,15 +200,37 @@ export async function moveItem(req, res) {
   }
   const subject = await PracticeSubject.findOne({ _id: practiceSubject, stream: stream._id, ...ownerFilter(req) });
   if (!subject) return res.status(400).json({ message: "Choose a subject in that stream." });
-  item.practiceStream = stream._id;
-  item.practiceSubject = subject._id;
+  let topicId;
   if (item.practiceKind === "quiz") {
     const topic = await PracticeTopic.findOne({ _id: practiceTopic, subject: subject._id, ...ownerFilter(req) });
     if (!topic) return res.status(400).json({ message: "Choose a topic in that subject." });
-    item.practiceTopic = topic._id;
-  } else {
-    item.practiceTopic = undefined;
+    topicId = topic._id;
   }
+
+  if (copy) {
+    const newItem = await TestSeries.create({
+      name: `${item.name} (copy)`,
+      owner: ownerValue(req),
+      practice: true,
+      practiceKind: item.practiceKind,
+      practiceStream: stream._id,
+      practiceSubject: subject._id,
+      practiceTopic: topicId,
+      category: item.category || "Full-Length",
+      duration: item.duration,
+      marks: item.marks,
+      difficulty: item.difficulty,
+      status: item.status || "published",
+      visibleToAll: false,
+    });
+    const created = await duplicateQuestions({ testSeries: item._id }, { testSeries: newItem._id, owner: ownerValue(req) });
+    if (created.length) await TestSeries.findByIdAndUpdate(newItem._id, { $push: { questions: { $each: created.map((c) => c._id) } } });
+    return res.json({ message: "Copied", _id: newItem._id });
+  }
+
+  item.practiceStream = stream._id;
+  item.practiceSubject = subject._id;
+  item.practiceTopic = topicId;
   await item.save();
   res.json({ message: "Migrated", _id: item._id });
 }

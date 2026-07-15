@@ -35,52 +35,52 @@ function getFlow(key) {
       return {
         source: [L.pqStream, L.pqSubject, L.pqTopic, L.pqItem], sourceKey: "item",
         dest: [L.pqStream, L.pqSubject, L.pqTopic], destKeys: ["stream", "subject", "topic"],
-        migrate: (s, d) => practiceService.moveItem(s.item, { practiceStream: d.stream, practiceSubject: d.subject, practiceTopic: d.topic }),
+        migrate: (s, d, copy) => practiceService.moveItem(s.item, { practiceStream: d.stream, practiceSubject: d.subject, practiceTopic: d.topic, copy }),
       };
     case "quiz.internal.content":
       return {
         source: [L.cStream, L.cSubject, L.cTopic, L.cSession, L.cQuiz], sourceKey: "quiz",
         dest: [L.cStream, L.cSubject, L.cTopic, L.cSession], destKeys: ["session"],
-        migrate: (s, d) => contentService.moveQuiz(s.quiz, d.session),
+        migrate: (s, d, copy) => contentService.moveQuiz(s.quiz, { session: d.session, copy }),
       };
     // QUIZ · External
     case "quiz.external.toContent":
       return {
         source: [L.pqStream, L.pqSubject, L.pqTopic, L.pqItem], sourceKey: "item",
         dest: [L.cStream, L.cSubject, L.cTopic, L.cSession], destKeys: ["session"],
-        migrate: (s, d) => testService.toQuiz(s.item, { session: d.session }),
+        migrate: (s, d, copy) => testService.toQuiz(s.item, { session: d.session, copy }),
       };
     case "quiz.external.toMyQuiz":
       return {
         source: [L.cStream, L.cSubject, L.cTopic, L.cSession, L.cQuiz], sourceKey: "quiz",
         dest: [L.pqStream, L.pqSubject, L.pqTopic], destKeys: ["stream", "subject", "topic"],
-        migrate: (s, d) => testService.quizToMyQuiz(s.quiz, { practiceStream: d.stream, practiceSubject: d.subject, practiceTopic: d.topic }),
+        migrate: (s, d, copy) => testService.quizToMyQuiz(s.quiz, { practiceStream: d.stream, practiceSubject: d.subject, practiceTopic: d.topic, copy }),
       };
     // TEST · Internal
     case "test.internal.mytest":
       return {
         source: [L.ptStream, L.ptSubject, L.ptItem], sourceKey: "item",
         dest: [L.ptStream, L.ptSubject], destKeys: ["stream", "subject"],
-        migrate: (s, d) => practiceService.moveItem(s.item, { practiceStream: d.stream, practiceSubject: d.subject }),
+        migrate: (s, d, copy) => practiceService.moveItem(s.item, { practiceStream: d.stream, practiceSubject: d.subject, copy }),
       };
     case "test.internal.testseries":
       return {
         source: [L.exam, L.post, L.test], sourceKey: "test",
         dest: [L.exam, L.post], destKeys: ["exam", "post"],
-        migrate: (s, d) => testService.moveTestSeries(s.test, { exam: d.exam, post: d.post }),
+        migrate: (s, d, copy) => testService.moveTestSeries(s.test, { exam: d.exam, post: d.post, copy }),
       };
     // TEST · External
     case "test.external.toSeries":
       return {
         source: [L.ptStream, L.ptSubject, L.ptItem], sourceKey: "item",
         dest: [L.exam, L.post], destKeys: ["exam", "post"],
-        migrate: (s, d) => testService.toTestSeries(s.item, { exam: d.exam, post: d.post }),
+        migrate: (s, d, copy) => testService.toTestSeries(s.item, { exam: d.exam, post: d.post, copy }),
       };
     case "test.external.toMyTest":
       return {
         source: [L.exam, L.post, L.test], sourceKey: "test",
         dest: [L.ptStream, L.ptSubject], destKeys: ["stream", "subject"],
-        migrate: (s, d) => testService.toMyTest(s.test, { practiceStream: d.stream, practiceSubject: d.subject }),
+        migrate: (s, d, copy) => testService.toMyTest(s.test, { practiceStream: d.stream, practiceSubject: d.subject, copy }),
       };
     default:
       return null;
@@ -158,6 +158,7 @@ export default function AdminMigration() {
   const [variant, setVariant] = useState("myquiz");
   const [src, setSrc] = useState({});
   const [dst, setDst] = useState({});
+  const [action, setAction] = useState("move"); // move | copy
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [ok, setOk] = useState(false);
@@ -187,9 +188,9 @@ export default function AdminMigration() {
     setBusy(true);
     setMsg("");
     try {
-      await flow.migrate(src, dst);
+      await flow.migrate(src, dst, action === "copy");
       setOk(true);
-      setMsg("✓ Migrated successfully.");
+      setMsg(action === "copy" ? "✓ Copied successfully (original kept)." : "✓ Moved successfully.");
       setSrc({});
       setDst({});
       setNonce((n) => n + 1);
@@ -272,11 +273,34 @@ export default function AdminMigration() {
 
           {msg && <p className={`mt-4 text-sm font-medium ${ok ? "text-emerald-600" : "text-rose-600"}`}>{msg}</p>}
 
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            {/* Move vs Copy */}
+            <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+              {["move", "copy"].map((a) => (
+                <button
+                  key={a}
+                  onClick={() => setAction(a)}
+                  className={`px-4 py-1.5 text-sm font-semibold capitalize ${
+                    action === a ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300"
+                  }`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
             <button onClick={migrate} disabled={busy} className="btn-primary">
-              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Migrating…</> : <><ArrowRightLeft className="h-4 w-4" /> Migrate</>}
+              {busy ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> {action === "copy" ? "Copying…" : "Moving…"}</>
+              ) : (
+                <><ArrowRightLeft className="h-4 w-4" /> {action === "copy" ? "Copy here" : "Move here"}</>
+              )}
             </button>
           </div>
+          <p className="mt-2 text-xs text-slate-400">
+            {action === "copy"
+              ? "Copy: duplicates the questions into the destination and keeps the original."
+              : "Move: relocates it to the destination (the original is moved, not duplicated)."}
+          </p>
         </div>
       )}
     </div>

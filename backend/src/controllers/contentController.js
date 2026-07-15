@@ -7,6 +7,7 @@ import Question from "../models/Question.js";
 import TestSeries from "../models/TestSeries.js";
 import { notifyNewContent } from "../utils/notify.js";
 import { ownerValue, ownerFilter, isClient } from "../utils/ownership.js";
+import { duplicateQuestions } from "../utils/duplicateQuestions.js";
 
 const slugify = (s) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -209,6 +210,14 @@ export async function moveQuiz(req, res) {
   if (!quiz) return res.status(404).json({ message: "Quiz not found" });
   const session = await Session.findById(req.body.session);
   if (!session) return res.status(400).json({ message: "Choose a target session." });
+
+  if (req.body.copy) {
+    const index = await Quiz.countDocuments({ session: session._id });
+    const newQuiz = await Quiz.create({ title: `${quiz.title} (copy)`, subject: session.subject, session: session._id, index });
+    await duplicateQuestions({ quiz: quiz._id }, { quiz: newQuiz._id, subject: session.subject, session: session._id });
+    return res.json({ message: "Copied", _id: newQuiz._id });
+  }
+
   quiz.session = session._id;
   quiz.subject = session.subject;
   await quiz.save();
