@@ -1,15 +1,41 @@
 import { useEffect, useState } from "react";
-import { X, Globe, Download, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, FileText, Upload, Files } from "lucide-react";
+import { X, Globe, Download, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, FileText, Upload, Files, Layers } from "lucide-react";
 import { aiService, documentService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 
 const LETTERS = ["A", "B", "C", "D"];
-const BATCH = 20; // group extracted questions into batches of this size for insertion
+const PER_BATCH = 20; // questions per batch
 
-// Import questions FROM another website or pasted text. The AI extracts the
-// questions already present (it does not invent them) and returns them in the
-// app's format for preview → insert. Reuses the same onUpload handler as the
-// bulk-upload / AI-generate modals.
+// Split source text into batches of ~PER_BATCH questions by detecting numbered
+// questions (1., 12), Q3., Question 5:). Mirrors the backend splitter so what
+// the user sees as a batch matches what gets sent to the AI. Falls back to a
+// single batch when no reliable numbering is found.
+function splitIntoBatches(text, per = PER_BATCH) {
+  const re = /(^|\n)[ \t]*(?:Q(?:uestion)?\.?\s*)?(\d{1,3})[.)\]:]\s/gi;
+  const marks = [];
+  let m;
+  while ((m = re.exec(text))) marks.push({ pos: m.index + (m[1] ? m[1].length : 0), num: parseInt(m[2], 10) });
+  const starts = [];
+  let prev = null;
+  for (const mk of marks) {
+    if (prev === null) { if (mk.num <= 3) { starts.push(mk.pos); prev = mk.num; } }
+    else if (mk.num === prev + 1 || mk.num === 1) { starts.push(mk.pos); prev = mk.num; }
+  }
+  if (starts.length < 2) return [{ text: text.trim(), count: 0 }];
+  const blocks = [];
+  for (let i = 0; i < starts.length; i++) {
+    blocks.push(text.slice(starts[i], i + 1 < starts.length ? starts[i + 1] : text.length).trim());
+  }
+  const out = [];
+  for (let i = 0; i < blocks.length; i += per) {
+    const group = blocks.slice(i, i + per);
+    out.push({ text: group.join("\n\n"), count: group.length });
+  }
+  return out;
+}
+
+// Import questions from a saved document, a PDF, a web page, or pasted text.
+// The source is split into batches; you Extract each batch, review, and Insert.
 export default function AiImport({ open, onClose, onUpload, title = "Import Questions (PDF, Web or Text)", sections = [], documents = false }) {
   const { user } = useAuth();
   const isClient = user?.role === "client" && user?.aiAccess;
@@ -17,51 +43,41 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
   const [source, setSource] = useState(user?.aiMode === "self" ? "self" : "inbuilt"); // "inbuilt" | "self"
   const [status, setStatus] = useState(null);
   const [model, setModel] = useState("");
-  const [section, setSection] = useState(sections[0] || ""); // subject to tag imported questions
+  const [section, setSection] = useState(sections[0] || "");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
-  const [preview, setPreview] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [inserting, setInserting] = useState(false);
-  const [insertingIdx, setInsertingIdx] = useState(-1); // which batch is being inserted
+  const [batches, setBatches] = useState([]); // [{ key, text?, url?, label, count, status, questions, msg }]
   const [msg, setMsg] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [pdfProgress, setPdfProgress] = useState(null); // { page, total }
-  const [docList, setDocList] = useState([]); // saved documents (when `documents` enabled)
+  const [pdfProgress, setPdfProgress] = useState(null);
+  const [docList, setDocList] = useState([]);
   const [docId, setDocId] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setMsg("");
-    setPreview([]);
+    setBatches([]);
     setDocId("");
   }, [open]);
 
-  // When enabled, load the saved-document list so the user can pick one as the source.
   useEffect(() => {
     if (!open || !documents) return;
     documentService.list().then(setDocList).catch(() => setDocList([]));
   }, [open, documents]);
 
-  // (Re)load status for the chosen source so the model list / key count match.
   useEffect(() => {
     if (!open) return;
     aiService
       .status(isClient ? source : undefined)
-      .then((s) => {
-        setStatus(s);
-        setModel(s?.model || (s?.models && s.models[0]) || "");
-      })
+      .then((s) => { setStatus(s); setModel(s?.model || (s?.models && s.models[0]) || ""); })
       .catch(() => setStatus({ enabled: false }));
   }, [open, source, isClient]);
 
   if (!open) return null;
 
-  // Read a PDF in the browser, pull out its text, and drop it into the box below
-  // so the normal AI extraction runs on it. pdf.js is loaded on demand.
   const onPdf = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // let the same file be picked again later
+    e.target.value = "";
     if (!file) return;
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       setMsg("Please choose a PDF file.");
@@ -78,9 +94,8 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         setMsg("Couldn't read any text — this PDF looks like scanned images (no selectable text). Try a text-based PDF or paste the text.");
         return;
       }
-      // Append so multiple PDFs / pasted text can be combined before extracting.
       setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${extracted}` : extracted));
-      setMsg(`✓ Read ${total || "?"} page(s) from “${file.name}”. Now click “Extract Questions”.`);
+      setMsg(`✓ Read ${total || "?"} page(s) from “${file.name}”. Now click “Split into batches”.`);
     } catch (err) {
       setMsg(`PDF read failed: ${err.message}. Check your connection and try again.`);
     } finally {
@@ -88,7 +103,6 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     }
   };
 
-  // Load a saved document's text into the box below, ready for extraction.
   const pickDoc = async (id) => {
     setDocId(id);
     if (!id) return;
@@ -98,111 +112,107 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
       const body = (doc?.content || "").trim();
       if (!body) { setMsg("That document has no text to use."); return; }
       setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${body}` : body));
-      setMsg(`✓ Loaded “${doc.title}”. Now click “Extract Questions”.`);
+      setMsg(`✓ Loaded “${doc.title}”. Now click “Split into batches”.`);
     } catch (e) {
       setMsg(e.message || "Couldn't load that document.");
     }
   };
 
-  const extract = async () => {
-    if (!url.trim() && !text.trim()) {
-      setMsg("Paste a page URL or the questions text to import.");
-      return;
+  // Split the source into batch cards. Each is extracted & inserted on its own.
+  const prepareBatches = () => {
+    setMsg("");
+    if (text.trim()) {
+      const parts = splitIntoBatches(text.trim());
+      setBatches(parts.map((p, i) => ({
+        key: `${Date.now()}-${i}`,
+        text: p.text,
+        label: `Batch ${i + 1}`,
+        count: p.count,
+        status: "idle",
+        questions: [],
+        msg: "",
+      })));
+    } else if (url.trim()) {
+      setBatches([{ key: `${Date.now()}-url`, url: url.trim(), label: "Web page", count: 0, status: "idle", questions: [], msg: "" }]);
+    } else {
+      setMsg("Add a saved document, a PDF, a URL, or paste text first.");
     }
-    setBusy(true);
-    setPreview([]);
-    setMsg("Reading the source and extracting questions…");
+  };
+
+  const patchBatch = (i, patch) => setBatches((prev) => prev.map((b, idx) => (idx === i ? { ...b, ...patch } : b)));
+
+  // Run the AI extraction for one batch and poll to completion.
+  const runExtraction = async (src, onProg) => {
+    const { jobId } = await aiService.extract({
+      content: src.text || undefined,
+      url: src.url || undefined,
+      model: model || undefined,
+      mode: isClient ? source : undefined,
+    });
+    if (!jobId) throw new Error("Could not start extraction.");
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 180; i++) {
+      await sleep(2000);
+      let s;
+      try { s = await aiService.job(jobId); } catch { continue; }
+      if (s.status === "done") return { questions: s.questions || [], quota: s.error === "quota" };
+      if (s.status === "error") throw new Error(s.error || "Extraction failed.");
+      onProg?.(s);
+    }
+    throw new Error("Timed out — this batch is large; try splitting the source into more/smaller batches.");
+  };
+
+  const extractBatch = async (i) => {
+    patchBatch(i, { status: "extracting", msg: "Extracting…", questions: [] });
     try {
-      const { jobId, chunks, questionsDetected } = await aiService.extract({
-        url: url.trim() || undefined,
-        content: text.trim() || undefined,
-        model: model || undefined,
-        mode: isClient ? source : undefined, // which key pool to use for this import
+      const { questions, quota } = await runExtraction(batches[i], (s) => patchBatch(i, { msg: `Extracting… ${s.count || 0} question(s) so far` }));
+      patchBatch(i, {
+        status: "done",
+        questions,
+        msg: questions.length
+          ? `✓ ${questions.length} question(s) extracted${quota ? " (quota reached — insert these, then retry)" : ""}. Review & Insert.`
+          : "No questions found in this batch.",
       });
-      if (!jobId) throw new Error("Could not start the import.");
-      if (questionsDetected) {
-        setMsg(`Found ~${questionsDetected} question(s) — extracting in ${chunks} batch(es) of up to 20…`);
-      }
-
-      // Poll the background job — it processes every section of the source.
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      let done = false;
-      for (let i = 0; i < 240 && !done; i++) {
-        await sleep(2000);
-        let s;
-        try {
-          s = await aiService.job(jobId);
-        } catch {
-          continue;
-        }
-        if (s.status === "done") {
-          const qs = s.questions || [];
-          setPreview(qs);
-          setMsg(
-            qs.length
-              ? `✓ Extracted ${qs.length} question(s) from ${s.chunksTotal || chunks || 1} section(s)${
-                  s.error === "quota" ? " (stopped early — quota reached; import these, then continue)" : ""
-                }. Review below, then Insert.`
-              : "No questions found — try pasting the text directly."
-          );
-          done = true;
-        } else if (s.status === "error") {
-          setMsg(s.error || "Import failed.");
-          done = true;
-        } else {
-          setMsg(`Extracting… ${s.count || 0} question(s) so far (section ${s.chunksDone || 0}/${s.chunksTotal || chunks || "?"})`);
-        }
-      }
-      if (!done) setMsg("Still working — the source is large. Try importing fewer sections at a time.");
     } catch (e) {
-      setMsg(e.message || "Import failed.");
-    } finally {
-      setBusy(false);
+      patchBatch(i, { status: "error", msg: e.message });
     }
   };
 
-  // Insert just one batch. The inserted questions are removed from the preview
-  // so they can't be inserted twice — lets you save a big import batch by batch.
-  const insertBatch = async (items, idx) => {
-    if (!items.length || insertingIdx !== -1 || inserting) return;
-    setInsertingIdx(idx);
-    setMsg("");
+  const insertBatch = async (i) => {
+    const qs = batches[i].questions;
+    if (!qs?.length) return;
+    patchBatch(i, { status: "inserting", msg: "Inserting…" });
     try {
-      const res = await onUpload(items, { section });
-      setPreview((prev) => prev.filter((q) => !items.includes(q)));
-      setMsg(`✓ Inserted ${res?.inserted ?? items.length} question(s) from this batch.`);
+      const res = await onUpload(qs, { section });
+      patchBatch(i, { status: "inserted", msg: `✓ Inserted ${res?.inserted ?? qs.length} question(s).` });
     } catch (e) {
-      setMsg(e.message || "Insert failed.");
-    } finally {
-      setInsertingIdx(-1);
+      patchBatch(i, { status: "done", msg: e.message || "Insert failed." });
     }
   };
 
-  const insert = async () => {
-    if (!preview.length) return;
-    setInserting(true);
-    setMsg("");
-    try {
-      const res = await onUpload(preview, { section });
-      setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s).`);
-      setPreview([]);
-      setUrl("");
-      setText("");
-      setTimeout(onClose, 1000);
-    } catch (e) {
-      setMsg(e.message || "Insert failed.");
-    } finally {
-      setInserting(false);
-    }
-  };
+  const busyAny = batches.some((b) => b.status === "extracting" || b.status === "inserting");
+
+  const QuestionCard = ({ q, n }) => (
+    <div className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/60">
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-brand-100 px-1.5 py-0.5 font-semibold uppercase text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{q.type}</span>
+        <span className="text-slate-400">{q.difficulty}</span>
+        <span className="ml-auto font-semibold text-emerald-600 dark:text-emerald-400">Ans: {LETTERS[q.correct] || "?"}</span>
+      </div>
+      <p className="mt-1 font-medium text-slate-700 dark:text-slate-200">{n}. {q.text}</p>
+      <ul className="mt-1 grid grid-cols-2 gap-x-3 text-slate-500 dark:text-slate-400">
+        {(q.options || []).map((o, j) => (
+          <li key={j} className={j === q.correct ? "font-semibold text-emerald-600 dark:text-emerald-400" : ""}>{LETTERS[j]}. {o}</li>
+        ))}
+      </ul>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
       <div className="my-8 w-full max-w-2xl animate-scale-in card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-lg font-bold">
-            <Globe className="h-5 w-5 text-brand-600" /> {title}
-          </h3>
+          <h3 className="flex items-center gap-2 text-lg font-bold"><Globe className="h-5 w-5 text-brand-600" /> {title}</h3>
           <button type="button" onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
 
@@ -240,12 +250,9 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
           <>
             <div className="mb-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
               {documents ? <><b>Pick a saved document</b>, upload a <b>PDF</b>, </> : <>Upload a <b>PDF</b>, </>}
-              paste a page link, <b>or</b> paste the questions text. The AI reads the content and
-              extracts the questions into your format — review before inserting. Only import content you have the right to use.
+              paste a page link, <b>or</b> paste the questions text, then <b>Split into batches</b>. Extract each batch and insert it — batch by batch.
               {typeof status?.keys === "number" && (
-                <span className="ml-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                  {status.keys} API key{status.keys === 1 ? "" : "s"} active.
-                </span>
+                <span className="ml-1 font-semibold text-emerald-600 dark:text-emerald-400"> {status.keys} API key{status.keys === 1 ? "" : "s"} active.</span>
               )}
             </div>
 
@@ -274,9 +281,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
                 {docList.length ? (
                   <select className="input" value={docId} onChange={(e) => pickDoc(e.target.value)}>
                     <option value="">— Pick a document —</option>
-                    {docList.map((d) => (
-                      <option key={d._id} value={d._id}>{d.title}{d.pages ? ` (${d.pages}p)` : ""}</option>
-                    ))}
+                    {docList.map((d) => <option key={d._id} value={d._id}>{d.title}{d.pages ? ` (${d.pages}p)` : ""}</option>)}
                   </select>
                 ) : (
                   <p className="text-xs text-slate-400">No saved documents yet — add some in Admin → Documents.</p>
@@ -305,77 +310,64 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
             </div>
 
             <label className="mb-1 block text-sm font-semibold">Page URL (optional)</label>
-            <input
-              className="input"
-              placeholder="https://example.com/quiz-page"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
+            <input className="input" placeholder="https://example.com/quiz-page" value={url} onChange={(e) => setUrl(e.target.value)} />
 
-            <label className="mb-1 block text-sm font-semibold">Extracted or pasted text</label>
+            <label className="mb-1 mt-3 block text-sm font-semibold">Extracted or pasted text</label>
             <textarea
               rows={6}
               className="input resize-y font-mono text-xs"
-              placeholder={"PDF text appears here after upload — or paste questions directly, e.g.\n1. What is the powerhouse of the cell?\nA) Nucleus  B) Mitochondria  C) Ribosome  D) Golgi\nAns: B"}
+              placeholder={"PDF/document text appears here — or paste questions directly, e.g.\n1. What is the powerhouse of the cell?\nA) Nucleus  B) Mitochondria  C) Ribosome  D) Golgi\nAns: B"}
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
             {text.trim() && (
-              <p className="mt-1 text-xs text-slate-400">{text.trim().length.toLocaleString()} characters ready. Edit if needed, then Extract Questions.</p>
+              <p className="mt-1 text-xs text-slate-400">{text.trim().length.toLocaleString()} characters ready.</p>
             )}
-            <p className="mt-1 text-xs text-slate-400">
-              Tip: pasting the text works more reliably than a URL — many sites block automated reading.
-            </p>
 
-            <button type="button" onClick={extract} disabled={busy} className="btn-primary mt-4 w-full">
-              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Extracting…</> : <><Download className="h-4 w-4" /> Extract Questions</>}
+            <button type="button" onClick={prepareBatches} disabled={busyAny} className="btn-primary mt-4 w-full">
+              <Layers className="h-4 w-4" /> Split into batches
             </button>
 
-            {preview.length > 0 && (
+            {batches.length > 0 && (
               <div className="mt-4 space-y-3">
-                <p className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" /> {preview.length} question(s) ready — insert each batch below, or all at once.
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                  {batches.length} batch(es) — Extract each, then Insert.
                 </p>
-                {Array.from({ length: Math.ceil(preview.length / BATCH) }).map((_, bi) => {
-                  const start = bi * BATCH;
-                  const items = preview.slice(start, start + BATCH);
-                  return (
-                    <div key={bi} className="rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
-                        <span className="text-sm font-semibold">
-                          Batch {bi + 1} <span className="font-normal text-slate-400">· {items.length} question(s)</span>
+                {batches.map((b, i) => (
+                  <div key={b.key} className="rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+                      <span className="text-sm font-semibold">
+                        {b.label}
+                        <span className="font-normal text-slate-400">
+                          {b.count ? ` · ~${b.count} question(s)` : ""}{b.questions.length ? ` · ${b.questions.length} extracted` : ""}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => insertBatch(items, bi)}
-                          disabled={insertingIdx !== -1 || inserting}
-                          className="btn-primary !py-1 !text-xs"
-                        >
-                          {insertingIdx === bi ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Inserting…</> : <>Insert these {items.length}</>}
-                        </button>
-                      </div>
-                      <div className="max-h-56 space-y-2 overflow-y-auto p-2">
-                        {items.map((q, i) => (
-                          <div key={i} className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/60">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded bg-brand-100 px-1.5 py-0.5 font-semibold uppercase text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{q.type}</span>
-                              <span className="text-slate-400">{q.difficulty}</span>
-                              <span className="ml-auto font-semibold text-emerald-600 dark:text-emerald-400">Ans: {LETTERS[q.correct] || "?"}</span>
-                            </div>
-                            <p className="mt-1 font-medium text-slate-700 dark:text-slate-200">{start + i + 1}. {q.text}</p>
-                            <ul className="mt-1 grid grid-cols-2 gap-x-3 text-slate-500 dark:text-slate-400">
-                              {(q.options || []).map((o, j) => (
-                                <li key={j} className={j === q.correct ? "font-semibold text-emerald-600 dark:text-emerald-400" : ""}>
-                                  {LETTERS[j]}. {o}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
+                      </span>
+                      <div className="flex gap-2">
+                        {b.status !== "inserted" && (
+                          <button type="button" onClick={() => extractBatch(i)} disabled={b.status === "extracting" || b.status === "inserting"} className="btn-outline !py-1 !text-xs">
+                            {b.status === "extracting"
+                              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Extracting…</>
+                              : <><Download className="h-3.5 w-3.5" /> {b.questions.length ? "Re-extract" : "Extract questions"}</>}
+                          </button>
+                        )}
+                        {b.questions.length > 0 && b.status !== "inserted" && (
+                          <button type="button" onClick={() => insertBatch(i)} disabled={b.status === "inserting" || b.status === "extracting"} className="btn-primary !py-1 !text-xs">
+                            {b.status === "inserting" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Inserting…</> : <>Insert {b.questions.length}</>}
+                          </button>
+                        )}
+                        {b.status === "inserted" && (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Inserted</span>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
+                    {b.msg && <p className="px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400">{b.msg}</p>}
+                    {b.questions.length > 0 && b.status !== "inserted" && (
+                      <div className="max-h-56 space-y-2 overflow-y-auto p-2">
+                        {b.questions.map((q, j) => <QuestionCard key={j} q={q} n={j + 1} />)}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </>
@@ -385,11 +377,6 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
 
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onClose} className="btn-outline">Close</button>
-          {status?.enabled && preview.length > 0 && (
-            <button type="button" onClick={insert} disabled={inserting || insertingIdx !== -1} className="btn-primary">
-              {inserting ? <><Loader2 className="h-4 w-4 animate-spin" /> Inserting…</> : `Insert all ${preview.length}`}
-            </button>
-          )}
         </div>
       </div>
     </div>
