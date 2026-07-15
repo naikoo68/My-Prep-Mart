@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { GraduationCap, LogOut, Moon, Sun, ZoomIn, ZoomOut, LayoutDashboard, Wrench } from "lucide-react";
+import { GraduationCap, LogOut, Moon, Sun, ZoomIn, ZoomOut, LayoutDashboard, Wrench, ArrowRightLeft } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useSettings } from "../../context/SettingsContext";
 import { useZoom } from "../../context/ZoomContext";
 import AdminPractice from "../admin/AdminPractice";
+import AdminMigration from "../admin/AdminMigration";
 import ClientDashboard from "./ClientDashboard";
 import ClientUpgrade from "./ClientUpgrade";
 
@@ -34,6 +35,7 @@ export default function ClientWorkspace() {
   const tabs = [
     { key: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
     { key: "build", label: "Build", Icon: Wrench },
+    { key: "migrate", label: "Migrate", Icon: ArrowRightLeft },
   ];
 
   return (
@@ -94,6 +96,8 @@ export default function ClientWorkspace() {
           <ClientUpgrade onClose={expired ? undefined : () => setShowUpgrade(false)} />
         ) : tab === "dashboard" ? (
           <ClientDashboard onBuild={() => setTab("build")} onUpgrade={() => setShowUpgrade(true)} />
+        ) : tab === "migrate" ? (
+          <AdminMigration clientMode />
         ) : (
           <AdminPractice clientMode />
         )}

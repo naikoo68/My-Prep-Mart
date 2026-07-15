@@ -234,9 +234,11 @@ function MultiSourcePicker({ levels, onChange }) {
   );
 }
 
-export default function AdminMigration() {
+export default function AdminMigration({ clientMode = false }) {
   const [tab, setTab] = useState("quiz"); // quiz | test
   const [type, setType] = useState("internal"); // internal | external
+  // Clients only migrate within their own practice — internal, My Quiz/My Test.
+  const filterV = (list) => (clientMode ? list.filter((v) => v.key === "myquiz" || v.key === "mytest") : list);
   const [variant, setVariant] = useState("myquiz");
   const [srcIds, setSrcIds] = useState([]); // multiple source items
   const [dst, setDst] = useState({});
@@ -247,11 +249,11 @@ export default function AdminMigration() {
   const [nonce, setNonce] = useState(0); // bump to remount cascades (reset)
 
   const variantKey = `${tab}.${type}`;
-  const variants = VARIANTS[variantKey] || [];
+  const variants = filterV(VARIANTS[variantKey] || []);
 
   // Default the variant whenever tab/type changes.
   useEffect(() => {
-    setVariant((VARIANTS[`${tab}.${type}`] || [{ key: "" }])[0].key);
+    setVariant((filterV(VARIANTS[`${tab}.${type}`] || []) [0] || { key: "" }).key);
     setSrcIds([]);
     setDst({});
     setMsg("");
@@ -317,7 +319,9 @@ export default function AdminMigration() {
           <ArrowRightLeft className="h-6 w-6 text-brand-600" /> Migration
         </h1>
         <p className="text-slate-500 dark:text-slate-400">
-          Move a quiz or test to another place. <b>Internal</b> = within the same area; <b>External</b> = between Content and My Practice.
+          {clientMode
+            ? "Move or copy your quizzes and tests to another stream, subject or topic."
+            : "Move a quiz or test to another place. Internal = within the same area; External = between Content and My Practice."}
         </p>
       </div>
 
@@ -327,11 +331,13 @@ export default function AdminMigration() {
         <Tab id="test" label="Test" active={tab === "test"} onClick={() => setTab("test")} />
       </div>
 
-      {/* Internal / External */}
-      <div className="flex gap-2">
-        <Tab id="internal" label="Internal migration" active={type === "internal"} onClick={() => setType("internal")} />
-        <Tab id="external" label="External migration" active={type === "external"} onClick={() => setType("external")} />
-      </div>
+      {/* Internal / External (clients: internal only) */}
+      {!clientMode && (
+        <div className="flex gap-2">
+          <Tab id="internal" label="Internal migration" active={type === "internal"} onClick={() => setType("internal")} />
+          <Tab id="external" label="External migration" active={type === "external"} onClick={() => setType("external")} />
+        </div>
+      )}
 
       {/* Variant (area or direction) */}
       <div className="flex flex-wrap gap-2">
