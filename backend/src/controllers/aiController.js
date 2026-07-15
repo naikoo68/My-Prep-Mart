@@ -866,6 +866,35 @@ function splitByQuestions(text, perChunk = QUESTIONS_PER_CHUNK) {
   return { count: blocks.length, chunks };
 }
 
+// Hard filter so ONLY genuine questions survive extraction — never headers,
+// footers, reference/file numbers, exam-centre/hall names, instructions, marks,
+// time, roll-number fields, invigilator/signature lines, page markers, etc.
+const EXTRACT_JUNK = [
+  /file\s*no[.:]/i,
+  /generated\s+from\s+\w*office/i,
+  /\bcomputer\s*no\b/i,
+  /\d{3,}\s*\/\s*\d{2,4}\s*\/\s*\d+\s*\/\s*\d+/, // reference no. like 8233675/2026/0/0
+  /(maximum|max\.?|total)\s+marks|marks\s*[:=]/i,
+  /\btime\s*(allowed|:|=)|\bduration\b/i,
+  /\broll\s*(no|number)\b/i,
+  /\b(invigilator|signature|candidate'?s?\s+name)\b/i,
+  /read\s+the\s+following\s+instructions|do\s+not\s+open|rough\s+work|instructions\s+to\s+candidates/i,
+  /\bp\.?\s*t\.?\s*o\.?\b/i,
+  /service\s+selection\s+board/i,
+];
+
+function isRealQuestion(q) {
+  const text = String(q?.text || "").trim();
+  if (!text) return false;
+  if (EXTRACT_JUNK.some((re) => re.test(text))) return false; // obvious boilerplate
+  // Every supported question type carries answer options; headers/instructions
+  // do not. Require at least 2 real options + a non-trivial stem.
+  const opts = (Array.isArray(q.options) ? q.options : []).map((o) => String(o || "").trim()).filter(Boolean);
+  if (opts.length < 2) return false;
+  if (text.replace(/[^a-z0-9]/gi, "").length < 5) return false; // too short to be a question
+  return true;
+}
+
 // Signature to de-duplicate questions collected across chunks/sections. Strips
 // ALL non-alphanumerics and sorts the options/columns so the SAME question
 // extracted twice (with minor whitespace/punctuation/order differences from the
@@ -924,7 +953,7 @@ function buildExtractPrompt(sourceText) {
     "MOST IMPORTANT: capture EVERY question in the material below — do not skip, summarise or merge any. If the text contains 40 questions, return all 40, in their original order.",
     "Equally important: do NOT invent questions, do NOT repeat/duplicate a question, and do NOT split one question (or its sub-parts/options) into multiple questions. The number you return must NOT exceed the number actually present in the text.",
     "",
-    "Extract ONLY actual questions. IGNORE everything that is not a question: titles, headings, exam/booklet names, exam-centre or hall names (e.g. \"Clerical Hall JKSSB\"), file/reference/computer numbers (e.g. \"8233675/2026/0/0\", \"File No. …\"), page numbers, \"Set-A\", \"P.T.O.\", roll-number / candidate fields, invigilator or signature lines, general instructions, and watermarks. Never output any of these as a question.",
+    "Output ONLY actual questions — NOTHING else. A valid question has a stem AND answer options. IGNORE and never output: titles, headings, exam/booklet names, exam-centre or hall names (e.g. \"Clerical Hall JKSSB\"), file/reference/computer numbers (e.g. \"8233675/2026/0/0\", \"File No. …\"), page numbers, \"Set-A\", \"P.T.O.\", maximum marks, time/duration, roll-number/candidate fields, invigilator or signature lines, general instructions, section headers, and watermarks. If a line or block is not a real question with options, drop it entirely.",
     "",
     "If a reading PASSAGE / paragraph is given before a group of questions (comprehension), prepend the relevant passage text to the \"text\" of each of those questions so each question is self-contained; do NOT output the passage on its own as a question.",
     "",
@@ -975,6 +1004,7 @@ async function runExtractionJob(id, { endpoints, model, chunks, owner = null }) 
         continue;
       }
       for (const q of normalize(parseQuestions(r.content))) {
+        if (!isRealQuestion(q)) continue; // keep ONLY genuine questions — drop headers/instructions/etc.
         const sig = extractSig(q);
         if (seen.has(sig)) continue; // skip duplicates across chunks
         seen.add(sig);
