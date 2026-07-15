@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Globe, Download, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, FileText, Upload, Files, ScanText, Maximize2, Minimize2 } from "lucide-react";
+import { X, Globe, Download, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, FileText, Upload, Files, ScanText, Maximize2, Minimize2, Plus } from "lucide-react";
 import { aiService, documentService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 
@@ -21,7 +21,9 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
   const [text, setText] = useState("");
   const [textFull, setTextFull] = useState(false); // full-screen editor for the source text
   const [preview, setPreview] = useState([]);
+  const [detected, setDetected] = useState(0); // how many questions the source appears to contain
   const [busy, setBusy] = useState(false);
+  const [busyMore, setBusyMore] = useState(false); // "Extract remaining" pass in progress
   const [inserting, setInserting] = useState(false);
   const [insertingIdx, setInsertingIdx] = useState(-1);
   const [msg, setMsg] = useState("");
@@ -38,6 +40,8 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     if (!open) return;
     setMsg("");
     setPreview([]);
+    setDetected(0);
+    setBusyMore(false);
     setDocId("");
     setPdfFile(null);
     setScanned(false);
@@ -126,23 +130,35 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     }
   };
 
-  const extract = async () => {
+  // De-dup key for merging a second pass — prefer the source question number
+  // (stable across re-runs), else a normalised stem. Mirrors the backend.
+  const dedupKey = (q) =>
+    q?.n != null
+      ? `n:${q.n}`
+      : String(q?.text || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 200);
+
+  // Run extraction. `append` = a "get the missed ones" pass: we send the
+  // questions we already have so the AI skips them and returns ONLY the missing
+  // ones, which are then merged into the preview (no duplicates).
+  const runExtract = async (append = false) => {
     if (!url.trim() && !text.trim()) {
       setMsg("Add a PDF / document / URL, or paste the questions text.");
       return;
     }
-    setBusy(true);
-    setPreview([]);
-    setMsg("Reading the source and extracting questions…");
+    if (append) setBusyMore(true);
+    else { setBusy(true); setPreview([]); setDetected(0); }
+    setMsg(append ? "Looking for the questions that were missed…" : "Reading the source and extracting questions…");
     try {
-      const { jobId, chunks, questionsDetected } = await aiService.extract({
+      const { jobId, questionsDetected } = await aiService.extract({
         url: url.trim() || undefined,
         content: text.trim() || undefined,
         model: model || undefined,
         mode: isClient ? source : undefined,
+        have: append ? preview : undefined,
       });
       if (!jobId) throw new Error("Could not start the import.");
-      if (questionsDetected) setMsg(`Found ~${questionsDetected} question(s) — extracting…`);
+      if (questionsDetected) setDetected(questionsDetected);
+      if (questionsDetected && !append) setMsg(`Found ~${questionsDetected} question(s) — extracting…`);
 
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       let done = false;
@@ -152,25 +168,39 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         try { s = await aiService.job(jobId); } catch { continue; }
         if (s.status === "done") {
           const qs = s.questions || [];
-          setPreview(qs);
-          setMsg(
-            qs.length
-              ? `✓ Extracted ${qs.length}${questionsDetected ? ` of ~${questionsDetected} detected` : ""} question(s)${s.error === "quota" ? " (stopped early — quota reached; insert these, then run again)" : ""}. Review below, then insert.`
-              : "No questions found — try pasting the text, or use OCR for scanned PDFs."
-          );
+          if (append) {
+            // Merge the newly-found (previously missed) questions, skipping dupes.
+            const have = new Set(preview.map(dedupKey));
+            const added = qs.filter((q) => !have.has(dedupKey(q)));
+            const merged = [...preview, ...added];
+            setPreview(merged);
+            setMsg(
+              added.length
+                ? `✓ Found ${added.length} more question(s) — now ${merged.length}${questionsDetected ? ` of ~${questionsDetected}` : ""}. Review, then insert.`
+                : "No additional questions found — the rest may not be in the source (try OCR or paste the missing part)."
+            );
+          } else {
+            setPreview(qs);
+            setMsg(
+              qs.length
+                ? `✓ Extracted ${qs.length}${questionsDetected ? ` of ~${questionsDetected} detected` : ""} question(s)${s.error === "quota" ? " (stopped early — quota reached; insert these, then run again)" : ""}. Review below, then insert.`
+                : "No questions found — try pasting the text, or use OCR for scanned PDFs."
+            );
+          }
           done = true;
         } else if (s.status === "error") {
           setMsg(s.error || "Import failed.");
           done = true;
         } else {
-          setMsg(`Extracting… ${s.count || 0} question(s) so far (section ${s.chunksDone || 0}/${s.chunksTotal || chunks || "?"})`);
+          setMsg(`Extracting… ${s.count || 0} question(s) so far (section ${s.chunksDone || 0}/${s.chunksTotal || "?"})`);
         }
       }
       if (!done) setMsg("Still working — the source is large. Try importing fewer questions at a time.");
     } catch (e) {
       setMsg(e.message || "Import failed.");
     } finally {
-      setBusy(false);
+      if (append) setBusyMore(false);
+      else setBusy(false);
     }
   };
 
@@ -372,15 +402,26 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
               <p className="mt-1 text-xs text-slate-400">{text.trim().length.toLocaleString()} characters ready.</p>
             )}
 
-            <button type="button" onClick={extract} disabled={busy} className="btn-primary mt-4 w-full">
+            <button type="button" onClick={() => runExtract(false)} disabled={busy || busyMore} className="btn-primary mt-4 w-full">
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Extracting…</> : <><Download className="h-4 w-4" /> Extract Questions</>}
             </button>
 
             {preview.length > 0 && (
               <div className="mt-4 space-y-3">
-                <p className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" /> {preview.length} question(s) ready — insert each batch below, or all at once.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-4 w-4" /> {preview.length}{detected ? ` of ~${detected}` : ""} question(s) ready — insert each batch below, or all at once.
+                  </p>
+                  {(url.trim() || text.trim()) && (
+                    <button type="button" onClick={() => runExtract(true)} disabled={busy || busyMore || inserting || insertingIdx !== -1}
+                      className="btn-outline !py-1 !text-xs"
+                      title="Re-scan the same source and add only the questions that were missed (no duplicates)">
+                      {busyMore
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Finding missed…</>
+                        : <><Plus className="h-3.5 w-3.5" /> {detected && detected > preview.length ? `Extract remaining ${detected - preview.length}` : "Extract missed questions"}</>}
+                    </button>
+                  )}
+                </div>
                 {Array.from({ length: Math.ceil(preview.length / BATCH) }).map((_, bi) => {
                   const start = bi * BATCH;
                   const items = preview.slice(start, start + BATCH);
