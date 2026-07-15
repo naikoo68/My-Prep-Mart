@@ -44,6 +44,29 @@ const MODES = {
     submit: (source, s) =>
       testService.quizToMyQuiz(source._id, { practiceStream: s.stream, practiceSubject: s.subject, practiceTopic: s.topic }),
   },
+  // ---- Re-parent within the platform quiz hierarchy ----
+  moveSubject: {
+    title: "Move subject to another stream",
+    levels: [{ key: "stream", label: "Choose stream…", load: () => contentService.streams() }],
+    submit: (source, s) => contentService.moveSubject(source._id, s.stream),
+  },
+  moveTopic: {
+    title: "Move topic to another subject",
+    levels: [
+      { key: "stream", label: "Choose stream…", load: () => contentService.streams() },
+      { key: "subject", label: "Choose subject…", load: (v) => contentService.subjectsByStream(v) },
+    ],
+    submit: (source, s) => contentService.moveTopic(source._id, s.subject),
+  },
+  moveQuiz: {
+    title: "Move quiz to another session",
+    levels: [
+      { key: "subject", label: "Choose subject…", load: () => contentService.subjects() },
+      { key: "topic", label: "Choose topic…", load: (v) => contentService.topics(v), labelKey: "title" },
+      { key: "session", label: "Choose session…", load: (v) => contentService.sessions(v), labelKey: "title" },
+    ],
+    submit: (source, s) => contentService.moveQuiz(source._id, s.session),
+  },
 };
 
 export default function ConvertModal({ open, mode, source, onClose, onDone }) {
@@ -52,12 +75,14 @@ export default function ConvertModal({ open, mode, source, onClose, onDone }) {
   const [sel, setSel] = useState([]); // selected id per level index
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState(false);
 
   useEffect(() => {
     if (!open || !cfg) return;
     setSel([]);
     setMsg("");
     setOpts([]);
+    setOk(false);
     cfg.levels[0].load().then((r) => setOpts([r || []])).catch(() => setOpts([[]]));
   }, [open, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -86,8 +111,10 @@ export default function ConvertModal({ open, mode, source, onClose, onDone }) {
     setMsg("");
     try {
       await cfg.submit(source, byKey);
+      setOk(true);
+      setMsg("✓ Moved successfully.");
       onDone?.();
-      onClose();
+      setTimeout(onClose, 1200);
     } catch (e) {
       setMsg(e.message || "Couldn't move.");
     } finally {
@@ -107,27 +134,38 @@ export default function ConvertModal({ open, mode, source, onClose, onDone }) {
         <p className="mb-4 truncate text-sm text-slate-500 dark:text-slate-400">{source?.name}</p>
 
         <div className="space-y-3">
-          {cfg.levels.map((lv, i) => (
-            <select
-              key={lv.key}
-              value={sel[i] || ""}
-              onChange={(e) => pick(i, e.target.value)}
-              disabled={i > 0 && !sel[i - 1]}
-              className="input"
-            >
-              <option value="">{lv.label}</option>
-              {(opts[i] || []).map((o) => (
-                <option key={o._id} value={o._id}>{o[lv.labelKey || "name"] || o.name || o.title}</option>
-              ))}
-            </select>
-          ))}
+          {cfg.levels.map((lv, i) => {
+            const list = opts[i];
+            const shown = i === 0 || sel[i - 1]; // only show once the parent is picked
+            const emptyLoaded = shown && Array.isArray(list) && list.length === 0;
+            return (
+              <div key={lv.key}>
+                <select
+                  value={sel[i] || ""}
+                  onChange={(e) => pick(i, e.target.value)}
+                  disabled={i > 0 && !sel[i - 1]}
+                  className="input"
+                >
+                  <option value="">{lv.label}</option>
+                  {(list || []).map((o) => (
+                    <option key={o._id} value={o._id}>{o[lv.labelKey || "name"] || o.name || o.title}</option>
+                  ))}
+                </select>
+                {emptyLoaded && (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    Nothing here yet — create one first{i === 0 ? (mode === "toTestSeries" ? " (add an Exam in Test Series)" : mode === "toQuiz" ? " (add a Subject in Content)" : "") : ""}.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        {msg && <p className="mt-3 text-sm font-medium text-rose-600">{msg}</p>}
+        {msg && <p className={`mt-3 text-sm font-medium ${ok ? "text-emerald-600" : "text-rose-600"}`}>{msg}</p>}
 
         <div className="mt-5 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="btn-outline">Cancel</button>
-          <button type="button" onClick={submit} disabled={busy} className="btn-primary">
+          <button type="button" onClick={onClose} className="btn-outline">Close</button>
+          <button type="button" onClick={submit} disabled={busy || ok} className="btn-primary">
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Moving…</> : "Move"}
           </button>
         </div>

@@ -27,6 +27,10 @@ export const contentService = {
   quizQuestions: (quizId) => api.get(`/quizzes/${quizId}/questions`),
   questions: (sessionId) => api.get(`/sessions/${sessionId}/questions`),
   allQuestions: () => api.get("/questions"),
+  // move (re-parent) within the quiz hierarchy
+  moveSubject: (id, stream) => api.patch(`/subjects/${id}/move`, { stream }),
+  moveTopic: (id, subject) => api.patch(`/topics/${id}/move`, { subject }),
+  moveQuiz: (id, session) => api.patch(`/quizzes/${id}/move`, { session }),
   // streams (admin)
   createStream: (data) => api.post("/streams", data),
   updateStream: (id, data) => api.put(`/streams/${id}`, data),

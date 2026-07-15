@@ -9,7 +9,7 @@ import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 import { questionDateText, searchQuestions } from "../../lib/questions";
 import ConvertModal from "../../components/admin/ConvertModal";
-import { Shuffle } from "lucide-react";
+import { Shuffle, Move } from "lucide-react";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import { Sparkles, Files, Globe } from "lucide-react";
@@ -37,6 +37,7 @@ export default function AdminContent() {
   const [session, setSession] = useState(null);
   const [quiz, setQuiz] = useState(null);
   const [convertQuiz, setConvertQuiz] = useState(null); // quiz → My Quiz
+  const [moveNode, setMoveNode] = useState(null); // { mode, source } re-parent move
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -395,6 +396,18 @@ export default function AdminContent() {
                     <Eye className="h-4 w-4" />
                   </button>
                 )}
+                {(view === "subjects" || view === "topics" || view === "quizzes") && (
+                  <button
+                    onClick={() => setMoveNode({
+                      mode: view === "subjects" ? "moveSubject" : view === "topics" ? "moveTopic" : "moveQuiz",
+                      source: { _id: item._id, name: item.name || item.title },
+                    })}
+                    title={`Move this ${view === "subjects" ? "subject" : view === "topics" ? "topic" : "quiz"} to another location`}
+                    className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30"
+                  >
+                    <Move className="h-4 w-4" />
+                  </button>
+                )}
                 {view === "quizzes" && (
                   <button onClick={() => setConvertQuiz(item)} title="Move to My Quiz (practice)" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                     <Shuffle className="h-4 w-4" />
@@ -435,6 +448,14 @@ export default function AdminContent() {
         source={convertQuiz ? { _id: convertQuiz._id, name: convertQuiz.title || convertQuiz.name } : null}
         onClose={() => setConvertQuiz(null)}
         onDone={() => { setConvertQuiz(null); load(view); }}
+      />
+
+      <ConvertModal
+        open={!!moveNode}
+        mode={moveNode?.mode}
+        source={moveNode?.source}
+        onClose={() => setMoveNode(null)}
+        onDone={() => { setMoveNode(null); load(view); }}
       />
 
       <BulkUploadQuestions
