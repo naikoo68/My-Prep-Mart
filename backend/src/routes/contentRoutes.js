@@ -29,6 +29,7 @@ import {
   updateQuestion,
   deleteQuestion,
   findDuplicates,
+  moveQuiz,
 } from "../controllers/contentController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -66,6 +67,7 @@ router.delete("/sessions/:id", ...admin, deleteSession);
 router.get("/sessions/:sessionId/quizzes", listQuizzes);
 router.post("/quizzes", ...admin, createQuiz);
 router.put("/quizzes/:id", ...admin, updateQuiz);
+router.patch("/quizzes/:id/move", ...admin, moveQuiz);
 router.delete("/quizzes/:id", ...admin, deleteQuiz);
 router.get("/quizzes/:quizId/questions", optionalAuth, listQuizQuestions);
 

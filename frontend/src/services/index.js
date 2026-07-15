@@ -27,6 +27,7 @@ export const contentService = {
   quizQuestions: (quizId) => api.get(`/quizzes/${quizId}/questions`),
   questions: (sessionId) => api.get(`/sessions/${sessionId}/questions`),
   allQuestions: () => api.get("/questions"),
+  moveQuiz: (id, session) => api.patch(`/quizzes/${id}/move`, { session }), // internal quiz migration
   // streams (admin)
   createStream: (data) => api.post("/streams", data),
   updateStream: (id, data) => api.put(`/streams/${id}`, data),
@@ -99,6 +100,12 @@ export const testService = {
   deleteQuestion: (id, qid) => api.del(`/tests/${id}/questions/${qid}`),
   // pull questions from the quiz/practice bank into a test
   populate: (id, plan) => api.post(`/tests/${id}/populate`, plan), // { quizPlan, practicePlan }
+  // migration (admin)
+  toTestSeries: (id, data) => api.patch(`/tests/${id}/to-test-series`, data), // { exam, post }
+  toMyTest: (id, data) => api.patch(`/tests/${id}/to-my-test`, data), // { practiceStream, practiceSubject }
+  moveTestSeries: (id, data) => api.patch(`/tests/${id}/move-series`, data), // { exam, post }
+  toQuiz: (id, data) => api.patch(`/tests/${id}/to-quiz`, data), // { session }
+  quizToMyQuiz: (id, data) => api.patch(`/tests/from-quiz/${id}/to-my-quiz`, data), // { practiceStream, practiceSubject, practiceTopic }
 };
 
 // ---- Practice Quizzes (My Quiz / My Test Series) ----
@@ -136,6 +143,7 @@ export const practiceService = {
   adminItems: (subjectId, kind) => api.get(`/practice/subjects/${subjectId}/items${kind ? `?kind=${kind}` : ""}`),
   adminTopicItems: (topicId) => api.get(`/practice/topics/${topicId}/items`),
   createItem: (data) => api.post("/practice/items", data),
+  moveItem: (id, target) => api.patch(`/practice/items/${id}/move`, target), // internal practice migration
 };
 
 // ---- Dashboard / analytics ----

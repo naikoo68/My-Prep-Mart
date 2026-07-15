@@ -186,6 +186,32 @@ export async function createItem(req, res) {
   res.status(201).json(item);
 }
 
+// PATCH /api/practice/items/:id/move — relocate a practice item (My Quiz / My
+// Test) to a different Stream → Subject → (Topic). Owner-scoped.
+export async function moveItem(req, res) {
+  const item = await TestSeries.findOne({ _id: req.params.id, practice: true, ...ownerFilter(req) });
+  if (!item) return res.status(404).json({ message: "Item not found" });
+  const { practiceStream, practiceSubject, practiceTopic } = req.body;
+  const stream = await PracticeStream.findOne({ _id: practiceStream, ...ownerFilter(req) });
+  if (!stream) return res.status(400).json({ message: "Choose a target stream." });
+  if (stream.kind && stream.kind !== item.practiceKind) {
+    return res.status(400).json({ message: `Pick a ${item.practiceKind === "quiz" ? "My Quiz" : "My Test"} stream.` });
+  }
+  const subject = await PracticeSubject.findOne({ _id: practiceSubject, stream: stream._id, ...ownerFilter(req) });
+  if (!subject) return res.status(400).json({ message: "Choose a subject in that stream." });
+  item.practiceStream = stream._id;
+  item.practiceSubject = subject._id;
+  if (item.practiceKind === "quiz") {
+    const topic = await PracticeTopic.findOne({ _id: practiceTopic, subject: subject._id, ...ownerFilter(req) });
+    if (!topic) return res.status(400).json({ message: "Choose a topic in that subject." });
+    item.practiceTopic = topic._id;
+  } else {
+    item.practiceTopic = undefined;
+  }
+  await item.save();
+  res.json({ message: "Migrated", _id: item._id });
+}
+
 // GET /api/practice/quiz/:id/play — full questions WITH answers, so a "My Quiz"
 // practice quiz can reveal correctness instantly (like the regular Quiz).
 // Restricted to practice items of kind "quiz" that are visible to the user, so

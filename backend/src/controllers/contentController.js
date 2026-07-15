@@ -202,6 +202,20 @@ export async function deleteQuiz(req, res) {
   res.json({ message: "Quiz and its questions deleted" });
 }
 
+// PATCH /api/quizzes/:id/move  { session } — move a quiz to another session
+// (internal migration). Its questions follow to the new session/subject.
+export async function moveQuiz(req, res) {
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+  const session = await Session.findById(req.body.session);
+  if (!session) return res.status(400).json({ message: "Choose a target session." });
+  quiz.session = session._id;
+  quiz.subject = session.subject;
+  await quiz.save();
+  await Question.updateMany({ quiz: quiz._id }, { $set: { session: session._id, subject: session.subject } });
+  res.json({ message: "Migrated", _id: quiz._id });
+}
+
 // GET /api/quizzes/:quizId/questions — practice questions (with answers)
 export async function listQuizQuestions(req, res) {
   // Block students whose quiz access was disabled by an admin.

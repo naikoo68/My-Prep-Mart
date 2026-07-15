@@ -6,6 +6,11 @@ import User from "../models/User.js";
 import { isTestVisibleToUser, findAccessEntry } from "../utils/accessControl.js";
 import { notifyNewContent } from "../utils/notify.js";
 import { ownerValue, ownerFilter } from "../utils/ownership.js";
+import PracticeStream from "../models/PracticeStream.js";
+import PracticeSubject from "../models/PracticeSubject.js";
+import PracticeTopic from "../models/PracticeTopic.js";
+import Quiz from "../models/Quiz.js";
+import Session from "../models/Session.js";
 
 // A caller may manage a test/question only within their own space: clients only
 // their own owned items; admins only the shared (ownerless) platform items.
@@ -307,6 +312,96 @@ export async function submitTest(req, res) {
 }
 
 /* ---------------- Test questions (admin) ---------------- */
+
+// ---- Migration (ADMIN only, on platform / own content) ----
+
+// PATCH /api/tests/:id/to-test-series — My Test (practice) → platform Test Series.
+export async function toTestSeries(req, res) {
+  const item = await TestSeries.findOne({ _id: req.params.id, owner: null });
+  if (!item || !item.practice || item.practiceKind !== "test") return res.status(404).json({ message: "My Test not found" });
+  const { exam, post, category } = req.body;
+  if (!exam || !post) return res.status(400).json({ message: "Choose an exam and post." });
+  item.practice = false;
+  item.practiceKind = undefined;
+  item.practiceStream = undefined;
+  item.practiceSubject = undefined;
+  item.practiceTopic = undefined;
+  item.exam = exam;
+  item.post = post;
+  if (category) item.category = category;
+  await item.save();
+  res.json({ message: "Migrated to Test Series", _id: item._id });
+}
+
+// PATCH /api/tests/:id/to-my-test — platform Test Series → My Test (practice).
+export async function toMyTest(req, res) {
+  const test = await TestSeries.findOne({ _id: req.params.id, owner: null });
+  if (!test || test.practice) return res.status(404).json({ message: "Test Series not found" });
+  const stream = await PracticeStream.findOne({ _id: req.body.practiceStream, owner: null });
+  const subject = await PracticeSubject.findOne({ _id: req.body.practiceSubject, owner: null });
+  if (!stream || !subject) return res.status(400).json({ message: "Choose a My Test stream and subject." });
+  test.practice = true;
+  test.practiceKind = "test";
+  test.practiceStream = stream._id;
+  test.practiceSubject = subject._id;
+  test.practiceTopic = undefined;
+  test.exam = undefined;
+  test.post = undefined;
+  test.visibleToAll = false;
+  await test.save();
+  res.json({ message: "Migrated to My Test", _id: test._id });
+}
+
+// PATCH /api/tests/:id/move-series — move a platform Test Series to another Exam/Post.
+export async function moveTestSeries(req, res) {
+  const test = await TestSeries.findOne({ _id: req.params.id, owner: null, practice: { $ne: true } });
+  if (!test) return res.status(404).json({ message: "Test Series not found" });
+  const { exam, post } = req.body;
+  if (!exam || !post) return res.status(400).json({ message: "Choose an exam and post." });
+  test.exam = exam;
+  test.post = post;
+  await test.save();
+  res.json({ message: "Migrated", _id: test._id });
+}
+
+// PATCH /api/tests/:id/to-quiz — My Quiz (practice) → platform Quiz under a Session.
+export async function toQuiz(req, res) {
+  const item = await TestSeries.findOne({ _id: req.params.id, owner: null, practice: true, practiceKind: "quiz" });
+  if (!item) return res.status(404).json({ message: "My Quiz not found" });
+  const session = await Session.findById(req.body.session);
+  if (!session) return res.status(400).json({ message: "Choose a destination session." });
+  const index = await Quiz.countDocuments({ session: session._id });
+  const quiz = await Quiz.create({ title: item.name, subject: session.subject, session: session._id, index });
+  await Question.updateMany(
+    { testSeries: item._id },
+    { $set: { quiz: quiz._id, subject: session.subject, session: session._id }, $unset: { testSeries: "" } }
+  );
+  await TestSeries.findByIdAndDelete(item._id);
+  res.json({ message: "Migrated to Quiz", _id: quiz._id });
+}
+
+// PATCH /api/tests/from-quiz/:id/to-my-quiz — platform Quiz → My Quiz (practice).
+export async function quizToMyQuiz(req, res) {
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+  const stream = await PracticeStream.findOne({ _id: req.body.practiceStream, owner: null });
+  const subject = await PracticeSubject.findOne({ _id: req.body.practiceSubject, owner: null });
+  const topic = await PracticeTopic.findOne({ _id: req.body.practiceTopic, owner: null });
+  if (!stream || !subject || !topic) return res.status(400).json({ message: "Choose a My Quiz stream, subject and topic." });
+  const item = await TestSeries.create({
+    name: quiz.title, owner: null, practice: true, practiceKind: "quiz",
+    practiceStream: stream._id, practiceSubject: subject._id, practiceTopic: topic._id,
+    category: "Full-Length", status: "published", visibleToAll: false,
+  });
+  const qs = await Question.find({ quiz: quiz._id }).select("_id");
+  await Question.updateMany(
+    { quiz: quiz._id },
+    { $set: { testSeries: item._id }, $unset: { quiz: "", subject: "", session: "" } }
+  );
+  if (qs.length) await TestSeries.findByIdAndUpdate(item._id, { $push: { questions: { $each: qs.map((q) => q._id) } } });
+  await Quiz.findByIdAndDelete(quiz._id);
+  res.json({ message: "Migrated to My Quiz", _id: item._id });
+}
 
 // GET /api/tests/:id/questions  (admin or owning client) — full questions incl. answers
 export async function getTestQuestions(req, res) {

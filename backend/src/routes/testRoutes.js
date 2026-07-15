@@ -14,6 +14,11 @@ import {
   addTestQuestion,
   deleteTestQuestion,
   populateTest,
+  toTestSeries,
+  toMyTest,
+  moveTestSeries,
+  toQuiz,
+  quizToMyQuiz,
 } from "../controllers/testController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -30,6 +35,11 @@ router.put("/:id/access", ...admin, updateTestAccess);
 router.get("/:id/questions", ...manage, getTestQuestions);
 router.post("/:id/questions", ...manage, addTestQuestion);
 router.post("/:id/populate", ...manage, populateTest); // pull questions from quiz/practice bank (admin or owning client)
+router.patch("/:id/to-test-series", ...admin, toTestSeries); // My Test → Test Series
+router.patch("/:id/to-my-test", ...admin, toMyTest); // Test Series → My Test
+router.patch("/:id/move-series", ...admin, moveTestSeries); // Test Series → another Exam/Post
+router.patch("/from-quiz/:id/to-my-quiz", ...admin, quizToMyQuiz); // Quiz → My Quiz
+router.patch("/:id/to-quiz", ...admin, toQuiz); // My Quiz → Quiz
 router.delete("/:id/questions/:qid", ...manage, deleteTestQuestion);
 router.get("/:id", protect, getTest);
 router.post("/:id/submit", protect, submitTest);

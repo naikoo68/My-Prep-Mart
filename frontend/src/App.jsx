@@ -58,6 +58,7 @@ const AdminCustomization = lazy(() => import("./pages/admin/AdminCustomization")
 const AdminNotices = lazy(() => import("./pages/admin/AdminNotices"));
 const AdminPerformance = lazy(() => import("./pages/admin/AdminPerformance"));
 const AdminPractice = lazy(() => import("./pages/admin/AdminPractice"));
+const AdminMigration = lazy(() => import("./pages/admin/AdminMigration"));
 const AdminClients = lazy(() => import("./pages/admin/AdminClients"));
 const AdminCoupons = lazy(() => import("./pages/admin/AdminCoupons"));
 const AdminAiKeys = lazy(() => import("./pages/admin/AdminAiKeys"));
@@ -143,6 +144,7 @@ const router = createBrowserRouter([
       { path: "content", element: S(AdminContent) },
       { path: "tests", element: S(AdminTests) },
       { path: "practice", element: S(AdminPractice) },
+      { path: "migration", element: S(AdminMigration) },
       { path: "clients", element: S(AdminClients) },
       { path: "coupons", element: S(AdminCoupons) },
       { path: "study", element: S(AdminStudyMaterial) },
