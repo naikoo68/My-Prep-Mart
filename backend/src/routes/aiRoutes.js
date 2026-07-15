@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  aiStatus, generateQuestions, jobStatus, extractQuestions,
+  aiStatus, generateQuestions, jobStatus, extractQuestions, generateNotes,
   listKeys, createKey, bulkCreateKeys, updateKey, deleteKey, testKey, importEnvKeys, testAllKeys, listKeyModels,
   getAiAccess, setAiMode,
 } from "../controllers/aiController.js";
@@ -17,6 +17,7 @@ router.get("/status", ...manage, aiStatus);
 router.post("/generate", ...manage, generateQuestions);
 router.get("/job/:id", ...manage, jobStatus);
 router.post("/extract", ...manage, extractQuestions);
+router.post("/notes", ...manage, generateNotes); // generate study notes (Markdown) on a topic
 
 // Client AI access + pool selection (admin allowed too; setMode is client-only).
 router.get("/access", ...manage, getAiAccess);

@@ -108,10 +108,10 @@ async function resolveModel(requested, scope = SYSTEM_SCOPE) {
 
 // Try a request across all keys that serve the model, moving to the next key on
 // a quota/auth error (429/401/403). Other errors aren't retried on another key.
-async function callWithFallback({ endpoints, model, userPrompt, maxTokens, owner = null }) {
+async function callWithFallback({ endpoints, model, userPrompt, maxTokens, owner = null, systemPrompt }) {
   let last = { ok: false, status: 0, detail: "No AI key is configured." };
   for (const ep of endpoints || []) {
-    const r = await callProvider({ key: ep.key, baseUrl: ep.baseUrl, model, userPrompt, maxTokens });
+    const r = await callProvider({ key: ep.key, baseUrl: ep.baseUrl, model, userPrompt, maxTokens, systemPrompt });
     if (r.ok) {
       // Record app-side usage on the matching DB key (env-only keys aren't in
       // the DB, so this is a no-op for them). Scoped by owner so a client key
@@ -441,11 +441,11 @@ function retryWaitMs(headers, body) {
 }
 
 // One provider call with transient-error retries. Returns { ok, status, content, detail }.
-async function callProvider({ key, baseUrl, model, userPrompt, maxTokens }) {
+async function callProvider({ key, baseUrl, model, userPrompt, maxTokens, systemPrompt = SYSTEM_PROMPT }) {
   const payload = {
     model,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     temperature: 0.6,
@@ -1113,6 +1113,68 @@ export async function extractQuestions(req, res) {
 
   runExtractionJob(id, { endpoints, model, chunks, owner: scope.owner, have });
   res.json({ jobId: id, chunks: chunks.length, questionsDetected: detected?.count || 0, model });
+}
+
+
+/* --------------------------- Study notes generation --------------------------- */
+
+const NOTES_SYSTEM_PROMPT = `You are an expert teacher who writes concise, exam-ready STUDY NOTES.
+Output PLAIN TEXT using light Markdown ONLY — no HTML, no code fences:
+- "# " for the main title, "## " for sections, "### " for sub-sections.
+- "- " for bullet points; keep each bullet short and factual.
+- **bold** for key terms; ==highlight== for the single most important facts/definitions.
+- Prefer short lines and clear structure over long paragraphs.
+- Include key dates, formulas, definitions and short examples where relevant.
+- Whenever a term/place/concept has a common local or alternative name, add it in brackets.
+Write mathematical/numeric content as inline math between $...$ (LaTeX).
+Return ONLY the notes — no preamble, no closing remarks.`;
+
+function buildNotesPrompt({ topic, notes }) {
+  const lines = [
+    `Write clear, well-structured revision STUDY NOTES on: ${topic}.`,
+    "Organise them with a title, sections and short bullet points covering the important points a student needs to revise.",
+  ];
+  if (notes) lines.push(`Extra instructions: ${notes}`);
+  return lines.join("\n");
+}
+
+// POST /api/ai/notes — generate study notes (Markdown text) on a topic.
+export async function generateNotes(req, res) {
+  const scope = resolveScope(req.user, req.body?.mode);
+  if (scope.denied) return res.status(403).json({ message: "AI access is not enabled for your account. Please contact the administrator." });
+  const chosen = await resolveModel(String(req.body?.model || "").trim(), scope);
+  if (!chosen || !chosen.endpoints.length) {
+    return res.status(400).json({
+      message: scope.mode === "self"
+        ? "No API keys added yet. Add at least one key in the AI tab."
+        : "AI is not configured. Add an API key in Admin → AI Keys.",
+    });
+  }
+  const topic = String(req.body?.topic || "").trim();
+  if (!topic) return res.status(400).json({ message: "A topic is required." });
+  const notes = String(req.body?.notes || "").trim();
+
+  const r = await callWithFallback({
+    endpoints: chosen.endpoints,
+    model: chosen.model,
+    systemPrompt: NOTES_SYSTEM_PROMPT,
+    userPrompt: buildNotesPrompt({ topic, notes }),
+    maxTokens: 4000,
+    owner: scope.owner,
+  });
+  if (!r.ok) {
+    const msg = r.status === 429
+      ? "AI quota/rate limit reached. Wait a minute and try again."
+      : `AI provider error (${r.status || 0}). ${(r.detail || "").slice(0, 150)}`;
+    return res.status(502).json({ message: msg });
+  }
+  const text = String(r.content || "")
+    .trim()
+    .replace(/^```(?:markdown|md)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  if (!text) return res.status(502).json({ message: "The AI did not return any notes. Try a more specific topic." });
+  res.json({ notes: text, model: chosen.model });
 }
 
 
