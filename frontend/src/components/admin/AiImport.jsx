@@ -120,7 +120,21 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     setMsg("Loading document…");
     try {
       const doc = await documentService.get(id);
-      const body = (doc?.content || "").trim();
+      // Documents saved from the Word editor are HTML — strip tags to plain text
+      // (block tags → line breaks, list items → bullets) before extracting.
+      const raw = String(doc?.content || "");
+      let body = raw;
+      if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
+        const prepped = raw
+          .replace(/<\s*br\s*\/?>/gi, "\n")
+          .replace(/<li[^>]*>/gi, "\u2022 ")
+          .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|pre)>/gi, "\n");
+        const el = document.createElement("div");
+        el.innerHTML = prepped;
+        body = (el.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+      } else {
+        body = raw.trim();
+      }
       if (!body) { setMsg("That document has no text to use."); return; }
       const combined = text.trim() ? `${text.trim()}\n\n${body}` : body;
       setText(combined);
