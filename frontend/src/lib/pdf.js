@@ -57,7 +57,13 @@ function stripBoilerplate(text) {
     /file\s*no[.:]/i, // "File No. JKSSB-…"
     /generated\s+from\s+\w*office/i, // "Generated from eOffice/Office by …"
     /\bcomputer\s*no\b/i, // "(Computer No. 7593614)"
-    /\d{4,}\s*\/\s*\d{2,4}\s*\/\s*\d+\s*\/\s*\d+/, // reference no. like "8233675/2026/0/0 Clerical Hall JKSSB"
+    /\d{3,}\s*\/\s*\d{2,4}\s*\/\s*\d+\s*\/\s*\d+/, // reference no. like "8233675/2026/0/0 Clerical Hall JKSSB"
+    /(maximum|max\.?|total)\s+marks|marks\s*[:=]/i, // "Maximum Marks: 100"
+    /\btime\s*(allowed|:|=)|\bduration\b/i, // "Time Allowed: 2 hours"
+    /\broll\s*(no|number)\b/i, // roll number field
+    /\b(invigilator|signature|candidate'?s?\s+name)\b/i, // invigilator/candidate lines
+    /read\s+the\s+following\s+instructions|do\s+not\s+open|rough\s+work|instructions\s+to\s+candidates/i,
+    /service\s+selection\s+board/i,
   ];
   const out = [];
   for (const raw of String(text || "").split("\n")) {
