@@ -4,6 +4,56 @@ import { documentService, aiService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
 const LETTERS = ["A", "B", "C", "D"];
+const COL_A = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const COL_B = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+const CLOSING = {
+  statement: "Which of the statement(s) given above is/are correct?",
+  pair: "How many of the above pairs are correctly matched?",
+  pairselect: "Which of the pairs given above is/are correctly matched?",
+};
+
+// Format ONE extracted question as clean, answer-free text, respecting its type
+// (matching / pair / pairselect / statement / assertion / table / mcq).
+function formatQuestionText(q, idx) {
+  const clean = (s) => String(s == null ? "" : s).trim();
+  const opts = (q.options || []).map(clean).filter(Boolean);
+  const optionLines = opts.map((o, j) => `${LETTERS[j] || j + 1}) ${o}`);
+  const lines = [`${idx + 1}. ${clean(q.text)}`];
+  const A = (q.columnA || []).map(clean).filter(Boolean);
+  const B = (q.columnB || []).map(clean).filter(Boolean);
+
+  switch (q.type) {
+    case "assertion":
+      if (clean(q.assertion)) lines.push(`Assertion (A): ${clean(q.assertion)}`);
+      if (clean(q.reason)) lines.push(`Reason (R): ${clean(q.reason)}`);
+      break;
+    case "statement":
+      A.forEach((s, j) => lines.push(`${j + 1}. ${s}`));
+      lines.push(CLOSING.statement);
+      break;
+    case "pair":
+    case "pairselect": {
+      const n = Math.max(A.length, B.length);
+      for (let j = 0; j < n; j++) lines.push(`${j + 1}. ${A[j] || ""} — ${B[j] || ""}`);
+      lines.push(CLOSING[q.type]);
+      break;
+    }
+    case "matching":
+      lines.push("Column A:");
+      A.forEach((x, j) => lines.push(`   ${COL_A[j] || j + 1}. ${x}`));
+      lines.push("Column B:");
+      B.forEach((x, j) => lines.push(`   ${COL_B[j] || j + 1}. ${x}`));
+      break;
+    case "table":
+      (q.tableRows || []).forEach((row) => lines.push(`   ${Array.isArray(row) ? row.join(" | ") : clean(row)}`));
+      break;
+    default:
+      break;
+  }
+  lines.push(...optionLines);
+  return lines.join("\n");
+}
+
 // Inline-math toolbar: LaTeX snippets render via KaTeX inside $…$; plain symbols
 // are inserted as-is. See MathText ($…$ inline, $$…$$ block).
 const MATH_BTNS = [
@@ -84,14 +134,10 @@ export default function AdminDocuments() {
         try { s = await aiService.job(jobId); } catch { continue; }
         if (s.status === "done") {
           const qs = s.questions || [];
-          // Clean, ANSWER-FREE text: numbered questions with A) B) C) D) options.
-          const formatted = qs
-            .map((q, idx) => {
-              const lines = [`${idx + 1}. ${String(q.text || "").trim()}`];
-              (q.options || []).filter((o) => String(o).trim()).forEach((o, j) => lines.push(`${LETTERS[j] || j + 1}) ${o}`));
-              return lines.join("\n");
-            })
-            .join("\n\n");
+          // Clean, ANSWER-FREE text, formatted by each question's TYPE
+          // (matching → Column A/B, statement → numbered statements, assertion →
+          // A/R, pair/pairselect → pairs, table → rows), then its options.
+          const formatted = qs.map((q, idx) => formatQuestionText(q, idx)).join("\n\n");
           if (formatted.trim()) setEditor((ed) => ({ ...ed, content: formatted }));
           setConvertMsg(`✓ Converted ${qs.length} question(s) — answers removed. Review, then Save or Copy.`);
           done = true;
