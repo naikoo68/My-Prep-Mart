@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Globe, Download, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, FileText, Upload, Files, ScanText } from "lucide-react";
+import { X, Globe, Download, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, FileText, Upload, Files, ScanText, Maximize2, Minimize2 } from "lucide-react";
 import { aiService, documentService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 
@@ -19,6 +19,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
   const [section, setSection] = useState(sections[0] || "");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
+  const [textFull, setTextFull] = useState(false); // full-screen editor for the source text
   const [preview, setPreview] = useState([]);
   const [busy, setBusy] = useState(false);
   const [inserting, setInserting] = useState(false);
@@ -226,6 +227,23 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+      {textFull && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-white p-4 dark:bg-slate-900">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-lg font-bold"><FileText className="h-5 w-5 text-brand-600" /> Extracted or pasted text</h3>
+            <button type="button" onClick={() => setTextFull(false)} className="btn-outline !py-1 !text-xs">
+              <Minimize2 className="h-3.5 w-3.5" /> Exit full screen
+            </button>
+          </div>
+          <textarea
+            className="input min-h-0 flex-1 resize-none font-mono text-sm"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Paste or edit the questions text here…"
+          />
+          <p className="mt-1 text-xs text-slate-400">{text.trim().length.toLocaleString()} characters</p>
+        </div>
+      )}
       <div className="my-8 w-full max-w-2xl animate-scale-in card p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-lg font-bold"><Globe className="h-5 w-5 text-brand-600" /> {title}</h3>
@@ -337,7 +355,12 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
             <label className="mb-1 block text-sm font-semibold">Page URL (optional)</label>
             <input className="input" placeholder="https://example.com/quiz-page" value={url} onChange={(e) => setUrl(e.target.value)} />
 
-            <label className="mb-1 mt-3 block text-sm font-semibold">Extracted or pasted text</label>
+            <div className="mb-1 mt-3 flex items-center justify-between gap-2">
+              <label className="block text-sm font-semibold">Extracted or pasted text</label>
+              <button type="button" onClick={() => setTextFull(true)} className="btn-outline !py-1 !text-xs">
+                <Maximize2 className="h-3.5 w-3.5" /> Full screen
+              </button>
+            </div>
             <textarea
               rows={8}
               className="input resize-y font-mono text-xs"
