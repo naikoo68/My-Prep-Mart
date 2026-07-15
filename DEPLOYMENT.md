@@ -38,12 +38,12 @@ Do them in this order.
    | `MONGO_URI` | your Atlas connection string |
    | `JWT_SECRET` | any long random text |
    | `JWT_EXPIRES_IN` | `7d` |
-   | `CLIENT_URL` | your Vercel URL (add after step 3, e.g. `https://my-study-guide.vercel.app`) |
+   | `CLIENT_URL` | your Vercel URL (add after step 3, e.g. `https://mystudyguideme.vercel.app`) |
    | `NODE_ENV` | `production` |
 
 5. Click **Create Web Service**. When it's live you'll get a URL like
-   `https://my-study-guide-api.onrender.com`.
-6. Test it: open `https://YOUR-API.onrender.com/api/health` → should show `{"status":"ok"}`.
+   `https://my-prep-mart-api-39nk.onrender.com`.
+6. Test it: open `https://my-prep-mart-api-39nk.onrender.com/api/health` → should show `{"status":"ok"}`.
 
 ### Seed the database (one time)
 In Render → your service → **Shell** tab, run:
@@ -69,9 +69,9 @@ This creates sample data + the accounts:
 
    | Key | Value |
    |-----|-------|
-   | `VITE_API_URL` | `https://YOUR-API.onrender.com/api` |
+   | `VITE_API_URL` | `https://my-prep-mart-api-39nk.onrender.com/api` |
 
-5. Click **Deploy**. You'll get a URL like `https://my-study-guide.vercel.app`.
+5. Click **Deploy**. You'll get a URL like `https://mystudyguideme.vercel.app`.
 
 ### Final step — connect CORS
 Go back to **Render → Environment** and set `CLIENT_URL` to your exact Vercel URL, then save (the service redeploys). This allows the browser to call the API.
@@ -89,3 +89,38 @@ Go back to **Render → Environment** and set `CLIENT_URL` to your exact Vercel 
 - **Free Render services sleep** after inactivity; the first request may take ~30s to wake. That's normal on the free tier.
 - **Image uploads (Cloudinary)** and **Google login** are optional. To enable them, add the matching keys from `backend/.env.example` to Render and configure Google OAuth.
 - **Local development:** run the backend (`npm run dev` in `backend`) and frontend (`npm run dev` in `frontend`) with `VITE_API_URL=http://localhost:5000/api`. See `backend/README.md` for the API reference.
+
+
+---
+
+## Automatic deployments (every push goes live)
+
+Both hosts are connected to this GitHub repo, so **every push to the `main` branch redeploys automatically** — no manual step. This is native Git integration; you don't need any deploy tokens or scripts in the repo.
+
+### How it flows
+```
+git push  ->  GitHub (main)  ->  CI build check (.github/workflows/ci.yml)
+                                   |
+                                   +--> Vercel  rebuilds & deploys the frontend
+                                   +--> Render  rebuilds & deploys the backend
+```
+
+### Verify it's enabled
+- **Vercel** → Project → **Settings → Git**: the repo is connected and **Production Branch** is `main`. Every push to `main` publishes to production; pushes to other branches / PRs get a **Preview** URL automatically.
+- **Render** → Web Service → **Settings**: **Auto-Deploy** is `Yes` and the branch is `main`. Each push triggers a new deploy.
+
+### Safety net (CI)
+`.github/workflows/ci.yml` runs on every push and PR to `main`:
+- **Frontend:** `npm ci` → `npm run lint` → `npm run build`
+- **Backend:** `npm ci` → syntax-check all source files
+
+If the build fails, you'll see a red check on the commit/PR before (or alongside) the deploy — so you catch breakage early instead of shipping it.
+
+### Optional: only rebuild what changed
+By default both services rebuild on *any* push, even a docs-only change.
+- **Vercel** → Settings → Git → **Ignored Build Step**: `git diff --quiet HEAD^ HEAD -- frontend` (skips the build when nothing under `frontend/` changed).
+- **Render** → Settings → **Build Filters**: set included path to `backend/**`.
+
+### Notes
+- The existing `npm-publish-github-packages.yml` workflow only runs on GitHub *releases* (publishing an npm package) and is unrelated to the Vercel/Render deploys above.
+- `keep-alive.yml` pings the backend every 10 minutes so the free Render instance doesn't sleep — it does **not** deploy anything.
