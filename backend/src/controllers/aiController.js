@@ -920,7 +920,7 @@ function buildExtractPrompt(sourceText) {
     '- "type": choose the type that matches how the question actually looks:',
     '    • "assertion" — an Assertion (A) and Reason (R) pair → put them in "assertion" and "reason".',
     '    • "statement" — a "consider the following statements" question → put each statement verbatim in "columnA" (array).',
-    '    • "matching" — match List/Column I with List/Column II → left items in "columnA", right items in "columnB".',
+    '    • "matching" — match Column A with Column B. Put Column A entries (WITHOUT labels) in "columnA" — the app shows them as 1,2,3,4 — and Column B entries in "columnB" — the app shows them as I,II,III,IV. Each of the 4 "options" must be a full A→B mapping using EXACTLY those labels, e.g. "1-III, 2-I, 3-IV, 4-II". Never put a/b/c/d inside an option and never relabel a column.',
     '    • "table" — data laid out as a table → each row as an array inside "tableRows".',
     '    • "mcq" — everything else: ordinary multiple choice, true/false, fill-in-the-blank, numerical/integer-answer, etc.',
     '- "options": the answer choices exactly as printed (4 for MCQ). For true/false use ["True","False","",""]. If more than 4 are printed, keep the 4 real ones. If the source genuinely has no printed options, give the most sensible 4.',
