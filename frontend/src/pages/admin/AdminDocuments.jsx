@@ -1,10 +1,29 @@
 import { useEffect, useState, useRef } from "react";
-import { FileText, Upload, Plus, Pencil, Trash2, X, Loader2, Save, Download, ScanText, Maximize2, Minimize2, Copy, Check, Wand2, Eraser, Eye, Pencil as PencilIcon, FileDown, Type } from "lucide-react";
+import { FileText, Upload, Plus, Pencil, Trash2, X, Loader2, Save, Download, ScanText, Maximize2, Minimize2, Copy, Check, Wand2, Eraser, Eye, Pencil as PencilIcon, FileDown, Type, PenLine } from "lucide-react";
 import katex from "katex";
 import { documentService, aiService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import { questionsToCsv } from "../../components/admin/BulkUploadQuestions";
 import RichText from "../../components/ui/RichText";
+import RichEditor from "../../components/ui/RichEditor";
+
+// Is this string HTML (from the Word editor) rather than plain text?
+const isHtml = (s) => /<\/?[a-z][\s\S]*>/i.test(String(s || ""));
+
+// Convert the Word-editor HTML back to plain text for the AI/Clean/CSV pipeline
+// (which all work on plain text). Block tags become line breaks; list items get
+// a bullet. Plain-text input passes through unchanged.
+function htmlToText(html) {
+  const s = String(html || "");
+  if (!isHtml(s)) return s;
+  const prepped = s
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\u2022 ")
+    .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|pre)>/gi, "\n");
+  const el = document.createElement("div");
+  el.innerHTML = prepped;
+  return (el.textContent || el.innerText || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 // --- PDF export helpers: turn the raw document text into formatted HTML
 // (headings → bold, **bold**, and $…$ math via KaTeX) for the print window. ---
@@ -199,10 +218,18 @@ export default function AdminDocuments() {
   const [fullscreen, setFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showMath, setShowMath] = useState(false);
-  const [preview, setPreview] = useState(false); // render $…$ math in its actual form
+  const [preview, setPreview] = useState(false); // render $…$ math in its actual form (plain-text mode)
+  const [docMode, setDocMode] = useState("rich"); // "rich" (Word editor) | "text" (plain text)
+  const [richFailed, setRichFailed] = useState(false); // Quill couldn't load → use plain text
+  const [seedKey, setSeedKey] = useState(0); // bump to push programmatic content into the Word editor
   const [converting, setConverting] = useState(""); // "" | "text" | "csv"
   const [convertMsg, setConvertMsg] = useState("");
   const taRef = useRef(null);
+
+  const bumpSeed = () => setSeedKey((k) => k + 1);
+  const useRich = docMode === "rich" && !richFailed;
+  const contentText = editor ? htmlToText(editor.content) : "";
+  const hasContent = contentText.trim().length > 0;
 
   // Reset transient editor UI whenever the editor closes.
   useEffect(() => {
@@ -251,11 +278,12 @@ export default function AdminDocuments() {
   //   "csv"  → your bulk-upload CSV format (all question types, WITH answers)
   //            via questionsToCsv() — ready to paste straight into Bulk Upload.
   const runConvert = async (format) => {
-    if (!editor?.content?.trim()) { setError("Add some text first."); return; }
+    const src = htmlToText(editor?.content).trim();
+    if (!src) { setError("Add some text first."); return; }
     setConverting(format);
     setConvertMsg("Converting to questions…");
     try {
-      const { jobId } = await aiService.extract({ content: editor.content.trim() });
+      const { jobId } = await aiService.extract({ content: src });
       if (!jobId) throw new Error("Couldn't start conversion.");
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       let done = false;
@@ -268,7 +296,7 @@ export default function AdminDocuments() {
           const out = format === "csv"
             ? questionsToCsv(qs)
             : qs.map((q, idx) => formatQuestionText(q, idx)).join("\n\n");
-          if (out.trim()) setEditor((ed) => ({ ...ed, content: out }));
+          if (out.trim()) { setEditor((ed) => ({ ...ed, content: out })); bumpSeed(); }
           setConvertMsg(format === "csv"
             ? `✓ ${qs.length} question(s) in your bulk-upload (CSV) format — Save/Copy, or paste into Bulk Upload.`
             : `✓ Converted ${qs.length} question(s) — answers removed. Review, then Save or Copy.`);
@@ -287,9 +315,11 @@ export default function AdminDocuments() {
   // Remove exam-paper boilerplate from the WHOLE text box (offline), leaving
   // only the questions — run this before "Convert to questions".
   const cleanText = () => {
-    if (!editor?.content?.trim()) { setError("Add some text first."); return; }
-    const { text, removed } = cleanExtractedText(editor.content);
+    const src = htmlToText(editor?.content);
+    if (!src.trim()) { setError("Add some text first."); return; }
+    const { text, removed } = cleanExtractedText(src);
     setEditor((ed) => ({ ...ed, content: text }));
+    bumpSeed();
     setConvertMsg(removed
       ? `✓ Cleaned — removed ${removed} boilerplate line(s) (file numbers, stamps, page markers).`
       : "Nothing to clean — no boilerplate lines found.");
@@ -297,7 +327,7 @@ export default function AdminDocuments() {
 
   const copyText = async () => {
     try {
-      await navigator.clipboard.writeText(editor?.content || "");
+      await navigator.clipboard.writeText(htmlToText(editor?.content));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -316,15 +346,15 @@ export default function AdminDocuments() {
   };
   useEffect(load, []);
 
-  const openNew = () => { setEditor({ ...blank }); };
+  const openNew = () => { setEditor({ ...blank }); bumpSeed(); };
 
   const openEdit = async (row) => {
     setBusyId(row._id);
     try {
       const full = await documentService.get(row._id);
       setEditor({ id: full._id, title: full.title || "", content: full.content || "", sourceName: full.sourceName || "", pages: full.pages || 0 });
-      // Open a saved document in its formatted (rendered) form; click "Edit" to
-      // switch to the raw text.
+      bumpSeed(); // push the loaded content into the Word editor
+      // In plain-text mode, open a saved document in its rendered form.
       setPreview(!!(full.content || "").trim());
     } catch (e) {
       setError(e.message);
@@ -365,10 +395,11 @@ export default function AdminDocuments() {
       setEditor({
         ...base,
         title: base.title?.trim() ? base.title : niceTitle,
-        content: base.content?.trim() ? `${base.content.trim()}\n\n${text}` : text,
+        content: base.content?.trim() ? `${htmlToText(base.content)}\n\n${text}` : text,
         sourceName: file.name,
         pages: total,
       });
+      bumpSeed();
     } catch (err) {
       setError(`PDF read failed: ${err.message}`);
     } finally {
@@ -392,11 +423,12 @@ export default function AdminDocuments() {
         return {
           ...b,
           title: b.title?.trim() ? b.title : pdfFile.name.replace(/\.pdf$/i, ""),
-          content: b.content?.trim() ? `${b.content.trim()}\n\n${text}` : text,
+          content: b.content?.trim() ? `${htmlToText(b.content)}\n\n${text}` : text,
           sourceName: pdfFile.name,
           pages: total,
         };
       });
+      bumpSeed();
       setScanned(false);
     } catch (e) {
       setError(`OCR failed: ${e.message}`);
@@ -449,13 +481,17 @@ export default function AdminDocuments() {
   // window and open the browser's print dialog → "Save as PDF". No extra
   // dependency needed, and the math/markdown come out formatted.
   const downloadPdf = () => {
-    if (!editor?.content?.trim()) { setError("Add some text first."); return; }
+    if (!hasContent) { setError("Add some text first."); return; }
     const title = editor.title?.trim() || "document";
+    // Word-editor content is already HTML → print it as-is; plain-text content
+    // goes through the markdown→HTML renderer. Both export to A4.
+    const bodyHtml = isHtml(editor.content) ? editor.content : contentToHtml(editor.content);
     const win = window.open("", "_blank");
     if (!win) { setError("Your browser blocked the pop-up — allow pop-ups for this site to download a PDF."); return; }
     win.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>` +
       `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">` +
+      `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" crossorigin="anonymous">` +
       `<style>` +
       `@page{size:A4;margin:18mm}` +
       `*{box-sizing:border-box}` +
@@ -467,10 +503,11 @@ export default function AdminDocuments() {
       `.sp{height:8px}` +
       `mark{background:#fef08a;padding:0 2px}` +
       `.pb{page-break-after:always;break-after:page;height:0}` +
+      `.ql-editor{padding:0}.ql-align-center{text-align:center}.ql-align-right{text-align:right}.ql-align-justify{text-align:justify}` +
       `@media screen{body{max-width:210mm;margin:16px auto;padding:0 18mm}}` +
       `</style></head><body>` +
       `<h1 class="title">${escapeHtml(title)}</h1>` +
-      contentToHtml(editor.content) +
+      `<div class="ql-editor ql-snow">${bodyHtml}</div>` +
       `<scr` + `ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},350)};</scr` + `ipt>` +
       `</body></html>`
     );
@@ -566,26 +603,33 @@ export default function AdminDocuments() {
                     {ocrBusy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> OCR {ocrProgress?.page || 0}/{ocrProgress?.total || "?"}</> : <><ScanText className="h-3.5 w-3.5" /> Read with OCR</>}
                   </button>
                 )}
-                {editor.content?.trim() && (
+                {hasContent && (
                   <button type="button" onClick={cleanText} className="btn-outline !py-1 !text-xs" title="Remove headers, file numbers, stamps & page markers — keep only questions">
                     <Eraser className="h-3.5 w-3.5" /> Clean text
                   </button>
                 )}
-                {editor.content?.trim() && (
+                {hasContent && (
                   <button type="button" onClick={copyText} className="btn-outline !py-1 !text-xs">
                     {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
                   </button>
                 )}
-                {editor.content?.trim() && (
+                {hasContent && (
                   <button type="button" onClick={downloadTxt} className="btn-outline !py-1 !text-xs"><Download className="h-3.5 w-3.5" /> .txt</button>
                 )}
-                {editor.content?.trim() && (
-                  <button type="button" onClick={downloadPdf} className="btn-outline !py-1 !text-xs" title="Download as PDF (rendered — headings, bold, math)"><FileDown className="h-3.5 w-3.5" /> PDF</button>
+                {hasContent && (
+                  <button type="button" onClick={downloadPdf} className="btn-outline !py-1 !text-xs" title="Download as PDF (A4)"><FileDown className="h-3.5 w-3.5" /> PDF</button>
                 )}
-                <button type="button" onClick={() => setShowMath((v) => !v)} className={`!py-1 !text-xs ${showMath ? "btn-primary" : "btn-outline"}`} title="Formatting: bold, italic, headings, lists, math">
-                  <Type className="h-3.5 w-3.5" /> Format
+                <button type="button" onClick={() => setDocMode((m) => (m === "rich" ? "text" : "rich"))} disabled={richFailed}
+                  className={`!py-1 !text-xs ${useRich ? "btn-primary" : "btn-outline"}`}
+                  title={useRich ? "Word editor (click for the plain-text editor)" : "Plain-text editor (click for the Word editor)"}>
+                  <PenLine className="h-3.5 w-3.5" /> {useRich ? "Word editor" : "Plain text"}
                 </button>
-                {editor.content?.trim() && (
+                {!useRich && (
+                  <button type="button" onClick={() => setShowMath((v) => !v)} className={`!py-1 !text-xs ${showMath ? "btn-primary" : "btn-outline"}`} title="Formatting: bold, italic, headings, lists, math">
+                    <Type className="h-3.5 w-3.5" /> Format
+                  </button>
+                )}
+                {!useRich && hasContent && (
                   <button type="button" onClick={() => setPreview((v) => !v)} className={`!py-1 !text-xs ${preview ? "btn-primary" : "btn-outline"}`} title={preview ? "Back to editing" : "Render — show $…$ math in its actual form"}>
                     {preview ? <><PencilIcon className="h-3.5 w-3.5" /> Edit</> : <><Eye className="h-3.5 w-3.5" /> Render</>}
                   </button>
@@ -596,7 +640,7 @@ export default function AdminDocuments() {
               </div>
             </div>
 
-            {showMath && (
+            {!useRich && showMath && (
               <div className="mb-2 flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/60">
                 {FORMAT_BTNS.map((b, i) => (
                   <button key={`f${i}`} type="button" title={b.title}
@@ -616,7 +660,15 @@ export default function AdminDocuments() {
               </div>
             )}
 
-            {preview ? (
+            {useRich ? (
+              <RichEditor
+                value={editor.content}
+                seedKey={seedKey}
+                fullscreen={fullscreen}
+                onChange={(html) => setEditor((ed) => ({ ...ed, content: html }))}
+                onFail={() => { setRichFailed(true); setDocMode("text"); }}
+              />
+            ) : preview ? (
               <div
                 className={`overflow-auto rounded-lg border border-slate-200 bg-slate-200/70 p-4 text-sm leading-relaxed dark:border-slate-700 dark:bg-slate-800 ${fullscreen ? "min-h-0 flex-1" : "max-h-[70vh]"}`}
                 onDoubleClick={() => setPreview(false)}
@@ -638,10 +690,10 @@ export default function AdminDocuments() {
             )}
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-400">
-                {(editor.content || "").length.toLocaleString()} characters
+                {contentText.length.toLocaleString()} characters
                 {editor.sourceName ? ` · from ${editor.sourceName}${editor.pages ? ` (${editor.pages} pages)` : ""}` : ""}
               </p>
-              {editor.content?.trim() && (
+              {hasContent && (
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => runConvert("text")} disabled={!!converting} className="btn-outline !py-1 !text-xs">
                     {converting === "text" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Converting…</> : <><Wand2 className="h-3.5 w-3.5" /> Convert to questions</>}
