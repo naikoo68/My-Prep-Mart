@@ -12,6 +12,7 @@ import {
   Megaphone,
   Palette,
   KeyRound,
+  Sparkles,
   GraduationCap,
   Store,
   Ticket,
@@ -43,6 +44,7 @@ const nav = [
   { to: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { to: "/admin/messages", label: "Messages", icon: Mail },
   { to: "/admin/notices", label: "Notice Board", icon: Megaphone },
+  { to: "/admin/ai-generator", label: "AI Generator", icon: Sparkles },
   { to: "/admin/ai-keys", label: "AI Keys", icon: KeyRound },
   { to: "/admin/customization", label: "Customization", icon: Palette },
 ];

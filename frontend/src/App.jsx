@@ -62,6 +62,7 @@ const AdminMigration = lazy(() => import("./pages/admin/AdminMigration"));
 const AdminClients = lazy(() => import("./pages/admin/AdminClients"));
 const AdminCoupons = lazy(() => import("./pages/admin/AdminCoupons"));
 const AdminAiKeys = lazy(() => import("./pages/admin/AdminAiKeys"));
+const AdminAiStudio = lazy(() => import("./pages/admin/AdminAiStudio"));
 
 // Wraps a lazily-loaded page in a Suspense boundary with a loading fallback.
 const S = (Comp) => (
@@ -153,6 +154,7 @@ const router = createBrowserRouter([
       { path: "performance", element: S(AdminPerformance) },
       { path: "messages", element: S(AdminMessages) },
       { path: "notices", element: S(AdminNotices) },
+      { path: "ai-generator", element: S(AdminAiStudio) },
       { path: "ai-keys", element: S(AdminAiKeys) },
       { path: "customization", element: S(AdminCustomization) },
     ],
