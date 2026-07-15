@@ -8,6 +8,8 @@ import AiGenerate from "../../components/admin/AiGenerate";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 import { questionDateText, searchQuestions } from "../../lib/questions";
+import ConvertModal from "../../components/admin/ConvertModal";
+import { Shuffle } from "lucide-react";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import { Sparkles, Files, Globe } from "lucide-react";
@@ -34,6 +36,7 @@ export default function AdminContent() {
   const [topic, setTopic] = useState(null);
   const [session, setSession] = useState(null);
   const [quiz, setQuiz] = useState(null);
+  const [convertQuiz, setConvertQuiz] = useState(null); // quiz → My Quiz
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -392,6 +395,11 @@ export default function AdminContent() {
                     <Eye className="h-4 w-4" />
                   </button>
                 )}
+                {view === "quizzes" && (
+                  <button onClick={() => setConvertQuiz(item)} title="Move to My Quiz (practice)" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
+                    <Shuffle className="h-4 w-4" />
+                  </button>
+                )}
                 <button onClick={() => openEdit(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -420,6 +428,14 @@ export default function AdminContent() {
           onSave={save}
         />
       ))}
+
+      <ConvertModal
+        open={!!convertQuiz}
+        mode="toMyQuiz"
+        source={convertQuiz ? { _id: convertQuiz._id, name: convertQuiz.title || convertQuiz.name } : null}
+        onClose={() => setConvertQuiz(null)}
+        onDone={() => { setConvertQuiz(null); load(view); }}
+      />
 
       <BulkUploadQuestions
         open={bulkOpen}

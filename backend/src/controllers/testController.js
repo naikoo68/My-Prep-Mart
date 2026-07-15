@@ -5,6 +5,9 @@ import Attempt from "../models/Attempt.js";
 import User from "../models/User.js";
 import PracticeStream from "../models/PracticeStream.js";
 import PracticeSubject from "../models/PracticeSubject.js";
+import PracticeTopic from "../models/PracticeTopic.js";
+import Quiz from "../models/Quiz.js";
+import Session from "../models/Session.js";
 import { isTestVisibleToUser, findAccessEntry } from "../utils/accessControl.js";
 import { notifyNewContent } from "../utils/notify.js";
 import { ownerValue, ownerFilter } from "../utils/ownership.js";
@@ -351,6 +354,59 @@ export async function toMyTest(req, res) {
   test.visibleToAll = false; // practice items are hidden by default
   await test.save();
   res.json({ message: "Converted to My Test", _id: test._id });
+}
+
+// A My Quiz (practice TestSeries) and a platform Quiz are DIFFERENT models, so
+// converting migrates the questions across and removes the old container.
+
+// PATCH /api/tests/:id/to-quiz — My Quiz (practice) → platform Quiz under a Session.
+export async function toQuiz(req, res) {
+  const item = await TestSeries.findOne({ _id: req.params.id, owner: null, practice: true, practiceKind: "quiz" });
+  if (!item) return res.status(404).json({ message: "My Quiz not found" });
+  const session = await Session.findById(req.body.session);
+  if (!session) return res.status(400).json({ message: "Choose a destination session." });
+  const index = await Quiz.countDocuments({ session: session._id });
+  const quiz = await Quiz.create({ title: item.name, subject: session.subject, session: session._id, index });
+  await Question.updateMany(
+    { testSeries: item._id },
+    { $set: { quiz: quiz._id, subject: session.subject, session: session._id }, $unset: { testSeries: "" } }
+  );
+  await TestSeries.findByIdAndDelete(item._id);
+  res.json({ message: "Converted to Quiz", _id: quiz._id });
+}
+
+// PATCH /api/tests/from-quiz/:id/to-my-quiz — platform Quiz → My Quiz (practice).
+export async function quizToMyQuiz(req, res) {
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+  const stream = await PracticeStream.findOne({ _id: req.body.practiceStream, owner: null });
+  const subject = await PracticeSubject.findOne({ _id: req.body.practiceSubject, owner: null });
+  const topic = await PracticeTopic.findOne({ _id: req.body.practiceTopic, owner: null });
+  if (!stream || !subject || !topic) {
+    return res.status(400).json({ message: "Choose a My Quiz stream, subject and topic." });
+  }
+  const item = await TestSeries.create({
+    name: quiz.title,
+    owner: null,
+    practice: true,
+    practiceKind: "quiz",
+    practiceStream: stream._id,
+    practiceSubject: subject._id,
+    practiceTopic: topic._id,
+    category: "Full-Length",
+    status: "published",
+    visibleToAll: false,
+  });
+  const qs = await Question.find({ quiz: quiz._id }).select("_id");
+  await Question.updateMany(
+    { quiz: quiz._id },
+    { $set: { testSeries: item._id }, $unset: { quiz: "", subject: "", session: "" } }
+  );
+  if (qs.length) {
+    await TestSeries.findByIdAndUpdate(item._id, { $push: { questions: { $each: qs.map((q) => q._id) } } });
+  }
+  await Quiz.findByIdAndDelete(quiz._id);
+  res.json({ message: "Converted to My Quiz", _id: item._id });
 }
 
 // GET /api/tests/:id/questions  (admin or owning client) — full questions incl. answers

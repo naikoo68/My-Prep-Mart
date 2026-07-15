@@ -1,60 +1,99 @@
 import { useEffect, useState } from "react";
 import { X, Shuffle, Loader2 } from "lucide-react";
-import { examService, practiceService, testService } from "../../services";
+import { examService, practiceService, testService, contentService } from "../../services";
 
-// Admin-only conversion between a platform Test Series and a My Test (practice).
-// Both are the same underlying doc, so questions are preserved.
-//   mode="toTestSeries" : My Test → Test Series  (pick Exam ▸ Post)
-//   mode="toMyTest"     : Test Series → My Test  (pick My-Test Stream ▸ Subject)
+// Admin-only conversion between the platform catalogue and the practice area.
+// Config-driven cascading pickers, one config per direction.
+const MODES = {
+  // My Test (practice) → platform Test Series
+  toTestSeries: {
+    title: "Move to Test Series",
+    levels: [
+      { key: "exam", label: "Choose exam…", load: () => examService.exams() },
+      { key: "post", label: "Choose post…", load: (v) => examService.posts(v) },
+    ],
+    submit: (source, s) => testService.toTestSeries(source._id, { exam: s.exam, post: s.post }),
+  },
+  // platform Test Series → My Test (practice)
+  toMyTest: {
+    title: "Move to My Test",
+    levels: [
+      { key: "stream", label: "Choose My Test stream…", load: () => practiceService.adminStreams("test") },
+      { key: "subject", label: "Choose subject…", load: (v) => practiceService.adminSubjects(v) },
+    ],
+    submit: (source, s) => testService.toMyTest(source._id, { practiceStream: s.stream, practiceSubject: s.subject }),
+  },
+  // My Quiz (practice) → platform Quiz
+  toQuiz: {
+    title: "Move to Quiz",
+    levels: [
+      { key: "subject", label: "Choose subject…", load: () => contentService.subjects() },
+      { key: "topic", label: "Choose topic…", load: (v) => contentService.topics(v), labelKey: "title" },
+      { key: "session", label: "Choose session…", load: (v) => contentService.sessions(v), labelKey: "title" },
+    ],
+    submit: (source, s) => testService.toQuiz(source._id, { session: s.session }),
+  },
+  // platform Quiz → My Quiz (practice)
+  toMyQuiz: {
+    title: "Move to My Quiz",
+    levels: [
+      { key: "stream", label: "Choose My Quiz stream…", load: () => practiceService.adminStreams("quiz") },
+      { key: "subject", label: "Choose subject…", load: (v) => practiceService.adminSubjects(v) },
+      { key: "topic", label: "Choose topic…", load: (v) => practiceService.adminTopics(v) },
+    ],
+    submit: (source, s) =>
+      testService.quizToMyQuiz(source._id, { practiceStream: s.stream, practiceSubject: s.subject, practiceTopic: s.topic }),
+  },
+};
+
 export default function ConvertModal({ open, mode, source, onClose, onDone }) {
-  const [a, setA] = useState([]);
-  const [b, setB] = useState([]);
-  const [sel, setSel] = useState({ a: "", b: "" });
+  const cfg = MODES[mode];
+  const [opts, setOpts] = useState([]); // options per level index
+  const [sel, setSel] = useState([]); // selected id per level index
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    if (!open) return;
-    setSel({ a: "", b: "" });
-    setB([]);
+    if (!open || !cfg) return;
+    setSel([]);
     setMsg("");
-    if (mode === "toTestSeries") examService.exams().then(setA).catch(() => setA([]));
-    else if (mode === "toMyTest") practiceService.adminStreams("test").then(setA).catch(() => setA([]));
-  }, [open, mode]);
+    setOpts([]);
+    cfg.levels[0].load().then((r) => setOpts([r || []])).catch(() => setOpts([[]]));
+  }, [open, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!open) return null;
+  if (!open || !cfg) return null;
 
-  const pickA = (v) => {
-    setSel({ a: v, b: "" });
-    setB([]);
-    if (!v) return;
-    if (mode === "toTestSeries") examService.posts(v).then(setB).catch(() => setB([]));
-    else if (mode === "toMyTest") practiceService.adminSubjects(v).then(setB).catch(() => setB([]));
+  const pick = (i, value) => {
+    const nextSel = sel.slice(0, i);
+    nextSel[i] = value;
+    setSel(nextSel);
+    const nextOpts = opts.slice(0, i + 1);
+    setOpts(nextOpts);
+    const nextLevel = cfg.levels[i + 1];
+    if (value && nextLevel) {
+      nextLevel.load(value).then((r) => setOpts((o) => { const c = o.slice(0, i + 1); c[i + 1] = r || []; return c; })).catch(() => {});
+    }
   };
 
   const submit = async () => {
-    if (!sel.a || !sel.b) {
-      setMsg("Choose the destination.");
+    if (cfg.levels.some((_, i) => !sel[i])) {
+      setMsg("Choose the full destination.");
       return;
     }
+    const byKey = {};
+    cfg.levels.forEach((lv, i) => (byKey[lv.key] = sel[i]));
     setBusy(true);
     setMsg("");
     try {
-      if (mode === "toTestSeries") await testService.toTestSeries(source._id, { exam: sel.a, post: sel.b });
-      else if (mode === "toMyTest") await testService.toMyTest(source._id, { practiceStream: sel.a, practiceSubject: sel.b });
+      await cfg.submit(source, byKey);
       onDone?.();
       onClose();
     } catch (e) {
-      setMsg(e.message || "Couldn't convert.");
+      setMsg(e.message || "Couldn't move.");
     } finally {
       setBusy(false);
     }
   };
-
-  const cfg =
-    mode === "toTestSeries"
-      ? { title: "Move to Test Series", aLabel: "Choose exam…", bLabel: "Choose post…" }
-      : { title: "Move to My Test", aLabel: "Choose My Test stream…", bLabel: "Choose subject…" };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4">
@@ -68,14 +107,20 @@ export default function ConvertModal({ open, mode, source, onClose, onDone }) {
         <p className="mb-4 truncate text-sm text-slate-500 dark:text-slate-400">{source?.name}</p>
 
         <div className="space-y-3">
-          <select value={sel.a} onChange={(e) => pickA(e.target.value)} className="input">
-            <option value="">{cfg.aLabel}</option>
-            {a.map((o) => <option key={o._id} value={o._id}>{o.name}</option>)}
-          </select>
-          <select value={sel.b} onChange={(e) => setSel((s) => ({ ...s, b: e.target.value }))} className="input" disabled={!sel.a}>
-            <option value="">{cfg.bLabel}</option>
-            {b.map((o) => <option key={o._id} value={o._id}>{o.name}</option>)}
-          </select>
+          {cfg.levels.map((lv, i) => (
+            <select
+              key={lv.key}
+              value={sel[i] || ""}
+              onChange={(e) => pick(i, e.target.value)}
+              disabled={i > 0 && !sel[i - 1]}
+              className="input"
+            >
+              <option value="">{lv.label}</option>
+              {(opts[i] || []).map((o) => (
+                <option key={o._id} value={o._id}>{o[lv.labelKey || "name"] || o.name || o.title}</option>
+              ))}
+            </select>
+          ))}
         </div>
 
         {msg && <p className="mt-3 text-sm font-medium text-rose-600">{msg}</p>}

@@ -301,6 +301,9 @@ export default function AdminPractice({ clientMode = false }) {
                   {!clientMode && kind === "test" && (
                     <button onClick={() => setConvert({ mode: "toTestSeries", source: item })} className="btn-outline py-1.5 text-xs" title="Convert this My Test into a platform Test Series"><Shuffle className="h-3.5 w-3.5" /> To Test Series</button>
                   )}
+                  {!clientMode && kind === "quiz" && (
+                    <button onClick={() => setConvert({ mode: "toQuiz", source: item })} className="btn-outline py-1.5 text-xs" title="Convert this My Quiz into a platform Quiz"><Shuffle className="h-3.5 w-3.5" /> To Quiz</button>
+                  )}
                   {!clientMode && (
                     <button onClick={() => openAccess(item)} className="btn-outline py-1.5 text-xs"><Users className="h-3.5 w-3.5" /> Visibility</button>
                   )}

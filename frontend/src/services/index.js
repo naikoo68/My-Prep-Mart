@@ -102,6 +102,8 @@ export const testService = {
   // cross-module conversion (admin): My Test ↔ platform Test Series
   toTestSeries: (id, data) => api.patch(`/tests/${id}/to-test-series`, data), // { exam, post }
   toMyTest: (id, data) => api.patch(`/tests/${id}/to-my-test`, data), // { practiceStream, practiceSubject }
+  toQuiz: (id, data) => api.patch(`/tests/${id}/to-quiz`, data), // My Quiz → platform Quiz { session }
+  quizToMyQuiz: (id, data) => api.patch(`/tests/from-quiz/${id}/to-my-quiz`, data), // Quiz → My Quiz { practiceStream, practiceSubject, practiceTopic }
 };
 
 // ---- Practice Quizzes (My Quiz / My Test Series) ----
