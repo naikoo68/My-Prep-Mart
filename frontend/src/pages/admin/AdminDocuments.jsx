@@ -603,22 +603,14 @@ export default function AdminDocuments() {
                     {ocrBusy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> OCR {ocrProgress?.page || 0}/{ocrProgress?.total || "?"}</> : <><ScanText className="h-3.5 w-3.5" /> Read with OCR</>}
                   </button>
                 )}
-                {hasContent && (
-                  <button type="button" onClick={cleanText} className="btn-outline !py-1 !text-xs" title="Remove headers, file numbers, stamps & page markers — keep only questions">
-                    <Eraser className="h-3.5 w-3.5" /> Clean text
-                  </button>
-                )}
-                {hasContent && (
-                  <button type="button" onClick={copyText} className="btn-outline !py-1 !text-xs">
-                    {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
-                  </button>
-                )}
-                {hasContent && (
-                  <button type="button" onClick={downloadTxt} className="btn-outline !py-1 !text-xs"><Download className="h-3.5 w-3.5" /> .txt</button>
-                )}
-                {hasContent && (
-                  <button type="button" onClick={downloadPdf} className="btn-outline !py-1 !text-xs" title="Download as PDF (A4)"><FileDown className="h-3.5 w-3.5" /> PDF</button>
-                )}
+                <button type="button" onClick={cleanText} className="btn-outline !py-1 !text-xs" title="Remove headers, file numbers, stamps & page markers — keep only questions">
+                  <Eraser className="h-3.5 w-3.5" /> Clean text
+                </button>
+                <button type="button" onClick={copyText} className="btn-outline !py-1 !text-xs">
+                  {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+                </button>
+                <button type="button" onClick={downloadTxt} className="btn-outline !py-1 !text-xs"><Download className="h-3.5 w-3.5" /> .txt</button>
+                <button type="button" onClick={downloadPdf} className="btn-outline !py-1 !text-xs" title="Download as PDF (A4)"><FileDown className="h-3.5 w-3.5" /> PDF</button>
                 <button type="button" onClick={() => setDocMode((m) => (m === "rich" ? "text" : "rich"))} disabled={richFailed}
                   className={`!py-1 !text-xs ${useRich ? "btn-primary" : "btn-outline"}`}
                   title={useRich ? "Word editor (click for the plain-text editor)" : "Plain-text editor (click for the Word editor)"}>
@@ -629,11 +621,9 @@ export default function AdminDocuments() {
                     <Type className="h-3.5 w-3.5" /> Format
                   </button>
                 )}
-                {!useRich && hasContent && (
-                  <button type="button" onClick={() => setPreview((v) => !v)} className={`!py-1 !text-xs ${preview ? "btn-primary" : "btn-outline"}`} title={preview ? "Back to editing" : "Render — show $…$ math in its actual form"}>
-                    {preview ? <><PencilIcon className="h-3.5 w-3.5" /> Edit</> : <><Eye className="h-3.5 w-3.5" /> Render</>}
-                  </button>
-                )}
+                <button type="button" onClick={() => setPreview((v) => !v)} className={`!py-1 !text-xs ${preview ? "btn-primary" : "btn-outline"}`} title={preview ? "Back to editing" : "Render — full A4 preview of the formatted document"}>
+                  {preview ? <><PencilIcon className="h-3.5 w-3.5" /> Edit</> : <><Eye className="h-3.5 w-3.5" /> Render</>}
+                </button>
                 <button type="button" onClick={() => setFullscreen((f) => !f)} className="btn-outline !py-1 !text-xs" title={fullscreen ? "Exit full screen" : "Full screen"}>
                   {fullscreen ? <><Minimize2 className="h-3.5 w-3.5" /> Exit</> : <><Maximize2 className="h-3.5 w-3.5" /> Full screen</>}
                 </button>
@@ -660,7 +650,24 @@ export default function AdminDocuments() {
               </div>
             )}
 
-            {useRich ? (
+            {preview ? (
+              <div
+                className={`overflow-auto rounded-lg border border-slate-200 bg-slate-200/70 p-4 text-sm leading-relaxed dark:border-slate-700 dark:bg-slate-800 ${fullscreen ? "min-h-0 flex-1" : "max-h-[72vh]"}`}
+                onDoubleClick={() => setPreview(false)}
+                title="Double-click to edit"
+              >
+                {!hasContent ? (
+                  <span className="text-slate-400">Nothing to render yet.</span>
+                ) : isHtml(editor.content) ? (
+                  <div
+                    className="ql-editor ql-snow mx-auto w-full max-w-[794px] rounded-sm bg-white p-[40px] text-slate-900 shadow-lg sm:min-h-[1050px]"
+                    dangerouslySetInnerHTML={{ __html: editor.content }}
+                  />
+                ) : (
+                  <RichText>{editor.content}</RichText>
+                )}
+              </div>
+            ) : useRich ? (
               <RichEditor
                 value={editor.content}
                 seedKey={seedKey}
@@ -668,16 +675,6 @@ export default function AdminDocuments() {
                 onChange={(html) => setEditor((ed) => ({ ...ed, content: html }))}
                 onFail={() => { setRichFailed(true); setDocMode("text"); }}
               />
-            ) : preview ? (
-              <div
-                className={`overflow-auto rounded-lg border border-slate-200 bg-slate-200/70 p-4 text-sm leading-relaxed dark:border-slate-700 dark:bg-slate-800 ${fullscreen ? "min-h-0 flex-1" : "max-h-[70vh]"}`}
-                onDoubleClick={() => setPreview(false)}
-                title="Double-click to edit"
-              >
-                {editor.content?.trim()
-                  ? <RichText>{editor.content}</RichText>
-                  : <span className="text-slate-400">Nothing to render yet.</span>}
-              </div>
             ) : (
               <textarea
                 ref={taRef}
