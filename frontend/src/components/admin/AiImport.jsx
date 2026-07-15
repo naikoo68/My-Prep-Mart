@@ -94,8 +94,10 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         setMsg("Couldn't read any text — this PDF looks like scanned images (no selectable text). Try a text-based PDF or paste the text.");
         return;
       }
-      setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${extracted}` : extracted));
-      setMsg(`✓ Read ${total || "?"} page(s) from “${file.name}”. Now click “Split into batches”.`);
+      const combined = text.trim() ? `${text.trim()}\n\n${extracted}` : extracted;
+      setText(combined);
+      buildBatches(combined); // auto-create the question boxes
+      setMsg(`✓ Read ${total || "?"} page(s) from “${file.name}” — split into question boxes below.`);
     } catch (err) {
       setMsg(`PDF read failed: ${err.message}. Check your connection and try again.`);
     } finally {
@@ -111,22 +113,26 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
       const doc = await documentService.get(id);
       const body = (doc?.content || "").trim();
       if (!body) { setMsg("That document has no text to use."); return; }
-      setText((prev) => (prev.trim() ? `${prev.trim()}\n\n${body}` : body));
-      setMsg(`✓ Loaded “${doc.title}”. Now click “Split into batches”.`);
+      const combined = text.trim() ? `${text.trim()}\n\n${body}` : body;
+      setText(combined);
+      buildBatches(combined); // auto-create the question boxes
+      setMsg(`✓ Loaded “${doc.title}” — split into question boxes below.`);
     } catch (e) {
       setMsg(e.message || "Couldn't load that document.");
     }
   };
 
-  // Split the source into batch cards. Each is extracted & inserted on its own.
-  const prepareBatches = () => {
+  // Split the source into editable question boxes (~20 questions each). Called
+  // automatically after a PDF/document loads, and via the button after pasting.
+  const buildBatches = (fullText) => {
     setMsg("");
-    if (text.trim()) {
-      const parts = splitIntoBatches(text.trim());
+    const t = (fullText ?? text).trim();
+    if (t) {
+      const parts = splitIntoBatches(t);
       setBatches(parts.map((p, i) => ({
         key: `${Date.now()}-${i}`,
         text: p.text,
-        label: `Batch ${i + 1}`,
+        label: `Box ${i + 1}`,
         count: p.count,
         status: "idle",
         questions: [],
@@ -324,14 +330,14 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
               <p className="mt-1 text-xs text-slate-400">{text.trim().length.toLocaleString()} characters ready.</p>
             )}
 
-            <button type="button" onClick={prepareBatches} disabled={busyAny} className="btn-primary mt-4 w-full">
-              <Layers className="h-4 w-4" /> Split into batches
+            <button type="button" onClick={() => buildBatches()} disabled={busyAny} className="btn-primary mt-4 w-full">
+              <Layers className="h-4 w-4" /> Split into question boxes (20 each)
             </button>
 
             {batches.length > 0 && (
               <div className="mt-4 space-y-3">
                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  {batches.length} batch(es) — Extract each, then Insert.
+                  {batches.length} box(es) — edit if needed, Extract, then Insert each.
                 </p>
                 {batches.map((b, i) => (
                   <div key={b.key} className="rounded-xl border border-slate-200 dark:border-slate-700">
@@ -360,6 +366,20 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
                         )}
                       </div>
                     </div>
+                    {/* The editable "Extracted or pasted text" box for THIS batch (~20 questions) */}
+                    {b.url ? (
+                      <p className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{b.url}</p>
+                    ) : (
+                      <div className="p-2">
+                        <textarea
+                          className="input resize-y font-mono text-xs"
+                          rows={6}
+                          value={b.text}
+                          onChange={(e) => patchBatch(i, { text: e.target.value })}
+                          disabled={b.status === "extracting" || b.status === "inserting" || b.status === "inserted"}
+                        />
+                      </div>
+                    )}
                     {b.msg && <p className="px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400">{b.msg}</p>}
                     {b.questions.length > 0 && b.status !== "inserted" && (
                       <div className="max-h-56 space-y-2 overflow-y-auto p-2">
