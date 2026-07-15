@@ -1,7 +1,27 @@
-import { useEffect, useState } from "react";
-import { FileText, Upload, Plus, Pencil, Trash2, X, Loader2, Save, Download, ScanText, Maximize2, Minimize2, Copy, Check } from "lucide-react";
-import { documentService } from "../../services";
+import { useEffect, useState, useRef } from "react";
+import { FileText, Upload, Plus, Pencil, Trash2, X, Loader2, Save, Download, ScanText, Maximize2, Minimize2, Copy, Check, Sigma, Wand2, CheckCircle2 } from "lucide-react";
+import { documentService, aiService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
+import MathText from "../../components/ui/MathText";
+
+const LETTERS = ["A", "B", "C", "D"];
+// Inline-math toolbar: LaTeX snippets render via KaTeX inside $…$; plain symbols
+// are inserted as-is. See MathText ($…$ inline, $$…$$ block).
+const MATH_BTNS = [
+  { t: "$ $", ins: ["$", "$"], title: "Wrap selection in inline math" },
+  { t: "x²", ins: ["$x^{2}$"] },
+  { t: "xₙ", ins: ["$x_{n}$"] },
+  { t: "a⁄b", ins: ["$\\frac{a}{b}$"] },
+  { t: "√", ins: ["$\\sqrt{x}$"] },
+  { t: "×", ins: ["×"] },
+  { t: "÷", ins: ["÷"] },
+  { t: "π", ins: ["π"] },
+  { t: "≤", ins: ["≤"] },
+  { t: "≥", ins: ["≥"] },
+  { t: "≠", ins: ["≠"] },
+  { t: "°", ins: ["°"] },
+  { t: "→", ins: ["→"] },
+];
 
 const blank = { id: null, title: "", content: "", sourceName: "", pages: 0 };
 
@@ -20,9 +40,60 @@ export default function AdminDocuments() {
   const [ocrProgress, setOcrProgress] = useState(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showMath, setShowMath] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [converted, setConverted] = useState(null); // AI-typed questions preview
+  const [convertMsg, setConvertMsg] = useState("");
+  const taRef = useRef(null);
 
-  // Reset the expanded view whenever the editor closes.
-  useEffect(() => { if (!editor) setFullscreen(false); }, [editor]);
+  // Reset transient editor UI whenever the editor closes.
+  useEffect(() => {
+    if (!editor) { setFullscreen(false); setShowMath(false); setConverted(null); setConvertMsg(""); }
+  }, [editor]);
+
+  // Insert text at the textarea caret (wrapping the selection when `after` given).
+  const insertMath = (before, after = "") => {
+    const ta = taRef.current;
+    const val = editor?.content || "";
+    const start = ta?.selectionStart ?? val.length;
+    const end = ta?.selectionEnd ?? start;
+    const sel = val.slice(start, end);
+    const next = val.slice(0, start) + before + sel + after + val.slice(end);
+    setEditor((ed) => ({ ...ed, content: next }));
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      ta.focus();
+      const pos = start + before.length + sel.length + after.length;
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
+  // Convert the document text into the app's typed questions (preview only).
+  const convertToQuestions = async () => {
+    if (!editor?.content?.trim()) { setError("Add some text first."); return; }
+    setConverting(true);
+    setConverted(null);
+    setConvertMsg("Converting to questions…");
+    try {
+      const { jobId } = await aiService.extract({ content: editor.content.trim() });
+      if (!jobId) throw new Error("Couldn't start conversion.");
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let done = false;
+      for (let i = 0; i < 240 && !done; i++) {
+        await sleep(2000);
+        let s;
+        try { s = await aiService.job(jobId); } catch { continue; }
+        if (s.status === "done") { setConverted(s.questions || []); setConvertMsg(`✓ ${(s.questions || []).length} question(s).`); done = true; }
+        else if (s.status === "error") { setConvertMsg(s.error || "Conversion failed."); done = true; }
+        else setConvertMsg(`Converting… ${s.count || 0} question(s) so far`);
+      }
+      if (!done) setConvertMsg("Still working — large text; try again.");
+    } catch (e) {
+      setConvertMsg(e.message || "Conversion failed.");
+    } finally {
+      setConverting(false);
+    }
+  };
 
   const copyText = async () => {
     try {
@@ -268,22 +339,71 @@ export default function AdminDocuments() {
                 {editor.content?.trim() && (
                   <button type="button" onClick={downloadTxt} className="btn-outline !py-1 !text-xs"><Download className="h-3.5 w-3.5" /> .txt</button>
                 )}
+                <button type="button" onClick={() => setShowMath((v) => !v)} className={`!py-1 !text-xs ${showMath ? "btn-primary" : "btn-outline"}`} title="Insert math">
+                  <Sigma className="h-3.5 w-3.5" /> Math
+                </button>
                 <button type="button" onClick={() => setFullscreen((f) => !f)} className="btn-outline !py-1 !text-xs" title={fullscreen ? "Exit full screen" : "Full screen"}>
                   {fullscreen ? <><Minimize2 className="h-3.5 w-3.5" /> Exit</> : <><Maximize2 className="h-3.5 w-3.5" /> Full screen</>}
                 </button>
               </div>
             </div>
+
+            {showMath && (
+              <div className="mb-2 flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/60">
+                {MATH_BTNS.map((b, i) => (
+                  <button key={i} type="button" onClick={() => insertMath(...b.ins)} title={b.title || ""}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-xs hover:border-brand-400 hover:text-brand-600 dark:border-slate-600 dark:bg-slate-900">
+                    {b.t}
+                  </button>
+                ))}
+                <span className="ml-auto self-center text-[11px] text-slate-400">Use $…$ for inline math</span>
+              </div>
+            )}
+
             <textarea
+              ref={taRef}
               rows={16}
               className={`input resize-y font-mono text-xs ${fullscreen ? "min-h-0 flex-1" : ""}`}
               value={editor.content}
               onChange={(e) => setEditor({ ...editor, content: e.target.value })}
               placeholder="Upload a PDF to fill this, or type/paste text here…"
             />
-            <p className="mt-1 text-xs text-slate-400">
-              {(editor.content || "").length.toLocaleString()} characters
-              {editor.sourceName ? ` · from ${editor.sourceName}${editor.pages ? ` (${editor.pages} pages)` : ""}` : ""}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-400">
+                {(editor.content || "").length.toLocaleString()} characters
+                {editor.sourceName ? ` · from ${editor.sourceName}${editor.pages ? ` (${editor.pages} pages)` : ""}` : ""}
+              </p>
+              {editor.content?.trim() && (
+                <button type="button" onClick={convertToQuestions} disabled={converting} className="btn-outline !py-1 !text-xs">
+                  {converting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Converting…</> : <><Wand2 className="h-3.5 w-3.5" /> Convert to questions</>}
+                </button>
+              )}
+            </div>
+            {convertMsg && <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{convertMsg}</p>}
+
+            {converted && converted.length > 0 && (
+              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+                <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4" /> Preview — how the AI types these questions (math rendered)
+                </p>
+                {converted.map((q, i) => (
+                  <div key={i} className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/60">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-brand-100 px-1.5 py-0.5 font-semibold uppercase text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{q.type}</span>
+                      <span className="text-slate-400">{q.difficulty}</span>
+                      <span className="ml-auto font-semibold text-emerald-600 dark:text-emerald-400">Ans: {LETTERS[q.correct] || "?"}</span>
+                    </div>
+                    <p className="mt-1 font-medium text-slate-700 dark:text-slate-200">{i + 1}. <MathText>{q.text}</MathText></p>
+                    <ul className="mt-1 grid grid-cols-2 gap-x-3 text-slate-500 dark:text-slate-400">
+                      {(q.options || []).map((o, j) => (
+                        <li key={j} className={j === q.correct ? "font-semibold text-emerald-600 dark:text-emerald-400" : ""}>{LETTERS[j]}. <MathText>{o}</MathText></li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+                <p className="text-[11px] text-slate-400">To add these to a quiz/test, open <b>AI Generator → From Document</b> and pick this saved document.</p>
+              </div>
+            )}
 
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => { setEditor(null); setError(""); }} className="btn-outline">Cancel</button>
