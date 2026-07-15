@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { FileText, Upload, Plus, Pencil, Trash2, X, Loader2, Save, Download, ScanText, Maximize2, Minimize2, Copy, Check, Sigma, Wand2, CheckCircle2 } from "lucide-react";
+import { FileText, Upload, Plus, Pencil, Trash2, X, Loader2, Save, Download, ScanText, Maximize2, Minimize2, Copy, Check, Sigma, Wand2 } from "lucide-react";
 import { documentService, aiService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
-import MathText from "../../components/ui/MathText";
 
 const LETTERS = ["A", "B", "C", "D"];
 // Inline-math toolbar: LaTeX snippets render via KaTeX inside $…$; plain symbols
@@ -42,13 +41,12 @@ export default function AdminDocuments() {
   const [copied, setCopied] = useState(false);
   const [showMath, setShowMath] = useState(false);
   const [converting, setConverting] = useState(false);
-  const [converted, setConverted] = useState(null); // AI-typed questions preview
   const [convertMsg, setConvertMsg] = useState("");
   const taRef = useRef(null);
 
   // Reset transient editor UI whenever the editor closes.
   useEffect(() => {
-    if (!editor) { setFullscreen(false); setShowMath(false); setConverted(null); setConvertMsg(""); }
+    if (!editor) { setFullscreen(false); setShowMath(false); setConvertMsg(""); }
   }, [editor]);
 
   // Insert text at the textarea caret (wrapping the selection when `after` given).
@@ -69,10 +67,11 @@ export default function AdminDocuments() {
   };
 
   // Convert the document text into the app's typed questions (preview only).
+  // Convert the document text into clean, numbered questions WITHOUT answers,
+  // written back into the text box so it can be saved and copied.
   const convertToQuestions = async () => {
     if (!editor?.content?.trim()) { setError("Add some text first."); return; }
     setConverting(true);
-    setConverted(null);
     setConvertMsg("Converting to questions…");
     try {
       const { jobId } = await aiService.extract({ content: editor.content.trim() });
@@ -83,8 +82,20 @@ export default function AdminDocuments() {
         await sleep(2000);
         let s;
         try { s = await aiService.job(jobId); } catch { continue; }
-        if (s.status === "done") { setConverted(s.questions || []); setConvertMsg(`✓ ${(s.questions || []).length} question(s).`); done = true; }
-        else if (s.status === "error") { setConvertMsg(s.error || "Conversion failed."); done = true; }
+        if (s.status === "done") {
+          const qs = s.questions || [];
+          // Clean, ANSWER-FREE text: numbered questions with A) B) C) D) options.
+          const formatted = qs
+            .map((q, idx) => {
+              const lines = [`${idx + 1}. ${String(q.text || "").trim()}`];
+              (q.options || []).filter((o) => String(o).trim()).forEach((o, j) => lines.push(`${LETTERS[j] || j + 1}) ${o}`));
+              return lines.join("\n");
+            })
+            .join("\n\n");
+          if (formatted.trim()) setEditor((ed) => ({ ...ed, content: formatted }));
+          setConvertMsg(`✓ Converted ${qs.length} question(s) — answers removed. Review, then Save or Copy.`);
+          done = true;
+        } else if (s.status === "error") { setConvertMsg(s.error || "Conversion failed."); done = true; }
         else setConvertMsg(`Converting… ${s.count || 0} question(s) so far`);
       }
       if (!done) setConvertMsg("Still working — large text; try again.");
@@ -380,30 +391,6 @@ export default function AdminDocuments() {
               )}
             </div>
             {convertMsg && <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{convertMsg}</p>}
-
-            {converted && converted.length > 0 && (
-              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
-                <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" /> Preview — how the AI types these questions (math rendered)
-                </p>
-                {converted.map((q, i) => (
-                  <div key={i} className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/60">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-brand-100 px-1.5 py-0.5 font-semibold uppercase text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">{q.type}</span>
-                      <span className="text-slate-400">{q.difficulty}</span>
-                      <span className="ml-auto font-semibold text-emerald-600 dark:text-emerald-400">Ans: {LETTERS[q.correct] || "?"}</span>
-                    </div>
-                    <p className="mt-1 font-medium text-slate-700 dark:text-slate-200">{i + 1}. <MathText>{q.text}</MathText></p>
-                    <ul className="mt-1 grid grid-cols-2 gap-x-3 text-slate-500 dark:text-slate-400">
-                      {(q.options || []).map((o, j) => (
-                        <li key={j} className={j === q.correct ? "font-semibold text-emerald-600 dark:text-emerald-400" : ""}>{LETTERS[j]}. <MathText>{o}</MathText></li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-                <p className="text-[11px] text-slate-400">To add these to a quiz/test, open <b>AI Generator → From Document</b> and pick this saved document.</p>
-              </div>
-            )}
 
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => { setEditor(null); setError(""); }} className="btn-outline">Cancel</button>
