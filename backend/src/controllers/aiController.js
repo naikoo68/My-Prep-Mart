@@ -983,11 +983,21 @@ function buildExtractPrompt(sourceText) {
 
 // Background worker: extract questions from every source chunk and combine
 // (de-duplicated), so a multi-section page is imported in one go.
-async function runExtractionJob(id, { endpoints, model, chunks, owner = null }) {
+// `have` = questions the caller ALREADY has (from a first pass). We seed the
+// de-dup set with them so a re-run collects ONLY the ones that were missed —
+// this powers the "Extract remaining" button (e.g. got 68 of 80, fetch the
+// other 12 without duplicates).
+async function runExtractionJob(id, { endpoints, model, chunks, owner = null, have = [] }) {
   const job = genJobs.get(id);
   const deadline = Date.now() + 8 * 60 * 1000; // 8-minute budget (smaller chunks = more calls)
   const collected = [];
   const seen = new Set();
+  // Seed the de-dup set with the already-extracted questions so they are skipped.
+  // Numbered papers de-dup by source number (n:<num>) — stable across re-runs;
+  // otherwise by the fuzzy content signature.
+  for (const nq of normalize(Array.isArray(have) ? have : [])) {
+    seen.add(nq.n != null ? `n:${nq.n}` : extractSig(nq));
+  }
   let lastError = null;
 
   const save = (patch) => Object.assign(job, patch, { updatedAt: Date.now() });
@@ -1097,7 +1107,11 @@ export async function extractQuestions(req, res) {
     updatedAt: Date.now(),
   });
 
-  runExtractionJob(id, { endpoints, model, chunks, owner: scope.owner });
+  // Already-extracted questions from a previous pass (for "Extract remaining") —
+  // they seed the de-dup set so only the missed questions come back. Capped.
+  const have = Array.isArray(req.body?.have) ? req.body.have.slice(0, 500) : [];
+
+  runExtractionJob(id, { endpoints, model, chunks, owner: scope.owner, have });
   res.json({ jobId: id, chunks: chunks.length, questionsDetected: detected?.count || 0, model });
 }
 
