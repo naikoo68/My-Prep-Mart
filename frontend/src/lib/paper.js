@@ -174,62 +174,37 @@ export function printPaper(title, questions, opts) {
   return true;
 }
 
-let html2pdfPromise = null;
-function loadHtml2Pdf() {
-  if (html2pdfPromise) return html2pdfPromise;
-  html2pdfPromise = new Promise((resolve, reject) => {
-    if (typeof window !== "undefined" && typeof window.html2pdf === "function") return resolve(window.html2pdf);
-    if (typeof document === "undefined") return reject(new Error("no document"));
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.3/dist/html2pdf.bundle.min.js";
-    s.async = true;
-    s.onload = () => resolve(window.html2pdf);
-    s.onerror = () => reject(new Error("Failed to load the PDF generator"));
-    document.head.appendChild(s);
-  });
-  return html2pdfPromise;
-}
-function ensureKatexCss() {
-  if (typeof document === "undefined" || document.getElementById("katex-cdn-css")) return;
-  const l = document.createElement("link");
-  l.id = "katex-cdn-css";
-  l.rel = "stylesheet";
-  l.href = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css";
-  l.crossOrigin = "anonymous";
-  document.head.appendChild(l);
-}
-
-// Generate the PDF and download it AUTOMATICALLY as a real .pdf file (no print
-// dialog). Resolves true on success, false if it couldn't (caller can fall back
-// to printPaper).
-export async function savePdf(title, questions, opts = {}) {
-  let html2pdf;
-  try { html2pdf = await loadHtml2Pdf(); } catch { return false; }
-  if (typeof html2pdf !== "function") return false;
-  ensureKatexCss();
-  const { css, pages } = compose(title, questions, opts);
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;z-index:-1";
-  wrap.innerHTML = `<style>${css}</style><div class="paperroot">${pages}</div>`;
-  document.body.appendChild(wrap);
+// Produce the PDF using the browser's NATIVE renderer (real, crisp, selectable
+// text — an actual PDF, not a rasterised image). Renders into a HIDDEN iframe
+// and triggers its print dialog, where the user picks "Save as PDF" — so no
+// visible extra tab opens. Returns true if it started, false to fall back.
+export function savePdf(title, questions, opts = {}) {
+  if (typeof document === "undefined") return false;
   try {
-    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
-    await new Promise((r) => setTimeout(r, 200)); // let CSS/fonts apply
-    await html2pdf()
-      .set({
-        margin: [10, 10, 10, 10],
-        filename: `${String(title || "paper").replace(/[^\w.-]+/g, "_")}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: 794 },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"], before: ".page" },
-      })
-      .from(wrap.querySelector(".paperroot"))
-      .save();
+    const html = buildPaperHtml(title, questions, { ...opts, autoPrint: false });
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;visibility:hidden";
+    document.body.appendChild(iframe);
+    const win = iframe.contentWindow;
+    const doc = win?.document || iframe.contentDocument;
+    if (!doc) { iframe.remove(); return false; }
+
+    let printed = false;
+    const fire = () => {
+      if (printed) return;
+      printed = true;
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch { /* ignore */ }
+      setTimeout(() => { try { iframe.remove(); } catch { /* ignore */ } }, 60000);
+    };
+    iframe.onload = () => setTimeout(fire, 500); // wait for KaTeX CSS/fonts
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // Fallback in case onload doesn't fire for a document.write'd iframe.
+    setTimeout(fire, 1600);
     return true;
   } catch {
     return false;
-  } finally {
-    wrap.remove();
   }
 }
