@@ -112,18 +112,21 @@ function compose(title, questions, opts = {}) {
   const pageCount = chunks.length;
   const pages = chunks
     .map((chunk, pi) =>
-      `<section class="page">${wm}<div class="pc">` +
+      `<section class="page"><div class="frame">${wm}<div class="pc">` +
       (pi === 0 ? fullHeader + grid : slimHeader) +
       chunk.join("") +
       `<div class="foot">${esc(brand)} · ${withAnswers ? "Answer Key" : "Question Paper"}${pageCount > 1 ? ` · Page ${pi + 1} of ${pageCount}` : ""}</div>` +
-      `</div></section>`
+      `</div></div></section>`
     )
     .join("");
 
   const css =
     `@page{size:A4;margin:12mm}*{box-sizing:border-box}` +
     `body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;line-height:1.5;margin:0}` +
-    `.page{position:relative;overflow:hidden;border:${borderCss};border-radius:${borderRadius};padding:${pagePad}}` +
+    // .page is the full A4 sheet with an outer MARGIN; .frame is the bordered
+    // box inset from the page edges by that margin.
+    `.page{position:relative;overflow:hidden;background:#fff;padding:34px}` +
+    `.frame{position:relative;overflow:hidden;height:100%;border:${borderCss};border-radius:${borderRadius};padding:${pagePad}}` +
     `.page + .page{margin-top:18px}.pc{position:relative;z-index:1}` +
     `.hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}` +
     `.brand{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#2563eb;margin:0 0 2px}` +
