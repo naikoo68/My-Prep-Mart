@@ -14,7 +14,7 @@ export default function PaperExport({ title = "Question Paper", questions = null
   const [list, setList] = useState(Array.isArray(questions) ? questions : []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [perPage, setPerPage] = useState(0); // 0 = auto (as many as fit per page)
+  const [perPage, setPerPage] = useState(10); // questions per page (default 10)
   const [border, setBorder] = useState("single"); // none | single | thick | double
   const [previewMode, setPreviewMode] = useState("paper"); // "paper" | "key"
   const [previewFull, setPreviewFull] = useState(false); // full-screen PDF preview
@@ -31,6 +31,10 @@ export default function PaperExport({ title = "Question Paper", questions = null
   const wmOpacity = Math.min(0.5, Math.max(0.08, (Number(settings?.watermarkOpacity) || 12) / 100));
   const wmSize = Math.min(40, Math.max(12, Number(settings?.watermarkSize) || 16));
   const brand = (settings?.siteName || "My Study Guide").trim();
+  // Use the site's brand/accent colours for headings, question numbers, badge
+  // and the coloured Column A/B boxes (fall back to the defaults).
+  const brandColor = (settings?.primaryColor || "#2563eb").trim();
+  const accentColor = (settings?.accentColor || "#f97316").trim();
 
   const opts = (withAnswers) => ({
     withAnswers,
@@ -40,6 +44,8 @@ export default function PaperExport({ title = "Question Paper", questions = null
     watermarkOpacity: wmOpacity,
     watermarkSize: wmSize,
     brand,
+    brandColor,
+    accentColor,
   });
 
   const ensure = async () => {
@@ -83,7 +89,7 @@ export default function PaperExport({ title = "Question Paper", questions = null
   const previewHtml = useMemo(
     () => buildPaperHtml(mode === "key" ? `${title} — Answer Key` : title, list, { ...opts(mode === "key"), autoPrint: false }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [title, list, mode, perPage, border, wmLabel, wmOpacity, wmSize, brand]
+    [title, list, mode, perPage, border, wmLabel, wmOpacity, wmSize, brand, brandColor, accentColor]
   );
 
   return (
