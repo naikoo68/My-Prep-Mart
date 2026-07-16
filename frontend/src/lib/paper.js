@@ -344,13 +344,24 @@ export async function savePdf(title, questions, opts = {}) {
     const pageEls = wrap.querySelectorAll(".page");
     if (!pageEls.length) return false;
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    // Standard PDF metadata so the file looks professional in Adobe Acrobat's
+    // Document Properties.
+    try {
+      pdf.setProperties({
+        title: String(title || "Question Paper"),
+        subject: opts.withAnswers ? "Answer Key" : "Question Paper",
+        author: String(opts.brand || "My Study Guide"),
+        creator: String(opts.brand || "My Study Guide"),
+      });
+    } catch { /* ignore */ }
     const A4W = 210, A4H = 297; // mm
     for (let i = 0; i < pageEls.length; i++) {
-      // Every page is a fixed 794×1123 (A4) box → render and place it filling the
-      // whole A4 sheet at full width.
+      // Every page is a fixed 794×1123 (A4) box → render at ~285 DPI (scale 3)
+      // for crisp text when zooming in Adobe, and place it filling the whole A4
+      // sheet at full width.
       // eslint-disable-next-line no-await-in-loop
-      const canvas = await html2canvas(pageEls[i], { scale: 2.5, useCORS: true, backgroundColor: "#ffffff", logging: false, width: 794, height: 1123, windowWidth: 794 });
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const canvas = await html2canvas(pageEls[i], { scale: 3, useCORS: true, backgroundColor: "#ffffff", logging: false, width: 794, height: 1123, windowWidth: 794 });
+      const imgData = canvas.toDataURL("image/jpeg", 0.97);
       if (i > 0) pdf.addPage();
       pdf.addImage(imgData, "JPEG", 0, 0, A4W, A4H);
     }
