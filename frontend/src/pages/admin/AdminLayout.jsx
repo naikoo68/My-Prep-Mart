@@ -24,6 +24,7 @@ import {
   Sun,
   Home,
   Feather,
+  FilePlus2,
 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
@@ -42,6 +43,7 @@ const nav = [
   { to: "/admin/study", label: "Study Material", icon: BookMarked },
   { to: "/admin/documents", label: "Documents", icon: FileText },
   { to: "/admin/notes", label: "Handwritten Notes", icon: Feather },
+  { to: "/admin/pdf-builder", label: "PDF Builder", icon: FilePlus2 },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/performance", label: "Performance", icon: Trophy },
   { to: "/admin/feedback", label: "Feedback", icon: MessageSquare },
