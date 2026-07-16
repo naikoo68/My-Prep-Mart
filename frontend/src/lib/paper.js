@@ -1,14 +1,33 @@
 // Build a printable A4 "question paper" or "answer key" from a list of question
-// objects and open it in a print window (→ Save as PDF). Handles every question
-// type (mcq, matching, statement, pair/pairselect, assertion, table) and renders
-// inline $…$ math with KaTeX. No extra dependency — uses the browser's print.
+// objects. Renders every question type (mcq, matching, statement, pair/
+// pairselect, assertion, table) with inline $…$ math (KaTeX), the site's brand
+// colours, a clean serif look, coloured difficulty chips and coloured Column
+// A/B boxes — then downloads it as a real PDF (html2canvas + jsPDF) or, as a
+// fallback, opens a print window.
 import katex from "katex";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 
+// Fixed difficulty-chip palette (mirrors the quiz UI: Easy=emerald,
+// Medium=amber, Hard=rose).
+const DIFF = {
+  Easy: { bg: "#dcfce7", fg: "#047857", bd: "#a7f3d0" },
+  Medium: { bg: "#fef3c7", fg: "#b45309", bd: "#fde68a" },
+  Hard: { bg: "#ffe4e6", fg: "#be123c", bd: "#fecdd3" },
+};
+
 const esc = (s) =>
   String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// hex (#rgb / #rrggbb) → rgba() with the given alpha (for soft tints).
+function hexA(hex, a) {
+  const h = String(hex || "").replace("#", "").trim();
+  const v = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(v, 16);
+  if (v.length !== 6 || Number.isNaN(n)) return `rgba(37,99,235,${a})`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
 
 // Render a string with inline ($…$) / block ($$…$$) math; everything else escaped.
 function inline(text) {
@@ -30,24 +49,26 @@ function inline(text) {
 export const answerLetter = (q) => (typeof q?.correct === "number" && q.correct >= 0 ? (LETTERS[q.correct] || "?") : "—");
 
 function questionBlock(q, idx, withAnswers) {
-  const parts = [`<div class="q"><p class="stem"><b>${idx + 1}.</b> ${inline(q.text)}</p>`];
+  const diff = DIFF[q?.difficulty] ? q.difficulty : "";
+  const chip = diff ? `<span class="chip d-${diff.toLowerCase()}">${esc(diff)}</span>` : "";
+  const parts = [`<div class="q"><p class="stem"><b class="qn">${idx + 1}.</b> ${inline(q.text)} ${chip}</p>`];
   const A = (q.columnA || []).map((x) => String(x)).filter((x) => x.trim());
   const B = (q.columnB || []).map((x) => String(x)).filter((x) => x.trim());
 
   if (q.type === "assertion") {
-    if (q.assertion) parts.push(`<p class="sub2"><b>Assertion (A):</b> ${inline(q.assertion)}</p>`);
-    if (q.reason) parts.push(`<p class="sub2"><b>Reason (R):</b> ${inline(q.reason)}</p>`);
+    if (q.assertion) parts.push(`<div class="box boxA"><span class="bx-h">Assertion (A)</span> ${inline(q.assertion)}</div>`);
+    if (q.reason) parts.push(`<div class="box boxB"><span class="bx-h">Reason (R)</span> ${inline(q.reason)}</div>`);
   } else if (q.type === "statement") {
-    parts.push(`<div class="lst">${A.map((s, i) => `<div>${i + 1}. ${inline(s)}</div>`).join("")}</div>`);
+    parts.push(`<div class="box boxA"><div class="lst">${A.map((s, i) => `<div>${i + 1}. ${inline(s)}</div>`).join("")}</div></div>`);
   } else if (q.type === "pair" || q.type === "pairselect") {
     const n = Math.max(A.length, B.length);
     const rows = [];
     for (let i = 0; i < n; i++) rows.push(`<div>${i + 1}. ${inline(A[i] || "")} — ${inline(B[i] || "")}</div>`);
-    parts.push(`<div class="lst">${rows.join("")}</div>`);
+    parts.push(`<div class="box boxA"><div class="lst">${rows.join("")}</div></div>`);
   } else if (q.type === "matching") {
     parts.push(
-      `<div class="match"><div><div class="ch">Column A</div>${A.map((x, i) => `<div>${i + 1}. ${inline(x)}</div>`).join("")}</div>` +
-      `<div><div class="ch">Column B</div>${B.map((x, i) => `<div>${ROMAN[i] || i + 1}. ${inline(x)}</div>`).join("")}</div></div>`
+      `<div class="match"><div class="box boxA"><div class="ch chA">Column A</div>${A.map((x, i) => `<div>${i + 1}. ${inline(x)}</div>`).join("")}</div>` +
+      `<div class="box boxB"><div class="ch chB">Column B</div>${B.map((x, i) => `<div>${ROMAN[i] || i + 1}. ${inline(x)}</div>`).join("")}</div></div>`
     );
   } else if (q.type === "table") {
     const rows = (q.tableRows || []).map((r) => `<tr>${(Array.isArray(r) ? r : [r]).map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("");
@@ -82,8 +103,19 @@ function pageWatermark(label) {
 
 // Build the shared CSS + page sections for a paper/answer-key.
 function compose(title, questions, opts = {}) {
-  const { withAnswers = false, brand = "My Study Guide", perPage = 0, watermark = "", watermarkOpacity = 0.12, watermarkSize = 16, border = "single" } = opts;
-  const borderCss = border === "none" ? "none" : border === "double" ? "3px double #1e293b" : border === "thick" ? "3px solid #1e293b" : "1.6px solid #1e293b";
+  const {
+    withAnswers = false,
+    brand = "My Study Guide",
+    perPage = 0,
+    watermark = "",
+    watermarkOpacity = 0.12,
+    watermarkSize = 16,
+    border = "single",
+    brandColor = "#2563eb",
+    accentColor = "#f97316",
+    fontFamily = 'Georgia, "Times New Roman", "Cambria", serif',
+  } = opts;
+  const borderCss = border === "none" ? "none" : border === "double" ? `3px double ${brandColor}` : border === "thick" ? `3px solid ${brandColor}` : `1.6px solid ${hexA(brandColor, 0.65)}`;
   const borderRadius = border === "none" ? "0" : "10px";
   const pagePad = border === "none" ? "10px 4px 22px" : "20px 24px 26px";
   const list = Array.isArray(questions) ? questions : [];
@@ -122,29 +154,43 @@ function compose(title, questions, opts = {}) {
 
   const css =
     `@page{size:A4;margin:12mm}*{box-sizing:border-box}` +
-    `body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#0f172a;line-height:1.5;margin:0}` +
-    // .page is a FIXED A4 sheet (794×1123px = 210×297mm) with an outer MARGIN;
-    // .frame is the bordered box inset by that margin. Content (.pc) is scaled
-    // by a script to fit exactly — so more questions → smaller text, fewer →
-    // larger — with nothing clipped.
-    `.page{position:relative;background:#fff;padding:34px;display:flex;flex-direction:column;width:794px;height:1123px;overflow:hidden;margin:0 auto}` +
-    `.frame{flex:1;position:relative;overflow:hidden;border:${borderCss};border-radius:${borderRadius};padding:${pagePad}}` +
-    `.page + .page{margin-top:18px}.pc{position:relative;z-index:1;transform-origin:top left}` +
+    `body{font-family:${fontFamily};color:#0f172a;line-height:1.55;margin:0}` +
+    // .page is an A4-proportioned sheet (794px wide = 210mm) with a comfortable
+    // outer MARGIN. It GROWS with its content (min-height, no clipping); the PDF
+    // generator fits each rendered page onto one A4 sheet (shrinking dense pages
+    // so nothing is ever cut off).
+    `.page{position:relative;background:#fff;padding:34px;display:flex;flex-direction:column;width:794px;min-height:1123px;margin:0 auto}` +
+    `.frame{flex:1;position:relative;border:${borderCss};border-radius:${borderRadius};padding:${pagePad}}` +
+    `.page + .page{margin-top:18px}.pc{position:relative;z-index:1}` +
     `.hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}` +
-    `.brand{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#2563eb;margin:0 0 2px}` +
-    `h1{font-size:20px;margin:0}.sub{color:#64748b;font-size:12px;margin:3px 0 0}` +
-    `.badge{flex-shrink:0;border:1.5px solid #1e293b;border-radius:999px;padding:4px 12px;font-size:11px;font-weight:800;letter-spacing:.06em}` +
-    `.shdr{display:flex;justify-content:space-between;gap:12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#475569}` +
+    `.brand{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:${brandColor};margin:0 0 2px}` +
+    `h1{font-size:21px;margin:0;color:${brandColor}}.sub{color:#64748b;font-size:12px;margin:3px 0 0}` +
+    `.badge{flex-shrink:0;background:${brandColor};color:#fff;border-radius:999px;padding:5px 13px;font-size:11px;font-weight:800;letter-spacing:.06em}` +
+    `.shdr{display:flex;justify-content:space-between;gap:12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${brandColor}}` +
     `.fields{display:flex;flex-wrap:wrap;gap:8px 22px;margin:12px 0 0;font-size:13px;color:#334155}` +
     `.line{display:inline-block;border-bottom:1px solid #94a3b8;min-width:150px}.line.sm{min-width:90px}.line.xs{min-width:60px}` +
-    `.rule{border:none;border-top:2px solid #1e293b;margin:12px 0 16px}.rule2{border:none;border-top:1px solid #cbd5e1;margin:8px 0 14px}` +
-    `.q{margin:0 0 14px;page-break-inside:avoid;break-inside:avoid}.stem{margin:0 0 4px}.sub2{margin:2px 0}` +
-    `.lst>div{margin:1px 0}.match{display:flex;gap:28px;margin:4px 0}.match .ch{font-weight:700;font-size:12px;text-transform:uppercase;color:#475569}` +
-    `.opts{margin:4px 0 0 16px}.opt{margin:2px 0}.opt.correct{color:#15803d;font-weight:600}` +
-    `.ans{margin:4px 0 0 16px;color:#15803d;font-weight:600}.exp{margin:2px 0 0 16px;color:#334155;font-size:13px}` +
-    `.tbl{border-collapse:collapse;margin:4px 0}.tbl td{border:1px solid #cbd5e1;padding:3px 8px;font-size:13px}` +
-    `.kh{font-size:15px;margin:0 0 6px}.grid{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 6px;font-size:13px}.cell{white-space:nowrap}` +
-    `.foot{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;text-align:center;font-size:11px;color:#94a3b8}` +
+    `.rule{border:none;border-top:2px solid ${brandColor};margin:12px 0 16px}.rule2{border:none;border-top:1px solid ${hexA(brandColor, 0.35)};margin:8px 0 14px}` +
+    `.q{margin:0 0 15px;page-break-inside:avoid;break-inside:avoid}.stem{margin:0 0 5px}` +
+    `.qn{color:${brandColor};font-weight:800;margin-right:2px}` +
+    // Difficulty chips.
+    `.chip{display:inline-block;vertical-align:middle;border-radius:999px;padding:1px 9px;font-size:10.5px;font-weight:800;letter-spacing:.03em;border:1px solid;line-height:1.5}` +
+    `.d-easy{background:${DIFF.Easy.bg};color:${DIFF.Easy.fg};border-color:${DIFF.Easy.bd}}` +
+    `.d-medium{background:${DIFF.Medium.bg};color:${DIFF.Medium.fg};border-color:${DIFF.Medium.bd}}` +
+    `.d-hard{background:${DIFF.Hard.bg};color:${DIFF.Hard.fg};border-color:${DIFF.Hard.bd}}` +
+    // Coloured Column A / B (and statement / assertion) boxes.
+    `.box{border-radius:9px;padding:8px 12px;margin:5px 0;font-size:14px}` +
+    `.boxA{background:${hexA(brandColor, 0.07)};border:1px solid ${hexA(brandColor, 0.3)}}` +
+    `.boxB{background:${hexA(accentColor, 0.09)};border:1px solid ${hexA(accentColor, 0.32)}}` +
+    `.box .lst>div{margin:2px 0}.bx-h{display:inline-block;font-weight:800;margin-right:6px}` +
+    `.boxA .bx-h{color:${brandColor}}.boxB .bx-h{color:${accentColor}}` +
+    `.match{display:flex;gap:16px;margin:5px 0}.match .box{flex:1}` +
+    `.match .ch{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}` +
+    `.chA{color:${brandColor}}.chB{color:${accentColor}}` +
+    `.opts{margin:5px 0 0 16px}.opt{margin:2px 0}.opt.correct{color:#15803d;font-weight:700}` +
+    `.ans{margin:5px 0 0 16px;color:#15803d;font-weight:700}.exp{margin:2px 0 0 16px;color:#334155;font-size:13px}` +
+    `.tbl{border-collapse:collapse;margin:5px 0}.tbl td{border:1px solid #cbd5e1;padding:3px 8px;font-size:13px}` +
+    `.kh{font-size:15px;margin:0 0 6px;color:${brandColor}}.grid{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 6px;font-size:13px}.cell{white-space:nowrap}` +
+    `.foot{margin-top:16px;border-top:1px solid ${hexA(brandColor, 0.2)};padding-top:8px;text-align:center;font-size:11px;color:#94a3b8}` +
     // Per-page watermark (behind the content).
     `.pwm{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}` +
     `.pwm .in{position:absolute;inset:-25%;transform:rotate(-24deg);display:flex;flex-wrap:wrap;align-content:flex-start;justify-content:center;gap:44px;opacity:${watermarkOpacity}}` +
@@ -156,54 +202,6 @@ function compose(title, questions, opts = {}) {
   return { css, pages, kind };
 }
 
-// Scale each page's content (.pc) to fit its fixed A4 frame — ITERATIVELY
-// shrinks an over-full page until everything fits (so e.g. 20 questions on one
-// page all appear, just smaller), and enlarges a sparse page (capped). It never
-// clips. Widening the layout as it scales keeps the text filling the page width.
-export function fitPaperPages(root) {
-  const scope = root || (typeof document !== "undefined" ? document : null);
-  if (!scope) return;
-  const pages = scope.querySelectorAll(".page");
-  pages.forEach((p) => {
-    const f = p.querySelector(".frame");
-    const c = p.querySelector(".pc");
-    if (!f || !c) return;
-    c.style.transformOrigin = "top left";
-    c.style.transform = "none";
-    c.style.width = "";
-    const cs = getComputedStyle(f);
-    const aw = f.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const ah = f.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    if (aw <= 0 || ah <= 0) return;
-    c.style.width = aw + "px";
-    let nh = c.scrollHeight;
-    if (nh <= 0) return;
-    let s;
-    if (nh <= ah) {
-      s = Math.min(1.35, ah / nh); // sparse → enlarge (capped)
-    } else {
-      s = 1;
-      for (let k = 0; k < 16; k++) {
-        c.style.width = aw / s + "px";
-        const h = c.scrollHeight * s;
-        if (h <= ah) break;
-        s = s * (ah / h) * 0.96; // shrink toward fit, damped to avoid overshoot
-        if (s < 0.1) { s = 0.1; break; }
-      }
-    }
-    c.style.width = aw / s + "px";
-    c.style.transform = "scale(" + s + ")";
-  });
-}
-
-// Inline version of the fit routine for the preview/print HTML document.
-const FIT_INLINE =
-  `(function(){function one(f,c){c.style.transformOrigin='top left';c.style.transform='none';c.style.width='';var cs=getComputedStyle(f);var aw=f.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);var ah=f.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);if(aw<=0||ah<=0)return;c.style.width=aw+'px';var nh=c.scrollHeight;if(nh<=0)return;var s;if(nh<=ah){s=Math.min(1.35,ah/nh);}else{s=1;for(var k=0;k<16;k++){c.style.width=(aw/s)+'px';var h=c.scrollHeight*s;if(h<=ah)break;s=s*(ah/h)*0.96;if(s<0.1){s=0.1;break;}}}c.style.width=(aw/s)+'px';c.style.transform='scale('+s+')';}` +
-  `function fit(){var P=document.querySelectorAll('.page');for(var i=0;i<P.length;i++){var f=P[i].querySelector('.frame'),c=P[i].querySelector('.pc');if(f&&c)one(f,c);}}` +
-  `if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);` +
-  `window.addEventListener('load',function(){setTimeout(fit,150);});` +
-  `if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){setTimeout(fit,60);});}})();`;
-
 export function buildPaperHtml(title, questions, opts = {}) {
   const { css, pages, kind } = compose(title, questions, opts);
   const autoPrint = opts.autoPrint !== false;
@@ -212,7 +210,6 @@ export function buildPaperHtml(title, questions, opts = {}) {
     `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">` +
     `<style>${css}</style></head><body>` +
     pages +
-    `<scr` + `ipt>${FIT_INLINE}</scr` + `ipt>` +
     (autoPrint ? `<scr` + `ipt>window.onload=function(){setTimeout(function(){window.focus();window.print();},600)};</scr` + `ipt>` : "") +
     `</body></html>`
   );
@@ -255,8 +252,10 @@ function ensureKatexCss() {
 }
 
 // Build the PDF and download it AUTOMATICALLY (no print dialog). Renders EACH
-// page section separately and adds it as its own A4 page, so a chosen page
-// count maps 1:1 to A4 pages. Returns true on success, false to fall back.
+// page section at its NATURAL size (no CSS transform — that broke html2canvas)
+// and fits it onto one A4 sheet: normal pages fill the width; dense pages are
+// scaled down so every question stays on the sheet. A chosen page count maps
+// 1:1 to A4 pages. Returns true on success, false to fall back to print.
 export async function savePdf(title, questions, opts = {}) {
   if (typeof document === "undefined") return false;
   let libs;
@@ -268,29 +267,32 @@ export async function savePdf(title, questions, opts = {}) {
   const { css, pages } = compose(title, questions, opts);
   const wrap = document.createElement("div");
   wrap.style.cssText = "position:fixed;left:-10000px;top:0;background:#ffffff;z-index:-1";
-  // Force every .page to be exactly A4 (794×1123 px @96dpi) so each renders as
-  // one full A4 sheet.
-  // Force every .page to EXACTLY A4 (794×1123px @96dpi = 210×297mm aspect) so
-  // each renders as one full A4 sheet with no distortion or gaps.
   wrap.innerHTML = `<style>${css} .page{margin:0 !important}.page+.page{margin-top:0 !important}</style><div class="paperroot">${pages}</div>`;
   document.body.appendChild(wrap);
 
   try {
     if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
     await new Promise((r) => setTimeout(r, 250)); // let CSS/fonts apply
-    fitPaperPages(wrap); // auto-scale each page's text to fit the A4 sheet
-    await new Promise((r) => setTimeout(r, 60));
     const pageEls = wrap.querySelectorAll(".page");
     if (!pageEls.length) return false;
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
     const A4W = 210, A4H = 297; // mm
     for (let i = 0; i < pageEls.length; i++) {
-      // Each page is a fixed A4 box → render and place it filling the whole A4.
+      // Render the page at its natural pixel size (794px wide, height grows with
+      // content), then fit it onto A4.
       // eslint-disable-next-line no-await-in-loop
-      const canvas = await html2canvas(pageEls[i], { scale: 2.5, useCORS: true, backgroundColor: "#ffffff", logging: false, width: 794, height: 1123, windowWidth: 794 });
+      const canvas = await html2canvas(pageEls[i], { scale: 2.5, useCORS: true, backgroundColor: "#ffffff", logging: false, windowWidth: 794 });
+      const iw = canvas.width, ih = canvas.height;
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      // Fit to width; if the page is taller than A4, fit to height instead and
+      // centre it horizontally (so a dense page shrinks — nothing is clipped).
+      let w = A4W;
+      let h = iw ? (ih * A4W) / iw : A4H;
+      let x = 0;
+      const y = 0;
+      if (h > A4H) { h = A4H; w = ih ? (iw * A4H) / ih : A4W; x = (A4W - w) / 2; }
       if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 0, 0, A4W, A4H);
+      pdf.addImage(imgData, "JPEG", x, y, w, h);
     }
     pdf.save(`${String(title || "paper").replace(/[^\w.-]+/g, "_")}.pdf`);
     return true;
