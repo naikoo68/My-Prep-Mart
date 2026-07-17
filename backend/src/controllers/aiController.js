@@ -337,22 +337,23 @@ function parseQuestions(content) {
   try {
     obj = JSON.parse(t);
   } catch {
-    // Fall back to slicing the outermost object/array.
-    const oStart = t.indexOf("{");
-    const oEnd = t.lastIndexOf("}");
-    const aStart = t.indexOf("[");
-    const aEnd = t.lastIndexOf("]");
-    const tryParse = (s, e) => {
-      if (s === -1 || e === -1 || e <= s) return null;
-      try {
-        return JSON.parse(t.slice(s, e + 1));
-      } catch {
-        return null;
-      }
-    };
-    obj = tryParse(oStart, oEnd) || tryParse(aStart, aEnd);
+    // Repair single-backslash LaTeX + raw control chars, then retry a straight
+    // parse before falling back to slicing the outermost object/array.
+    const repaired = repairJson(t);
+    try { obj = JSON.parse(repaired); } catch { /* keep trying below */ }
+    if (!obj) {
+      const tryParse = (src, s, e) => {
+        if (s === -1 || e === -1 || e <= s) return null;
+        try { return JSON.parse(src.slice(s, e + 1)); } catch { return null; }
+      };
+      obj =
+        tryParse(t, t.indexOf("{"), t.lastIndexOf("}")) ||
+        tryParse(t, t.indexOf("["), t.lastIndexOf("]")) ||
+        tryParse(repaired, repaired.indexOf("{"), repaired.lastIndexOf("}")) ||
+        tryParse(repaired, repaired.indexOf("["), repaired.lastIndexOf("]"));
+    }
   }
-  if (!obj) return salvageObjects(t); // last resort: recover from truncated JSON
+  if (!obj) return salvageObjects(repairJson(t)); // last resort: recover from truncated JSON
   if (Array.isArray(obj)) return obj;
   if (Array.isArray(obj.questions)) return obj.questions;
   return [];
@@ -1360,6 +1361,54 @@ function escapeRawControlCharsInStrings(t) {
   return out;
 }
 
+// Models very often emit LaTeX with SINGLE backslashes inside JSON strings —
+// e.g. they write "\frac" / "\times" / "\text" instead of the JSON-legal
+// "\\frac". JSON.parse then interprets "\f"→form-feed, "\t"→tab, "\b"→backspace,
+// silently DESTROYING the command ("\frac"→"<FF>rac", "\times"→"<TAB>imes",
+// "\text"→"<TAB>ext"). This is the #1 cause of garbled math in explanations.
+//
+// We repair it BEFORE parsing: inside every JSON string literal, DOUBLE any
+// backslash that begins a LaTeX command (backslash + letter, or backslash + a
+// LaTeX symbol such as %, {, }, ^, _), while leaving genuine JSON escapes
+// (\" \\ \/ \uXXXX, and control escapes \b\f\n\r\t NOT followed by a letter)
+// untouched. Runs before escapeRawControlCharsInStrings.
+function escapeLatexBackslashes(t) {
+  const s = String(t || "");
+  let out = "";
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (!inStr) {
+      out += c;
+      if (c === '"') inStr = true;
+      continue;
+    }
+    if (c !== "\\") {
+      out += c;
+      if (c === '"') inStr = false;
+      continue;
+    }
+    // Backslash inside a string literal — decide keep vs. double.
+    const n = s[i + 1];
+    if (n === undefined) { out += "\\\\"; continue; }
+    // Genuine JSON escapes that must stay as-is.
+    if (n === '"' || n === "\\" || n === "/") { out += "\\" + n; i += 1; continue; }
+    // \uXXXX unicode escape — only when followed by exactly 4 hex digits.
+    if (n === "u" && /^[0-9a-fA-F]{4}$/.test(s.slice(i + 2, i + 6))) { out += "\\u"; i += 1; continue; }
+    // \b \f \n \r \t: a real control escape ONLY when NOT followed by a letter.
+    // Followed by a letter it is really a LaTeX command (\beta, \frac, \nu,
+    // \rho, \text, \times) whose first char collides with a JSON escape char.
+    if ("bfnrt".includes(n) && !/[a-zA-Z]/.test(s[i + 2] || "")) { out += "\\" + n; i += 1; continue; }
+    // Everything else is a LaTeX backslash → double it so JSON.parse yields a
+    // single literal backslash. Leave the next char for the normal loop.
+    out += "\\\\";
+  }
+  return out;
+}
+
+// Apply both JSON repairs (LaTeX backslashes, then raw control chars).
+const repairJson = (t) => escapeRawControlCharsInStrings(escapeLatexBackslashes(t));
+
 // Last resort: pull the "explanation" (and optionExplanations) out with regex,
 // even from broken or truncated JSON.
 function salvageExplanation(t) {
@@ -1385,7 +1434,7 @@ function parseExplanationJson(content) {
   const slice = s !== -1 && e > s ? t.slice(s, e + 1) : t;
 
   let obj = null;
-  for (const candidate of [t, slice, escapeRawControlCharsInStrings(t), escapeRawControlCharsInStrings(slice)]) {
+  for (const candidate of [t, slice, repairJson(t), repairJson(slice)]) {
     try { obj = JSON.parse(candidate); break; } catch { /* try next */ }
   }
 
@@ -1396,8 +1445,9 @@ function parseExplanationJson(content) {
     if (explanation || oe) return { explanation, optionExplanations: oe };
   }
 
-  // Couldn't parse as JSON at all — salvage the explanation with regex.
-  return salvageExplanation(t);
+  // Couldn't parse as JSON at all — salvage the explanation with regex (from the
+  // backslash-repaired text so single-backslash LaTeX survives the salvage too).
+  return salvageExplanation(repairJson(t));
 }
 
 async function runExtendJob(id, { endpoints, model, questions, owner = null, notes = "" }) {

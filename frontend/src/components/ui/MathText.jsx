@@ -9,6 +9,21 @@ import "katex/dist/katex.min.css";
 // It also repairs a common AI artifact: literal "\n" / "\r\n" escape sequences
 // left inside the text (instead of a real line break) are turned back into real
 // line breaks in the prose (never inside math, so LaTeX like \neq is untouched).
+// Repair math that was corrupted when the AI's JSON was parsed: a LaTeX command
+// written with a SINGLE backslash ("\frac", "\times", "\text", "\beta") has its
+// escape eaten by JSON.parse, leaving a stray control char behind
+// ("\frac"→FF+"rac", "\times"/"\text"→TAB+"imes"/"ext", "\beta"→BS+"eta"). Those
+// control chars never occur in normal explanation text, so we restore the lost
+// backslash+letter. This fixes questions saved BEFORE the backend parser fix,
+// without needing to re-run Extend. (Real line breaks — "\n"/0x0A — are left
+// alone so multi-line formatting is preserved.)
+const recoverEatenLatex = (t) =>
+  String(t ?? "")
+    .replace(/\f/g, "\\f") // form-feed → \f… (\frac, \forall)
+    .replace(/\v/g, "\\v") // vertical tab → \v… (\vec)
+    .replace(/[\b]/g, "\\b") // backspace → \b… (\beta, \binom, \bar)
+    .replace(/\t/g, "\\t"); // tab → \t… (\times, \text, \theta, \tan)
+
 function normalizeDelimiters(t) {
   return String(t ?? "")
     // \[ ... \]  →  $$ ... $$   (block math)
@@ -22,7 +37,7 @@ function normalizeDelimiters(t) {
 const fixProseNewlines = (t) => t.replace(/\\r\\n|\\n|\\r/g, "\n");
 
 export default function MathText({ children, className = "" }) {
-  const text = normalizeDelimiters(children);
+  const text = normalizeDelimiters(recoverEatenLatex(children));
 
   if (!text.includes("$")) {
     // `whitespace-pre-line` preserves real line breaks in multi-line text.
