@@ -66,8 +66,14 @@ export default function ExtendExplanationsModal({ open, target, title, onClose, 
         try { s = await aiService.job(jobId); } catch { continue; }
         const total = s.requested || requested;
         if (s.status === "done") {
-          setProgress({ done: s.count ?? total, total });
-          setMsg(`✓ Updated explanations for ${s.count ?? total} question(s)${s.error === "quota" ? " (stopped early — quota reached; run again for the rest)" : ""}.`);
+          const doneCount = s.count ?? total;
+          setProgress({ done: doneCount, total });
+          const note = s.error === "quota"
+            ? " — stopped early (AI quota reached). Click again to finish the rest."
+            : s.error === "partial" || doneCount < total
+            ? ` — ${total - doneCount} couldn't be generated. Click “Extend all explanations” again to finish them.`
+            : "";
+          setMsg(`✓ Updated explanations for ${doneCount} of ${total} question(s)${note}`);
           done = true;
           onDone?.();
         } else if (s.status === "error") {

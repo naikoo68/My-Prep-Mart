@@ -1301,10 +1301,19 @@ export async function generateNotes(req, res) {
    background job (reuses genJobs/jobStatus) so big quizzes don't time out. */
 
 const EXTEND_SYSTEM_PROMPT = `You are an expert exam teacher. You are given ONE existing exam question (its stem, options, the CORRECT option, its type, and any columns/assertion/reason). Your ONLY job is to write a richer, clearer EXPLANATION and per-option notes for it.
-Output ONLY valid JSON of the exact shape: {"explanation":"...","optionExplanations":["","","",""]}. No markdown, no commentary.
-- "explanation": a THOROUGH, self-contained explanation of the correct answer (3-6 sentences). Include EVERY relevant supporting fact — exact dates/years, historical background, definitions, full formulas WITH the actual calculation, laws/theorems/principles by name, and cause-and-effect reasoning. Teach the concept as if to someone seeing it for the first time; never just restate the option. FORMAT: break it into MULTIPLE short lines — each sentence or distinct point on its OWN line, NOT one long paragraph.
+
+CRITICAL — you MUST ALWAYS respond, for EVERY question, with ONE single valid JSON object and NOTHING else: no markdown, no code fences, no text before or after. The exact shape is:
+{"explanation":"...","optionExplanations":["","","",""]}
+JSON VALIDITY RULES (follow exactly or the answer is discarded):
+- Write line breaks INSIDE the strings as the two characters \\n (a backslash followed by n) — NEVER press Enter / use a real newline inside a JSON string.
+- Escape any double quote inside a string as \\".
+- Do NOT use markdown, code fences, or trailing commas.
+- Never refuse and never return an empty object — always produce a full explanation.
+
+Content rules:
+- "explanation": a THOROUGH, self-contained explanation of the correct answer (3-6 sentences). Include EVERY relevant supporting fact — exact dates/years, historical background, definitions, full formulas WITH the actual calculation, laws/theorems/principles by name, and cause-and-effect reasoning. Teach the concept as if to someone seeing it for the first time; never just restate the option. Separate points with \\n so it reads as multiple short lines, not one long paragraph.
 - LOCAL / ALTERNATIVE NAMES: whenever a term/place/concept/person/disease/chemical/unit/law has a common local or vernacular (Hindi/regional) name, synonym, abbreviation's full form or old name, add it in brackets right after it.
-- "optionExplanations": array of EXACTLY 4 strings, one per option, saying why each option is right or wrong (for wrong ones name the exact misconception/fact). Leave the CORRECT option's entry an empty string "".
+- "optionExplanations": an array of EXACTLY 4 strings, one per option, saying why each option is right or wrong (for wrong ones name the exact misconception/fact). Keep each to 1-2 short sentences so the JSON is never cut off. Leave the CORRECT option's entry an empty string "".
 STRICT: Do NOT change the question, the options, or which answer is correct. Do NOT invent a different question. Return ONLY the JSON object.`;
 
 const EXT_LETTERS = ["A", "B", "C", "D"];
@@ -1322,8 +1331,48 @@ function buildExtendPrompt(q, notes) {
   if (typeof q.correct === "number" && opts[q.correct] != null) lines.push(`CORRECT answer: ${EXT_LETTERS[q.correct]}) ${opts[q.correct]}`);
   if (q.explanation) lines.push(`Existing explanation (improve and expand it — keep anything correct): ${q.explanation}`);
   if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
-  lines.push(`Write a THOROUGH "explanation" and 4 "optionExplanations" for THIS question. Do NOT change the question or the correct answer. Return ONLY {"explanation":"...","optionExplanations":["","","",""]}.`);
+  lines.push(`Write a THOROUGH "explanation" and 4 "optionExplanations" for THIS question. Do NOT change the question or the correct answer. Return ONLY one valid JSON object {"explanation":"...","optionExplanations":["","","",""]} — use \\n (not real line breaks) for line breaks inside strings and \\" for quotes.`);
   return lines.join("\n");
+}
+
+// Escape RAW control chars (real newlines/tabs) that appear INSIDE JSON string
+// literals — the #1 reason a model's JSON fails to parse, since we ask for
+// multi-line explanations and models often press Enter instead of writing \\n.
+function escapeRawControlCharsInStrings(t) {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) {
+      if (esc) { out += c; esc = false; continue; }
+      if (c === "\\") { out += c; esc = true; continue; }
+      if (c === '"') { out += c; inStr = false; continue; }
+      if (c === "\n") { out += "\\n"; continue; }
+      if (c === "\r") { out += "\\r"; continue; }
+      if (c === "\t") { out += "\\t"; continue; }
+      out += c;
+    } else {
+      out += c;
+      if (c === '"') inStr = true;
+    }
+  }
+  return out;
+}
+
+// Last resort: pull the "explanation" (and optionExplanations) out with regex,
+// even from broken or truncated JSON.
+function salvageExplanation(t) {
+  const m = t.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return null;
+  let explanation = "";
+  try { explanation = JSON.parse(`"${m[1]}"`); } catch { explanation = m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'); }
+  explanation = String(explanation).trim();
+  if (!explanation) return null;
+  let oe = null;
+  const am = t.match(/"optionExplanations"\s*:\s*\[([\s\S]*?)\]/);
+  if (am) { try { oe = JSON.parse(`[${am[1]}]`).map((x) => (x == null ? "" : String(x))); } catch { oe = null; } }
+  return { explanation, optionExplanations: oe };
 }
 
 // Robustly pull { explanation, optionExplanations } from the model's text.
@@ -1331,68 +1380,93 @@ function parseExplanationJson(content) {
   let t = String(content || "").trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) t = fence[1].trim();
+  // Narrow to the outermost object if there's stray text around it.
+  const s = t.indexOf("{"), e = t.lastIndexOf("}");
+  const slice = s !== -1 && e > s ? t.slice(s, e + 1) : t;
+
   let obj = null;
-  try { obj = JSON.parse(t); } catch { /* fall through */ }
-  if (!obj) {
-    const s = t.indexOf("{"), e = t.lastIndexOf("}");
-    if (s !== -1 && e > s) { try { obj = JSON.parse(t.slice(s, e + 1)); } catch { /* ignore */ } }
+  for (const candidate of [t, slice, escapeRawControlCharsInStrings(t), escapeRawControlCharsInStrings(slice)]) {
+    try { obj = JSON.parse(candidate); break; } catch { /* try next */ }
   }
-  if (!obj || typeof obj !== "object") return null;
-  const explanation = typeof obj.explanation === "string" ? obj.explanation.trim() : "";
-  let oe = Array.isArray(obj.optionExplanations) ? obj.optionExplanations.map((x) => (x == null ? "" : String(x))) : null;
-  if (oe) { oe = oe.slice(0, 4); while (oe.length < 4) oe.push(""); }
-  return explanation || oe ? { explanation, optionExplanations: oe } : null;
+
+  if (obj && typeof obj === "object") {
+    const explanation = typeof obj.explanation === "string" ? obj.explanation.trim() : "";
+    let oe = Array.isArray(obj.optionExplanations) ? obj.optionExplanations.map((x) => (x == null ? "" : String(x))) : null;
+    if (oe) { oe = oe.slice(0, 4); while (oe.length < 4) oe.push(""); }
+    if (explanation || oe) return { explanation, optionExplanations: oe };
+  }
+
+  // Couldn't parse as JSON at all — salvage the explanation with regex.
+  return salvageExplanation(t);
 }
 
 async function runExtendJob(id, { endpoints, model, questions, owner = null, notes = "" }) {
   const job = genJobs.get(id);
-  const deadline = Date.now() + 9 * 60 * 1000; // overall time budget
+  const deadline = Date.now() + 12 * 60 * 1000; // overall time budget
   const save = (patch) => Object.assign(job, patch, { updatedAt: Date.now() });
-  let idx = 0;
+  const total = questions.length;
   let updated = 0;
   let lastError = null;
+  let keyDead = false;
 
-  const worker = async () => {
-    while (idx < questions.length && Date.now() < deadline) {
-      const q = questions[idx++];
-      const r = await callWithFallback({
-        endpoints,
-        model,
-        systemPrompt: EXTEND_SYSTEM_PROMPT,
-        userPrompt: buildExtendPrompt(q, notes),
-        maxTokens: 1600,
-        owner,
-      });
-      if (!r.ok) {
-        lastError = r;
-        if ([401, 403].includes(r.status)) break; // key dead — stop this worker
-        job.questions.push(0); // count as processed (skipped) so progress advances
-        save({});
-        continue;
-      }
-      const parsed = parseExplanationJson(r.content);
-      if (parsed) {
-        const set = {};
-        if (parsed.explanation) set.explanation = parsed.explanation;
-        if (Array.isArray(parsed.optionExplanations)) {
-          const oe = parsed.optionExplanations.slice(0, 4);
-          while (oe.length < 4) oe.push("");
-          if (typeof q.correct === "number" && q.correct >= 0 && q.correct < 4) oe[q.correct] = ""; // correct option carries no note
-          set.optionExplanations = oe;
-        }
-        if (Object.keys(set).length) {
-          await Question.updateOne({ _id: q._id }, { $set: set }).catch(() => {});
-          updated += 1;
-        }
-      }
-      job.questions.push(1); // progress marker (jobStatus reports count = length)
-      save({});
+  // Extend ONE question: call AI, parse (robustly), update in place. Returns
+  // true only when the DB was actually updated with a real explanation.
+  const extendOne = async (q) => {
+    const r = await callWithFallback({
+      endpoints,
+      model,
+      systemPrompt: EXTEND_SYSTEM_PROMPT,
+      userPrompt: buildExtendPrompt(q, notes),
+      maxTokens: 4000, // generous so the JSON is never truncated
+      owner,
+    });
+    if (!r.ok) {
+      lastError = r;
+      if ([401, 403].includes(r.status)) keyDead = true;
+      return false;
     }
+    const parsed = parseExplanationJson(r.content);
+    if (!parsed || !parsed.explanation) return false; // require a real explanation
+    const set = { explanation: parsed.explanation };
+    if (Array.isArray(parsed.optionExplanations)) {
+      const oe = parsed.optionExplanations.slice(0, 4);
+      while (oe.length < 4) oe.push("");
+      if (typeof q.correct === "number" && q.correct >= 0 && q.correct < 4) oe[q.correct] = ""; // correct option carries no note
+      set.optionExplanations = oe;
+    }
+    await Question.updateOne({ _id: q._id }, { $set: set }).catch(() => {});
+    updated += 1;
+    job.questions.push(1); // progress = actual successes (jobStatus reports count)
+    save({});
+    return true;
   };
 
+  // Multiple passes: any question that fails (bad/truncated JSON, transient
+  // error, or a momentary quota blip) is retried on the next pass, so NO
+  // question is left un-extended unless every attempt genuinely fails.
+  const MAX_PASSES = 4;
+  let pending = [...questions];
   try {
-    const WORKERS = Math.min(4, Math.max(1, (endpoints?.length || 1)));
-    await Promise.all(Array.from({ length: WORKERS }, () => worker()));
+    for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline; pass++) {
+      const failed = [];
+      let idx = 0;
+      const worker = async () => {
+        while (idx < pending.length && !keyDead && Date.now() < deadline) {
+          const q = pending[idx++];
+          let ok = false;
+          try { ok = await extendOne(q); } catch { ok = false; }
+          if (!ok) failed.push(q);
+        }
+      };
+      const WORKERS = Math.min(4, Math.max(1, endpoints?.length || 1));
+      await Promise.all(Array.from({ length: WORKERS }, () => worker()));
+      pending = failed;
+      // Brief pause before retrying the stragglers (eases transient/quota errors).
+      if (pending.length && pass < MAX_PASSES - 1 && !keyDead && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
     if (updated === 0) {
       save({
         status: "error",
@@ -1403,8 +1477,15 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
           : "No explanations could be updated. Try again.",
       });
     } else {
-      const short = updated < questions.length;
-      save({ status: "done", updatedCount: updated, error: short && lastError?.status === 429 ? "quota" : null });
+      // If some remain, tell the caller so they can simply run it again.
+      const short = updated < total;
+      save({
+        status: "done",
+        updatedCount: updated,
+        requested: total,
+        error: short ? (lastError?.status === 429 ? "quota" : "partial") : null,
+        remaining: short ? total - updated : 0,
+      });
     }
   } catch (err) {
     save(updated ? { status: "done", updatedCount: updated } : { status: "error", error: err?.message || "Failed to extend explanations." });
