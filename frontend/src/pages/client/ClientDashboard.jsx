@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { practiceService, searchService, testService } from "../../services";
+import { loadNav, saveNav } from "../../lib/navState";
 import { useAuth } from "../../context/AuthContext";
 import Badge from "../../components/ui/Badge";
 import QuestionView from "../../components/admin/QuestionView";
@@ -70,6 +71,10 @@ function uniqueNodes(list, key) {
   return [...map.values()];
 }
 
+// Remembers the client's practice-browser drill-down position across refreshes
+// and round-trips into a quiz/test, so they don't get bounced back to the top.
+const DASH_NAV_KEY = "mpm-client-dashboard-nav";
+
 // The client's home. Shows profile + validity, then lets them browse and
 // practice the quizzes and tests they built (this is where practicing happens,
 // not the builder). `onBuild` switches to the builder tab to add/edit content.
@@ -82,10 +87,12 @@ export default function ClientDashboard({ onBuild, onUpgrade }) {
 
   // Drill-down state. `kind` picks the sub-module; the selected stream/subject/
   // topic define how deep we've navigated. Switching kind resets the path.
-  const [kind, setKind] = useState("quiz");
-  const [stream, setStream] = useState(null);
-  const [subject, setSubject] = useState(null);
-  const [topic, setTopic] = useState(null);
+  // Restored from sessionStorage so a refresh — or returning after finishing a
+  // practice — keeps you where you were instead of jumping back to the top.
+  const [kind, setKind] = useState(() => loadNav(DASH_NAV_KEY).kind || "quiz");
+  const [stream, setStream] = useState(() => loadNav(DASH_NAV_KEY).stream || null);
+  const [subject, setSubject] = useState(() => loadNav(DASH_NAV_KEY).subject || null);
+  const [topic, setTopic] = useState(() => loadNav(DASH_NAV_KEY).topic || null);
   const [copied, setCopied] = useState(false);
   const [q, setQ] = useState("");
   const [qResults, setQResults] = useState([]); // question matches (backend search)
@@ -110,6 +117,12 @@ export default function ClientDashboard({ onBuild, onUpgrade }) {
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
+
+  // Remember the current drill-down position so a refresh or a return trip from
+  // a quiz/test restores it instead of dropping back to the top.
+  useEffect(() => {
+    saveNav(DASH_NAV_KEY, { kind, stream, subject, topic });
+  }, [kind, stream, subject, topic]);
 
   // Search the client's QUESTIONS by content (their own + published) via the
   // backend search, so questions are findable here just like everywhere else.
