@@ -1305,13 +1305,13 @@ const EXTEND_SYSTEM_PROMPT = `You are an expert exam teacher. You are given ONE 
 CRITICAL — you MUST ALWAYS respond, for EVERY question, with ONE single valid JSON object and NOTHING else: no markdown, no code fences, no text before or after. The exact shape is:
 {"explanation":"...","optionExplanations":["","","",""]}
 JSON VALIDITY RULES (follow exactly or the answer is discarded):
-- Write line breaks INSIDE the strings as the two characters \\n (a backslash followed by n) — NEVER press Enter / use a real newline inside a JSON string.
-- Escape any double quote inside a string as \\".
-- Do NOT use markdown, code fences, or trailing commas.
+- Escape any double quote inside a string as \\". You MAY use normal line breaks inside the strings for readability.
+- MATH: write ALL mathematical/numeric content (equations, fractions, powers, roots, ratios, %) as inline LaTeX between single dollar signs — e.g. $x^2+2x-3=0$, $\\frac{3}{4}$, $2^{10}\\times5^{8}$, $\\sqrt{2}$. Do NOT use \\( \\) or \\[ \\] delimiters and do NOT write bare LaTeX outside dollar signs.
+- Do NOT use markdown (no **bold**, no bullet characters), no code fences, no trailing commas.
 - Never refuse and never return an empty object — always produce a full explanation.
 
 Content rules:
-- "explanation": a THOROUGH, self-contained explanation of the correct answer (3-6 sentences). Include EVERY relevant supporting fact — exact dates/years, historical background, definitions, full formulas WITH the actual calculation, laws/theorems/principles by name, and cause-and-effect reasoning. Teach the concept as if to someone seeing it for the first time; never just restate the option. Separate points with \\n so it reads as multiple short lines, not one long paragraph.
+- "explanation": a THOROUGH, self-contained explanation of the correct answer (3-6 sentences). Include EVERY relevant supporting fact — exact dates/years, historical background, definitions, full formulas WITH the actual calculation, laws/theorems/principles by name, and cause-and-effect reasoning. Teach the concept as if to someone seeing it for the first time; never just restate the option. Put each sentence or distinct point on its OWN line (a real line break between points), not one long paragraph.
 - LOCAL / ALTERNATIVE NAMES: whenever a term/place/concept/person/disease/chemical/unit/law has a common local or vernacular (Hindi/regional) name, synonym, abbreviation's full form or old name, add it in brackets right after it.
 - "optionExplanations": an array of EXACTLY 4 strings, one per option, saying why each option is right or wrong (for wrong ones name the exact misconception/fact). Keep each to 1-2 short sentences so the JSON is never cut off. Leave the CORRECT option's entry an empty string "".
 STRICT: Do NOT change the question, the options, or which answer is correct. Do NOT invent a different question. Return ONLY the JSON object.`;
@@ -1331,7 +1331,7 @@ function buildExtendPrompt(q, notes) {
   if (typeof q.correct === "number" && opts[q.correct] != null) lines.push(`CORRECT answer: ${EXT_LETTERS[q.correct]}) ${opts[q.correct]}`);
   if (q.explanation) lines.push(`Existing explanation (improve and expand it — keep anything correct): ${q.explanation}`);
   if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
-  lines.push(`Write a THOROUGH "explanation" and 4 "optionExplanations" for THIS question. Do NOT change the question or the correct answer. Return ONLY one valid JSON object {"explanation":"...","optionExplanations":["","","",""]} — use \\n (not real line breaks) for line breaks inside strings and \\" for quotes.`);
+  lines.push(`Write a THOROUGH "explanation" and 4 "optionExplanations" for THIS question. Do NOT change the question or the correct answer. Write any math as inline LaTeX between $...$ (never \\( \\) or \\[ \\]). Return ONLY one valid JSON object {"explanation":"...","optionExplanations":["","","",""]}.`);
   return lines.join("\n");
 }
 
