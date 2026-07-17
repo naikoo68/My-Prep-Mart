@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, CheckCircle2, ClipboardList } from "lucide-react";
 import { testService, practiceService } from "../../services";
 import { Loading, ErrorState } from "../ui/AsyncState";
@@ -12,38 +12,66 @@ const COPY_FIELDS = [
   "image", "status",
 ];
 
+const gid = (x) => (x && x._id ? String(x._id) : "none");
+const gname = (x) => (x && x.name ? x.name : "Uncategorized");
+
+// Distinct { id, name } list for one grouping level (keeps first-seen name).
+function uniqueBy(rows, keyFn, nameFn) {
+  const m = new Map();
+  for (const r of rows) { const k = keyFn(r); if (!m.has(k)) m.set(k, nameFn(r)); }
+  return [...m.entries()].map(([id, name]) => ({ id, name }));
+}
+
 // Lets an admin (or a self-service client) add ONE existing question into a
-// test. The admin can choose the destination TYPE:
-//   • "Test Series" — the platform test series (Exam → Post), or
-//   • "My Test"      — the admin's own practice tests.
-// A client (`clientMode`) has no choice: they can only add to their OWN My Test.
-// When the chosen test defines per-subject sections an optional section can be
-// picked (the backend also enforces the per-subject limit).
+// test, drilling down the SAME hierarchy used elsewhere:
+//   • Test Series : Exam → Post → Test → (sub-subject / section)
+//   • My Test     : Stream → Subject → Test → (sub-subject / section)
+// The admin chooses the destination type (Test Series / My Test); a client
+// (`clientMode`) can only add to their OWN My Test. The backend enforces the
+// per-subject question limit.
 export default function AddToTestModal({ question, onClose, clientMode = false }) {
   const [target, setTarget] = useState(clientMode ? "mytest" : "series"); // series | mytest
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [aId, setAId] = useState(""); // Exam / Stream
+  const [bId, setBId] = useState(""); // Post / Subject
   const [testId, setTestId] = useState("");
   const [section, setSection] = useState("");
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
 
-  // (Re)load the list whenever the destination type changes.
+  // Grouping accessors differ by destination type.
+  const isSeries = target === "series";
+  const first = (t) => (isSeries ? t.exam : t.stream);
+  const second = (t) => (isSeries ? t.post : t.subject);
+  const labels = isSeries
+    ? { a: "Exam", b: "Post", test: "Test series" }
+    : { a: "Stream", b: "Subject", test: "My Test" };
+
+  // (Re)load the list whenever the destination type changes; reset selections.
   useEffect(() => {
     setLoading(true);
     setError("");
-    setTestId("");
-    setSection("");
-    const loader =
-      target === "series"
-        ? testService.adminList().then((rows) => (Array.isArray(rows) ? rows : []))
-        : practiceService.myItems().then((rows) => (Array.isArray(rows) ? rows : []).filter((r) => r.kind === "test"));
+    setAId(""); setBId(""); setTestId(""); setSection("");
+    const loader = isSeries
+      ? testService.adminList().then((rows) => (Array.isArray(rows) ? rows : []))
+      : practiceService.myItems().then((rows) => (Array.isArray(rows) ? rows : []).filter((r) => r.kind === "test"));
     loader
       .then((rows) => setTests(rows))
       .catch((e) => setError(e.message || "Could not load tests."))
       .finally(() => setLoading(false));
-  }, [target]);
+  }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const levelA = useMemo(() => uniqueBy(tests, (t) => gid(first(t)), (t) => gname(first(t))), [tests, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  const levelB = useMemo(
+    () => uniqueBy(tests.filter((t) => gid(first(t)) === aId), (t) => gid(second(t)), (t) => gname(second(t))),
+    [tests, aId, target] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const testOpts = useMemo(
+    () => tests.filter((t) => gid(first(t)) === aId && gid(second(t)) === bId),
+    [tests, aId, bId, target] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const selected = tests.find((t) => t._id === testId);
   const sections = Array.isArray(selected?.subjectPlan)
@@ -68,7 +96,7 @@ export default function AddToTestModal({ question, onClose, clientMode = false }
     }
   };
 
-  const kindLabel = target === "series" ? "test series" : clientMode ? "tests" : "my tests";
+  const kindLabel = isSeries ? "test series" : clientMode ? "tests" : "my tests";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
@@ -90,16 +118,10 @@ export default function AddToTestModal({ question, onClose, clientMode = false }
             {/* Admin picks the destination TYPE; clients only ever use My Test. */}
             {!clientMode && (
               <div className="flex gap-2">
-                <button
-                  onClick={() => setTarget("series")}
-                  className={`flex-1 ${target === "series" ? "btn-primary" : "btn-outline"}`}
-                >
+                <button onClick={() => setTarget("series")} className={`flex-1 ${isSeries ? "btn-primary" : "btn-outline"}`}>
                   Add to Test Series
                 </button>
-                <button
-                  onClick={() => setTarget("mytest")}
-                  className={`flex-1 ${target === "mytest" ? "btn-primary" : "btn-outline"}`}
-                >
+                <button onClick={() => setTarget("mytest")} className={`flex-1 ${!isSeries ? "btn-primary" : "btn-outline"}`}>
                   Add to My Test
                 </button>
               </div>
@@ -113,28 +135,50 @@ export default function AddToTestModal({ question, onClose, clientMode = false }
               <p className="py-6 text-center text-sm text-slate-500">No {kindLabel} found. Create one first, then add questions to it.</p>
             ) : (
               <>
+                {/* Level 1: Exam / Stream */}
                 <div>
-                  <label className="mb-1 block text-sm font-medium">{target === "series" ? "Test series" : "My Test"}</label>
-                  <select className="input" value={testId} onChange={(e) => { setTestId(e.target.value); setSection(""); }}>
-                    <option value="">— Select a test —</option>
-                    {tests.map((t) => (
-                      <option key={t._id} value={t._id}>
-                        {t.name}{t.questionCount != null ? ` (${t.questionCount} Qs)` : ""}
-                      </option>
-                    ))}
+                  <label className="mb-1 block text-sm font-medium">{labels.a}</label>
+                  <select className="input" value={aId} onChange={(e) => { setAId(e.target.value); setBId(""); setTestId(""); setSection(""); }}>
+                    <option value="">— Select {labels.a.toLowerCase()} —</option>
+                    {levelA.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
                 </div>
 
-                {sections.length > 0 && (
+                {/* Level 2: Post / Subject */}
+                {aId && (
                   <div>
-                    <label className="mb-1 block text-sm font-medium">Section / subject <span className="font-normal text-slate-400">(optional)</span></label>
-                    <select className="input" value={section} onChange={(e) => setSection(e.target.value)}>
-                      <option value="">— No specific section —</option>
-                      {sections.map((s) => (
-                        <option key={s} value={s}>{s}</option>
+                    <label className="mb-1 block text-sm font-medium">{labels.b}</label>
+                    <select className="input" value={bId} onChange={(e) => { setBId(e.target.value); setTestId(""); setSection(""); }}>
+                      <option value="">— Select {labels.b.toLowerCase()} —</option>
+                      {levelB.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Level 3: Test */}
+                {aId && bId && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">{labels.test}</label>
+                    <select className="input" value={testId} onChange={(e) => { setTestId(e.target.value); setSection(""); }}>
+                      <option value="">— Select test —</option>
+                      {testOpts.map((t) => (
+                        <option key={t._id} value={t._id}>
+                          {t.name}{t.questionCount != null ? ` (${t.questionCount} Qs)` : ""}
+                        </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-xs text-slate-400">Each subject has a question limit; adding beyond it will be blocked.</p>
+                  </div>
+                )}
+
+                {/* Level 4: sub-subject / section (optional) */}
+                {testId && sections.length > 0 && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Sub-subject / section <span className="font-normal text-slate-400">(optional)</span></label>
+                    <select className="input" value={section} onChange={(e) => setSection(e.target.value)}>
+                      <option value="">— No specific sub-subject —</option>
+                      {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <p className="mt-1 text-xs text-slate-400">Each sub-subject has a question limit; adding beyond it will be blocked.</p>
                   </div>
                 )}
 

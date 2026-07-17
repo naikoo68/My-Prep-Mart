@@ -127,7 +127,12 @@ export async function listTests(req, res) {
 export async function listAllTests(req, res) {
   const filter = { practice: { $ne: true } };
   if (req.query.post) filter.post = req.query.post;
-  const tests = await TestSeries.find(filter).sort("-createdAt").lean();
+  // Populate exam + post NAMES so the UI can group tests as Exam → Post → Test.
+  const tests = await TestSeries.find(filter)
+    .populate("exam", "name")
+    .populate("post", "name")
+    .sort("-createdAt")
+    .lean();
   res.json(tests.map((t) => ({ ...t, questionCount: t.questions?.length || 0, questions: undefined })));
 }
 
