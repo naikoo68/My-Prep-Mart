@@ -470,6 +470,27 @@ export async function addTestQuestion(req, res) {
   const test = await TestSeries.findById(req.params.id);
   if (!test) return res.status(404).json({ message: "Test not found" });
   if (!canManage(req, test)) return res.status(403).json({ message: "Not your content" });
+
+  // Enforce per-subject question limit: if the test has a subjectPlan and the
+  // question specifies a section (subject), don't allow adding more questions
+  // than the planned count for that subject.
+  const section = (req.body.section || "").trim();
+  if (section && Array.isArray(test.subjectPlan) && test.subjectPlan.length > 0) {
+    const plan = test.subjectPlan.find((p) => (p.subject || "") === section);
+    if (plan && plan.count > 0) {
+      const current = await Question.countDocuments({ testSeries: test._id, section });
+      if (current >= plan.count) {
+        return res.status(400).json({
+          message: `Subject "${section}" already has ${current}/${plan.count} questions (limit reached). Remove a question first or increase the limit.`,
+          limitReached: true,
+          subject: section,
+          current,
+          planned: plan.count,
+        });
+      }
+    }
+  }
+
   // Stamp the question with the same owner as its test so it stays isolated.
   const question = await Question.create({ ...req.body, testSeries: test._id, owner: ownerValue(req) });
   await TestSeries.findByIdAndUpdate(test._id, { $push: { questions: question._id } });

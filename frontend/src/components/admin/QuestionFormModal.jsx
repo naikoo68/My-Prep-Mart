@@ -40,10 +40,10 @@ function Field({ label, children }) {
 // Reusable Add/Edit question modal supporting simple MCQs and matching MCQs.
 // `question` = existing data (edit) or null (add). `onSave(payload)` receives a
 // clean payload (the parent attaches context like quiz/testSeries + calls the API).
-export default function QuestionFormModal({ question, saving, onClose, onSave, sections = [] }) {
+export default function QuestionFormModal({ question, saving, onClose, onSave, sections = [], defaultSection = "" }) {
   const data = question || emptyQuestion;
   const [form, setForm] = useState(() => ({
-    section: data.section || "",
+    section: data.section || defaultSection || "",
     type: data.type || "mcq",
     text: data.text || "",
     options: data.options && data.options.length ? [...data.options] : ["", "", "", ""],

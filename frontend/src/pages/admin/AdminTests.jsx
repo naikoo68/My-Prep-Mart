@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download, Sparkles, Globe, Library, Clock, Scale } from "lucide-react";
-import { questionDateText, searchQuestions } from "../../lib/questions";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download, Sparkles, Globe, Library, Scale } from "lucide-react";
 import { testService, contentService, examService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -14,6 +13,7 @@ import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import { Files } from "lucide-react";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
+import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -62,36 +62,15 @@ export default function AdminTests() {
   const [qTest, setQTest] = useState(null); // test whose questions we're editing
   const [tq, setTq] = useState([]); // its questions
   const [tqLoading, setTqLoading] = useState(false);
-  const [tqModal, setTqModal] = useState(null); // { mode, data }
+  const [tqModal, setTqModal] = useState(null); // { mode, data, forceSection }
   const [tqSaving, setTqSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question preview
   const [viewAllQ, setViewAllQ] = useState(false); // all questions preview
-  const [selectedTq, setSelectedTq] = useState([]); // bulk-selected question ids
-  const [tqSearch, setTqSearch] = useState(""); // question search query
 
-  const toggleTqSelect = (id) => setSelectedTq((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const allTqSelected = tq.length > 0 && selectedTq.length === tq.length;
-  const toggleAllTq = () => setSelectedTq(allTqSelected ? [] : tq.map((x) => x._id));
-  const tqResults = searchQuestions(tq, tqSearch); // 40%+ matches (null when not searching)
-  const shownTq = tqResults || tq;
-  const deleteSelectedTq = async () => {
-    if (!selectedTq.length) return;
-    if (!window.confirm(`Delete ${selectedTq.length} selected question(s)? This cannot be undone.`)) return;
-    try {
-      for (const id of selectedTq) await testService.deleteQuestion(qTest._id, id);
-      setSelectedTq([]);
-      await reloadTq();
-      load();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
 
   const openQuestions = async (t) => {
     setQTest(t);
     setTq([]);
-    setSelectedTq([]);
-    setTqSearch("");
     setTqLoading(true);
     try {
       setTq(await testService.getQuestions(t._id));
@@ -740,147 +719,35 @@ export default function AdminTests() {
             </div>
             <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{qTest.name}</p>
 
-            {/* Per-subject progress: added vs planned vs remaining */}
-            {(qTest.subjectPlan?.length > 0 || tq.some((q) => !q.section)) && (
-              <div className="mb-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                <p className="mb-2 text-sm font-semibold">Questions by subject</p>
-                <div className="space-y-1.5">
-                  {(qTest.subjectPlan || []).map((p, i) => {
-                    const added = tq.filter((q) => (q.section || "") === p.subject).length;
-                    const planned = p.count || 0;
-                    const remaining = Math.max(0, planned - added);
-                    return (
-                      <div key={i} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="font-medium text-slate-700 dark:text-slate-200">{p.subject}</span>
-                        <span className="flex items-center gap-1.5 text-xs">
-                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{added} added</span>
-                          {planned > 0 && (
-                            <>
-                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500 dark:bg-slate-800">{planned} planned</span>
-                              <span className={`rounded px-1.5 py-0.5 font-semibold ${remaining > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
-                                {remaining} remaining
-                              </span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {tq.some((q) => !q.section) && (
-                    <div className="flex items-center justify-between gap-2 text-sm">
-                      <span className="font-medium text-slate-400">Unassigned</span>
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-slate-800">{tq.filter((q) => !q.section).length} added</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="mb-4 flex flex-wrap justify-end gap-2">
-              {tq.length > 0 && (
-                <>
-                  <button onClick={() => setViewAllQ(true)} className="btn-outline">
-                    <Eye className="h-4 w-4" /> View All
-                  </button>
-                  <button onClick={() => copyCsv(selectedTq.length ? tq.filter((q) => selectedTq.includes(q._id)) : tq)} className="btn-outline">
-                    <Copy className="h-4 w-4" /> Copy CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
-                  </button>
-                  <button onClick={() => downloadCsv(selectedTq.length ? tq.filter((q) => selectedTq.includes(q._id)) : tq, qTest?.name || "test")} className="btn-outline">
-                    <Download className="h-4 w-4" /> Download CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
-                  </button>
-                </>
-              )}
-              {tq.length > 0 && (
-                <button onClick={() => setDupTest(qTest)} className="btn-outline">
-                  <Files className="h-4 w-4" /> Find Duplicates
-                </button>
-              )}
-              <button onClick={() => setTqModal({ mode: "add", data: null })} className="btn-primary">
-                <Plus className="h-4 w-4" /> Add Question
-              </button>
-            </div>
-
-            {tqLoading ? (
-              <Loading label="Loading questions..." />
-            ) : tq.length === 0 ? (
-              <EmptyState message="No questions yet. Add one, or use Bulk Upload." />
-            ) : (
-              <>
-              <div className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
-                <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
-                <input value={tqSearch} onChange={(e) => setTqSearch(e.target.value)} placeholder="Search questions…  (shows matches 40%–100%)" className="w-full bg-transparent text-sm outline-none" />
-                {tqSearch && <button onClick={() => setTqSearch("")} title="Clear" className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="h-4 w-4" /></button>}
-              </div>
-              <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input type="checkbox" checked={allTqSelected} onChange={toggleAllTq} className="h-4 w-4 accent-brand-600" /> Select all
-                </label>
-                {tqResults && <span className="text-sm font-medium text-slate-500">{tqResults.length} match{tqResults.length === 1 ? "" : "es"} (40%+)</span>}
-                {selectedTq.length > 0 && (
-                  <>
-                    <span className="text-sm text-slate-500">{selectedTq.length} selected</span>
-                    <button onClick={deleteSelectedTq} className="btn-outline py-1.5 text-rose-600"><Trash2 className="h-4 w-4" /> Delete selected</button>
-                    <button onClick={() => setSelectedTq([])} className="text-sm text-slate-500 hover:underline">Clear</button>
-                  </>
-                )}
-              </div>
-              {tqResults && tqResults.length === 0 && (
-                <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700">No questions match “{tqSearch}” at 40%+.</p>
-              )}
-              <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-                {shownTq.map((item, i) => (
-                  <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                    <div className="flex min-w-0 items-start gap-2">
-                      <input type="checkbox" checked={selectedTq.includes(item._id)} onChange={() => toggleTqSelect(item._id)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600" />
-                      <div className="min-w-0">
-                      <p className="truncate text-sm font-medium"><span className="text-slate-400">Q{i + 1}.</span> {item.text}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        {item._match != null && (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{item._match}% match</span>
-                        )}
-                        {item.section && <Badge variant="accent">{item.section}</Badge>}
-                        <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : "MCQ"}</Badge>
-                        <Badge variant={item.difficulty}>{item.difficulty}</Badge>
-                        {item.status && <Badge variant={item.status === "published" ? "brand" : "neutral"}>{item.status}</Badge>}
-                        {item.correct !== undefined && (
-                          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Correct: {String.fromCharCode(65 + item.correct)}</span>
-                        )}
-                        {questionDateText(item) && (
-                          <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Clock className="h-3 w-3" /> {questionDateText(item)}</span>
-                        )}
-                      </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-shrink-0 gap-1">
-                      <button onClick={() => setViewQ(item)} title="View" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => setTqModal({ mode: "edit", data: item })} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => removeTq(item._id)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              </>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <button onClick={() => setQTest(null)} className="btn-outline">Close</button>
-            </div>
+            <ManageTestQuestions
+              qTest={qTest}
+              tq={tq}
+              tqLoading={tqLoading}
+              onClose={() => setQTest(null)}
+              onAddQuestion={(subject) => setTqModal({ mode: "add", data: null, forceSection: subject })}
+              onEditQuestion={(item) => setTqModal({ mode: "edit", data: item })}
+              onDeleteQuestion={removeTq}
+              onDeleteSelected={async (ids) => {
+                for (const id of ids) await testService.deleteQuestion(qTest._id, id);
+                await reloadTq();
+                load();
+              }}
+              onViewQuestion={setViewQ}
+              onViewAll={() => setViewAllQ(true)}
+              onDuplicates={() => setDupTest(qTest)}
+              onCopyCsv={copyCsv}
+              onDownloadCsv={(qs) => downloadCsv(qs, qTest?.name || "test")}
+            />
           </div>
         </div>
       )}
-
       {tqModal && (
         <QuestionFormModal
           key={tqModal.mode === "edit" ? tqModal.data?._id : "new-test-question"}
           question={tqModal.mode === "edit" ? tqModal.data : null}
           saving={tqSaving}
           sections={sectionsOf(qTest)}
+          defaultSection={tqModal.forceSection && tqModal.forceSection !== "__unassigned__" ? tqModal.forceSection : ""}
           onClose={() => setTqModal(null)}
           onSave={saveTestQuestion}
         />

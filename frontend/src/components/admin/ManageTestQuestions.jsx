@@ -1,0 +1,272 @@
+import { useState } from "react";
+import { Plus, Pencil, Trash2, Eye, X, Search, ChevronRight, Copy, Download, Clock } from "lucide-react";
+import { Files } from "lucide-react";
+import { questionDateText, searchQuestions } from "../../lib/questions";
+import { questionsToCsv } from "./BulkUploadQuestions";
+import Badge from "../ui/Badge";
+import { Loading, EmptyState } from "../ui/AsyncState";
+
+/**
+ * ManageTestQuestions — the modal content shown when you tap a test name.
+ * If the test has subjects (subjectPlan), it shows a subject-based navigation:
+ *   1) Subject list with progress bars (tap to drill in)
+ *   2) Inside a subject: that subject's questions + Add button (disabled when full)
+ * If no subjects are defined, it shows a flat question list (original behavior).
+ */
+export default function ManageTestQuestions({
+  qTest,
+  tq,
+  tqLoading,
+  onClose,
+  onAddQuestion,
+  onEditQuestion,
+  onDeleteQuestion,
+  onDeleteSelected,
+  onViewQuestion,
+  onViewAll,
+  onDuplicates,
+  onCopyCsv,
+  onDownloadCsv,
+}) {
+  const [activeSubject, setActiveSubject] = useState(null);
+  const [selectedTq, setSelectedTq] = useState([]);
+  const [tqSearch, setTqSearch] = useState("");
+
+  const toggleTqSelect = (id) => setSelectedTq((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const hasSubjects = qTest.subjectPlan?.length > 0;
+
+  // Filter questions by active subject
+  const subjectQuestions = activeSubject === "__unassigned__"
+    ? tq.filter((q) => !q.section)
+    : activeSubject
+    ? tq.filter((q) => (q.section || "") === activeSubject)
+    : tq;
+
+  const filteredTq = searchQuestions(subjectQuestions, tqSearch) || subjectQuestions;
+
+  // Calculate limit info for the active subject
+  const plan = activeSubject && activeSubject !== "__unassigned__"
+    ? (qTest.subjectPlan || []).find((p) => p.subject === activeSubject)
+    : null;
+  const subjectAdded = subjectQuestions.length;
+  const subjectPlanned = plan?.count || 0;
+  const subjectRemaining = subjectPlanned > 0 ? Math.max(0, subjectPlanned - subjectAdded) : Infinity;
+  const isSubjectFull = subjectPlanned > 0 && subjectRemaining <= 0;
+
+  const allSelected = subjectQuestions.length > 0 && selectedTq.length === subjectQuestions.length;
+  const toggleAll = () => setSelectedTq(allSelected ? [] : subjectQuestions.map((x) => x._id));
+
+  const handleDeleteSelected = async () => {
+    if (!selectedTq.length) return;
+    if (!window.confirm(`Delete ${selectedTq.length} selected question(s)? This cannot be undone.`)) return;
+    await onDeleteSelected(selectedTq);
+    setSelectedTq([]);
+  };
+
+  // SUBJECT LIST VIEW
+  if (hasSubjects && !activeSubject && !tqLoading) {
+    return (
+      <>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Tap a subject to manage its questions</p>
+        <div className="mt-3 space-y-2">
+          {(qTest.subjectPlan || []).map((p, i) => {
+            const added = tq.filter((q) => (q.section || "") === p.subject).length;
+            const planned = p.count || 0;
+            const remaining = Math.max(0, planned - added);
+            const isFull = planned > 0 && remaining === 0;
+            return (
+              <button
+                key={i}
+                onClick={() => { setActiveSubject(p.subject); setSelectedTq([]); setTqSearch(""); }}
+                className="w-full rounded-xl border border-slate-200 p-4 text-left transition hover:border-brand-300 hover:bg-brand-50/50 dark:border-slate-700 dark:hover:border-brand-600 dark:hover:bg-brand-900/20"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-slate-800 dark:text-slate-100">{p.subject}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {planned > 0 ? `${added} / ${planned} questions` : `${added} questions added`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {planned > 0 && (
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${isFull ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>
+                        {isFull ? "Complete" : `${remaining} remaining`}
+                      </span>
+                    )}
+                    <ChevronRight className="h-5 w-5 text-slate-400" />
+                  </div>
+                </div>
+                {planned > 0 && (
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div
+                      className={`h-full rounded-full transition-all ${isFull ? "bg-emerald-500" : "bg-brand-500"}`}
+                      style={{ width: `${Math.min(100, Math.round((added / planned) * 100))}%` }}
+                    />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+          {tq.some((q) => !q.section) && (
+            <button
+              onClick={() => { setActiveSubject("__unassigned__"); setSelectedTq([]); setTqSearch(""); }}
+              className="w-full rounded-xl border border-dashed border-slate-300 p-4 text-left transition hover:border-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:hover:border-slate-500 dark:hover:bg-slate-800/50"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-slate-500 dark:text-slate-400">Unassigned</p>
+                  <p className="mt-1 text-xs text-slate-400">{tq.filter((q) => !q.section).length} questions (no subject)</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-slate-400" />
+              </div>
+            </button>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3 dark:bg-slate-800/60">
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            Total: {tq.length} question{tq.length !== 1 ? "s" : ""}
+            {qTest.subjectPlan.reduce((s, p) => s + (p.count || 0), 0) > 0 && (
+              <> / {qTest.subjectPlan.reduce((s, p) => s + (p.count || 0), 0)} planned</>
+            )}
+          </span>
+          {tq.length > 0 && (
+            <button onClick={onViewAll} className="btn-outline py-1.5 text-xs">
+              <Eye className="h-3.5 w-3.5" /> View All
+            </button>
+          )}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button onClick={onClose} className="btn-outline">Close</button>
+        </div>
+      </>
+    );
+  }
+
+  // QUESTION LIST VIEW (inside a subject, or flat when no subjects defined)
+  return (
+    <>
+      {/* Subject breadcrumb */}
+      {hasSubjects && activeSubject && (
+        <div className="mb-3 flex items-center gap-1 text-sm">
+          <button onClick={() => { setActiveSubject(null); setSelectedTq([]); setTqSearch(""); }} className="rounded px-2 py-1 font-medium text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
+            All Subjects
+          </button>
+          <ChevronRight className="h-4 w-4 text-slate-400" />
+          <span className="rounded px-2 py-1 font-medium text-slate-700 dark:text-slate-200">
+            {activeSubject === "__unassigned__" ? "Unassigned" : activeSubject}
+          </span>
+        </div>
+      )}
+
+      {/* Subject progress bar */}
+      {activeSubject && activeSubject !== "__unassigned__" && plan && subjectPlanned > 0 && (
+        <div className="mb-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{activeSubject}</span>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${isSubjectFull ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>
+              {subjectAdded} / {subjectPlanned} {isSubjectFull ? "(Full)" : `(${subjectRemaining} remaining)`}
+            </span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+            <div
+              className={`h-full rounded-full transition-all ${isSubjectFull ? "bg-emerald-500" : "bg-brand-500"}`}
+              style={{ width: `${Math.min(100, Math.round((subjectAdded / subjectPlanned) * 100))}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        {subjectQuestions.length > 0 && (
+          <>
+            <button onClick={onViewAll} className="btn-outline"><Eye className="h-4 w-4" /> View All</button>
+            <button onClick={() => onCopyCsv(selectedTq.length ? subjectQuestions.filter((q) => selectedTq.includes(q._id)) : subjectQuestions)} className="btn-outline">
+              <Copy className="h-4 w-4" /> Copy CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
+            </button>
+            <button onClick={() => onDownloadCsv(selectedTq.length ? subjectQuestions.filter((q) => selectedTq.includes(q._id)) : subjectQuestions)} className="btn-outline">
+              <Download className="h-4 w-4" /> CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
+            </button>
+            <button onClick={onDuplicates} className="btn-outline"><Files className="h-4 w-4" /> Duplicates</button>
+          </>
+        )}
+        {isSubjectFull ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            Subject full ({subjectPlanned}/{subjectPlanned})
+          </span>
+        ) : (
+          <button onClick={() => onAddQuestion(activeSubject)} className="btn-primary">
+            <Plus className="h-4 w-4" /> Add Question
+            {activeSubject && subjectPlanned > 0 && (
+              <span className="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs">{subjectRemaining} left</span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {tqLoading ? (
+        <Loading label="Loading questions..." />
+      ) : subjectQuestions.length === 0 ? (
+        <EmptyState message={isSubjectFull ? "This subject has reached its question limit." : "No questions yet. Add one, or use Bulk Upload."} />
+      ) : (
+        <>
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+            <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
+            <input value={tqSearch} onChange={(e) => setTqSearch(e.target.value)} placeholder="Search questions..." className="w-full bg-transparent text-sm outline-none" />
+            {tqSearch && <button onClick={() => setTqSearch("")} className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X className="h-4 w-4" /></button>}
+          </div>
+          <div className="mb-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4 accent-brand-600" /> Select all
+            </label>
+            {tqSearch && filteredTq.length !== subjectQuestions.length && <span className="text-sm font-medium text-slate-500">{filteredTq.length} match{filteredTq.length === 1 ? "" : "es"}</span>}
+            {selectedTq.length > 0 && (
+              <>
+                <span className="text-sm text-slate-500">{selectedTq.length} selected</span>
+                <button onClick={handleDeleteSelected} className="btn-outline py-1.5 text-rose-600"><Trash2 className="h-4 w-4" /> Delete</button>
+                <button onClick={() => setSelectedTq([])} className="text-sm text-slate-500 hover:underline">Clear</button>
+              </>
+            )}
+          </div>
+          {tqSearch && filteredTq.length === 0 && (
+            <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700">No matches.</p>
+          )}
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            {filteredTq.map((item, i) => (
+              <div key={item._id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                <div className="flex min-w-0 items-start gap-2">
+                  <input type="checkbox" checked={selectedTq.includes(item._id)} onChange={() => toggleTqSelect(item._id)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium"><span className="text-slate-400">Q{i + 1}.</span> {item.text}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {item._match != null && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{item._match}%</span>}
+                      {item.section && !activeSubject && <Badge variant="accent">{item.section}</Badge>}
+                      <Badge variant={item.type === "matching" ? "accent" : "brand"}>{item.type === "matching" ? "Matching" : item.type || "MCQ"}</Badge>
+                      <Badge variant={item.difficulty}>{item.difficulty}</Badge>
+                      {item.correct !== undefined && <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Ans: {String.fromCharCode(65 + item.correct)}</span>}
+                      {questionDateText(item) && <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Clock className="h-3 w-3" /> {questionDateText(item)}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-shrink-0 gap-1">
+                  <button onClick={() => onViewQuestion(item)} title="View" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"><Eye className="h-4 w-4" /></button>
+                  <button onClick={() => onEditQuestion(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
+                  <button onClick={() => onDeleteQuestion(item._id)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="mt-6 flex justify-end">
+        <button onClick={() => activeSubject ? setActiveSubject(null) : onClose()} className="btn-outline">
+          {activeSubject ? "Back to Subjects" : "Close"}
+        </button>
+      </div>
+    </>
+  );
+}
