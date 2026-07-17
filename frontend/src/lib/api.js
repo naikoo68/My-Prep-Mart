@@ -16,11 +16,16 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Retry on network failures and gateway errors (502/503/504) — these happen
-// while a free-tier host (e.g. Render) is spinning the server back up. The
-// wait schedule spans ~55s to cover a full cold start.
-const RETRY_WAITS = [2000, 4000, 6000, 8000, 12000, 15000, 15000]; // ms between attempts
+// while a free-tier host (e.g. Render) is spinning the server back up. A cold
+// start of a Node app can take well over a minute, so the schedule now spans
+// ~2.5 minutes to ride out even a slow wake-up instead of failing early.
+const RETRY_WAITS = [1500, 3000, 5000, 8000, 10000, 12000, 15000, 15000, 20000, 20000, 25000, 25000]; // ms between attempts (~2.5 min total)
 const MAX_RETRIES = RETRY_WAITS.length;
 const RETRYABLE = [502, 503, 504];
+
+// Optional hook so the UI can show "waking the server up…" progress during a
+// long cold-start retry sequence. Set via api.onRetry.
+let retryListener = null;
 
 async function request(path, { method = "GET", body, auth = true, headers = {} } = {}) {
   const finalHeaders = { ...headers };
@@ -45,6 +50,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
     } catch {
       lastNetworkError = true;
       if (attempt < MAX_RETRIES) {
+        retryListener?.(attempt + 1, MAX_RETRIES); // notify UI: still waking up
         await sleep(RETRY_WAITS[attempt]); // give the server time to wake up
         continue;
       }
@@ -53,6 +59,7 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
 
     // Gateway/cold-start errors → wait and retry
     if (RETRYABLE.includes(res.status) && attempt < MAX_RETRIES) {
+      retryListener?.(attempt + 1, MAX_RETRIES);
       await sleep(RETRY_WAITS[attempt]);
       continue;
     }
@@ -105,4 +112,6 @@ export const api = {
   patch: (path, body, opts) => request(path, { ...opts, method: "PATCH", body }),
   del: (path, opts) => request(path, { ...opts, method: "DELETE" }),
   baseUrl: BASE_URL,
+  // Register a callback fired on each cold-start retry: (attempt, max) => void.
+  onRetry: (fn) => { retryListener = fn; },
 };
