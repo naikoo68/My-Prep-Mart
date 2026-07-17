@@ -8,11 +8,12 @@ import BulkUploadQuestions, { questionsToCsv } from "../../components/admin/Bulk
 import AiGenerate from "../../components/admin/AiGenerate";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
+import AddToTestModal from "../../components/admin/AddToTestModal";
 import { questionDateText, searchQuestions } from "../../lib/questions";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
-import { Sparkles, Files, Globe, Wand2, Loader2 } from "lucide-react";
+import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList } from "lucide-react";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -53,6 +54,7 @@ export default function AdminContent() {
   const [dupScope, setDupScope] = useState({ id: "all", name: "" }); // which subject the duplicate scan targets
   const [saving, setSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question to preview
+  const [addToTestQ, setAddToTestQ] = useState(null); // question being copied into a test
   const [viewAll, setViewAll] = useState(false); // preview all questions
   const [studentView, setStudentView] = useState(true); // View All: defaults to student view (answers hidden)
   const [selected, setSelected] = useState([]); // bulk-selected question ids
@@ -540,8 +542,19 @@ export default function AdminContent() {
               <button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button>
             </div>
             <QuestionView q={viewQ} />
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setAddToTestQ(viewQ)} className="btn-outline">
+                <ClipboardList className="h-4 w-4" /> Add to test
+              </button>
+              <button onClick={() => setViewQ(null)} className="btn-primary">Close</button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Copy the viewed question into a chosen test series */}
+      {addToTestQ && (
+        <AddToTestModal question={addToTestQ} onClose={() => setAddToTestQ(null)} />
       )}
 
       {/* View all questions */}
