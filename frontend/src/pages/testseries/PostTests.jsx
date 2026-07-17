@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { Clock, FileText, Award, Play, Lock, CheckCircle2, Layers, ChevronLeft } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { examService, testService } from "../../services";
@@ -12,6 +12,7 @@ const categories = ["All", "Full-Length", "Subject-wise", "Chapter-wise", "Previ
 export default function PostTests() {
   const { examId, postId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [active, setActive] = useState("All");
   const [post, setPost] = useState(null);
   const [tests, setTests] = useState([]);
@@ -81,8 +82,9 @@ export default function PostTests() {
           {filtered.map((t, i) => (
             <div
               key={t._id}
+              onClick={() => navigate(user ? `/test-series/attempt/${t._id}` : "/login")}
               style={{ animationDelay: `${i * 40}ms` }}
-              className="card-hover flex animate-fade-in-up flex-col p-6 opacity-0"
+              className="card-hover flex animate-fade-in-up cursor-pointer flex-col p-6 opacity-0"
             >
               <div className="flex items-start justify-between">
                 <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
@@ -126,17 +128,17 @@ export default function PostTests() {
 
               {user ? (
                 <div className="mt-5 space-y-2">
-                  <Link to={`/test-series/attempt/${t._id}`} className="btn-primary w-full">
+                  <span className="btn-primary w-full">
                     <Play className="h-4 w-4" /> Start Test
-                  </Link>
-                  <div className="flex justify-center">
+                  </span>
+                  <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                     <PaperExport title={t.name || "Test"} label="Download question paper" paperOnly load={() => testService.get(t._id)} />
                   </div>
                 </div>
               ) : (
-                <Link to="/login" className="btn-outline mt-5 w-full">
+                <span className="btn-outline mt-5 w-full">
                   <Lock className="h-4 w-4" /> Login to Start
-                </Link>
+                </span>
               )}
             </div>
           ))}

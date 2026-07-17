@@ -94,6 +94,15 @@ export default function AdminContent() {
   const openQuiz = (q) => { setQuiz(q); setView("questions"); };
   const goTo = (level) => setView(level);
 
+  // Open the right level for the current view (used for whole-card tapping).
+  const openItem = (item) =>
+    view === "streams" ? openStream(item)
+    : view === "subjects" ? openSubject(item)
+    : view === "topics" ? openTopic(item)
+    : view === "sessions" ? openSession(item)
+    : view === "quizzes" ? openQuiz(item)
+    : undefined;
+
   // ---- Save handlers ----
   const save = async (form) => {
     setSaving(true);
@@ -318,7 +327,11 @@ export default function AdminContent() {
             </p>
           )}
           {shown.map((item, i) => (
-            <div key={item._id} className="card flex items-center justify-between gap-3 p-4">
+            <div
+              key={item._id}
+              onClick={view !== "questions" ? () => openItem(item) : undefined}
+              className={`card flex items-center justify-between gap-3 p-4 ${view !== "questions" ? "cursor-pointer transition hover:border-brand-300 dark:hover:border-brand-600" : ""}`}
+            >
               {view === "questions" && (
                 <input type="checkbox" checked={selected.includes(item._id)} onChange={() => toggleSelect(item._id)} className="h-4 w-4 flex-shrink-0 accent-brand-600" />
               )}
@@ -359,7 +372,7 @@ export default function AdminContent() {
                   </>
                 )}
               </div>
-              <div className="flex flex-shrink-0 items-center gap-1">
+              <div className="flex flex-shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {view === "subjects" && (
                   <button
                     onClick={() => { setDupScope({ id: item._id, name: item.name }); setDupOpen(true); }}

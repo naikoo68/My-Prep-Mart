@@ -47,8 +47,9 @@ export default function TopicSessions() {
       ) : (
         <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {sessions.map((s, i) => (
-            <div
+            <Link
               key={s._id}
+              to={`/quiz/${subjectId}/${topicId}/${s._id}`}
               style={{ animationDelay: `${i * 50}ms` }}
               className="card-hover animate-fade-in-up flex flex-col p-6 opacity-0"
             >
@@ -62,10 +63,10 @@ export default function TopicSessions() {
               <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
                 <HelpCircle className="h-4 w-4" /> {s.quizzes ?? 0} quizzes
               </p>
-              <Link to={`/quiz/${subjectId}/${topicId}/${s._id}`} className="btn-primary mt-auto w-full">
+              <span className="btn-primary mt-auto w-full">
                 <Play className="h-4 w-4" /> View Quizzes
-              </Link>
-            </div>
+              </span>
+            </Link>
           ))}
         </div>
       )}

@@ -340,7 +340,11 @@ export default function AdminTests() {
         ) : (
           <div className="space-y-3">
             {list.map((item) => (
-              <div key={item._id} className="card flex items-center justify-between gap-3 p-4">
+              <div
+                key={item._id}
+                onClick={() => (view === "exams" ? openExam(item) : openPost(item))}
+                className="card flex cursor-pointer items-center justify-between gap-3 p-4 transition hover:border-brand-300 dark:hover:border-brand-600"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
                     {view === "exams" ? <GraduationCap className="h-5 w-5" /> : <Briefcase className="h-5 w-5" />}
@@ -350,7 +354,7 @@ export default function AdminTests() {
                     <p className="text-xs text-slate-400">{view === "exams" ? `${item.posts ?? 0} posts` : `${item.tests ?? 0} tests`}</p>
                   </div>
                 </div>
-                <div className="flex flex-shrink-0 items-center gap-1">
+                <div className="flex flex-shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => (view === "exams" ? openExam(item) : openPost(item))} className="btn-outline py-2">Manage <ChevronRight className="h-4 w-4" /></button>
                   <button onClick={() => openEpEdit(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
                   <button onClick={() => removeEp(item)} title="Delete" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
