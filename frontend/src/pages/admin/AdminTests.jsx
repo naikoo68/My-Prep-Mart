@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download, Sparkles, Globe, Library, Scale, Share2, Check } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, CalendarClock, Users, Search, Upload, HelpCircle, ChevronRight, GraduationCap, Briefcase, Copy, Download, Sparkles, Globe, Library, Scale, Share2 } from "lucide-react";
 import { testService, contentService, examService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -14,6 +14,7 @@ import { Files } from "lucide-react";
 import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
+import ShareTestModal from "../../components/admin/ShareTestModal";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -55,7 +56,6 @@ export default function AdminTests() {
   const [weightTest, setWeightTest] = useState(null); // auto-fill by subject (weightage)
   const [dupTest, setDupTest] = useState(null); // find-duplicates within a test
   const [shareTest, setShareTest] = useState(null); // public share-link modal target
-  const [shareState, setShareState] = useState({ loading: false, publicShare: false, token: "", copied: false });
 
   // Manual subject plan (typed) for the create/edit popup
   const [composition, setComposition] = useState([]);
@@ -136,37 +136,6 @@ export default function AdminTests() {
     } catch (e) {
       setError(e.message);
     }
-  };
-
-  // Public share link: open the modal showing the current state (whether the
-  // link is on and its URL). Reflects the test's stored publicShare/publicToken.
-  const publicUrl = (token) => `${window.location.origin}${window.location.pathname}#/public/test/${token}`;
-  const openShare = (t) => {
-    setShareTest(t);
-    setShareState({ loading: false, publicShare: !!t.publicShare, token: t.publicToken || "", copied: false });
-  };
-  const enablePublic = async () => {
-    setShareState((s) => ({ ...s, loading: true }));
-    try {
-      const res = await testService.togglePublicLink(shareTest._id, true);
-      setShareState({ loading: false, publicShare: res.publicShare, token: res.publicToken, copied: false });
-      setTests((list) => list.map((x) => (x._id === shareTest._id ? { ...x, publicShare: res.publicShare, publicToken: res.publicToken } : x)));
-    } catch (e) { setError(e.message); setShareState((s) => ({ ...s, loading: false })); }
-  };
-  const disablePublic = async () => {
-    setShareState((s) => ({ ...s, loading: true }));
-    try {
-      const res = await testService.togglePublicLink(shareTest._id, false);
-      setShareState((s) => ({ ...s, loading: false, publicShare: res.publicShare, copied: false }));
-      setTests((list) => list.map((x) => (x._id === shareTest._id ? { ...x, publicShare: res.publicShare } : x)));
-    } catch (e) { setError(e.message); setShareState((s) => ({ ...s, loading: false })); }
-  };
-  const copyShareLink = async () => {
-    try {
-      await navigator.clipboard.writeText(publicUrl(shareState.token));
-      setShareState((s) => ({ ...s, copied: true }));
-      setTimeout(() => setShareState((s) => ({ ...s, copied: false })), 2000);
-    } catch { window.prompt("Copy this public link:", publicUrl(shareState.token)); }
   };
 
   const openAccess = async (t) => {
@@ -463,7 +432,7 @@ export default function AdminTests() {
                       <button onClick={() => setDupTest(t)} title="Find duplicate questions in this test" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                         <Files className="h-4 w-4" />
                       </button>
-                      <button onClick={() => openShare(t)} title="Share public link (no login needed)" className={`rounded-lg p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 ${t.publicShare ? "text-emerald-600" : "text-slate-500"}`}>
+                      <button onClick={() => setShareTest(t)} title="Share public link (no login needed)" className={`rounded-lg p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 ${t.publicShare ? "text-emerald-600" : "text-slate-500"}`}>
                         <Share2 className="h-4 w-4" />
                       </button>
                       <button onClick={() => openAccess(t)} title="Manage user access" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/30">
@@ -685,49 +654,14 @@ export default function AdminTests() {
 
       {/* Public share-link modal */}
       {shareTest && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setShareTest(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-lg animate-scale-in card p-6">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-lg font-bold"><Share2 className="h-5 w-5 text-emerald-600" /> Share Public Link</h3>
-              <button onClick={() => setShareTest(null)}><X className="h-5 w-5" /></button>
-            </div>
-            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{shareTest.name}</p>
-
-            {shareState.publicShare && shareState.token ? (
-              <>
-                <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                  Anyone with this link can take the test — <b>no account or login required</b>. Results are graded but not saved to any account.
-                </p>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-                  <input readOnly value={publicUrl(shareState.token)} className="w-full bg-transparent text-sm outline-none" onFocus={(e) => e.target.select()} />
-                  <button onClick={copyShareLink} className="btn-primary flex-shrink-0 py-1.5 text-sm">
-                    {shareState.copied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy</>}
-                  </button>
-                </div>
-                <div className="mt-5 flex items-center justify-between">
-                  <a href={publicUrl(shareState.token)} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-600 hover:underline">Open link ↗</a>
-                  <button onClick={disablePublic} disabled={shareState.loading} className="btn-outline py-1.5 text-sm text-rose-600">
-                    {shareState.loading ? "Turning off…" : "Turn off public link"}
-                  </button>
-                </div>
-                <p className="mt-3 text-xs text-slate-400">Turning it off disables the link immediately. Turning it back on restores the same link.</p>
-              </>
-            ) : (
-              <>
-                <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-                  Generate a public link so anyone can take this test without creating an account or logging in.
-                </p>
-                <button onClick={enablePublic} disabled={shareState.loading} className="btn-primary w-full">
-                  <Share2 className="h-4 w-4" /> {shareState.loading ? "Generating…" : "Create public link"}
-                </button>
-              </>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <button onClick={() => setShareTest(null)} className="btn-outline">Close</button>
-            </div>
-          </div>
-        </div>
+        <ShareTestModal
+          test={shareTest}
+          onClose={() => setShareTest(null)}
+          onUpdated={(patch) => {
+            setShareTest((s) => (s ? { ...s, ...patch } : s));
+            setTests((list) => list.map((x) => (x._id === shareTest._id ? { ...x, ...patch } : x)));
+          }}
+        />
       )}
 
       <BulkUploadQuestions

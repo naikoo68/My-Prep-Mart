@@ -43,6 +43,9 @@ const testSeriesSchema = new mongoose.Schema(
     // access — attempts are graded but not stored against a user).
     publicShare: { type: Boolean, default: false },
     publicToken: { type: String, index: true, default: null },
+    // Optional expiry for the public link. When set and in the past, the link
+    // stops working (null = never expires).
+    publicExpiresAt: { type: Date, default: null },
     // Per-user access control. Test series are PRIVATE by default: a new
     // student sees a test only if visibleToAll is turned on, or they have an
     // explicit access entry (visible:true, optionally time-limited).

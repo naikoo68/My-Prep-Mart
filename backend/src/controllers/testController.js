@@ -339,8 +339,26 @@ export async function togglePublicLink(req, res) {
   } else {
     test.publicShare = false;
   }
+
+  // Optional expiry. An explicit value sets it; null/"" clears it (never
+  // expires). Only touched when the key is present in the request.
+  if ("expiresAt" in (req.body || {})) {
+    if (!req.body.expiresAt) {
+      test.publicExpiresAt = null;
+    } else {
+      const d = new Date(req.body.expiresAt);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid expiry date" });
+      test.publicExpiresAt = d;
+    }
+  }
+
   await test.save();
-  res.json({ publicShare: test.publicShare, publicToken: test.publicToken });
+  res.json({ publicShare: test.publicShare, publicToken: test.publicToken, publicExpiresAt: test.publicExpiresAt });
+}
+
+// Whether a public link is currently usable (shared, and not past its expiry).
+function publicLinkExpired(test) {
+  return test.publicExpiresAt && new Date(test.publicExpiresAt).getTime() < Date.now();
 }
 
 // GET /api/tests/public/:token — fetch a publicly shared test for taking. No
@@ -349,6 +367,7 @@ export async function getPublicTest(req, res) {
   const test = await TestSeries.findOne({ publicToken: req.params.token, publicShare: true })
     .populate({ path: "questions", select: "-correct -explanation -optionExplanations" });
   if (!test) return res.status(404).json({ message: "This test link is invalid or public sharing was turned off." });
+  if (publicLinkExpired(test)) return res.status(403).json({ message: "This public test link has expired." });
   const obj = test.toObject();
   delete obj.access; // never expose the access list
   delete obj.publicToken; // already in the URL; no need to echo
@@ -362,6 +381,7 @@ export async function submitPublicTest(req, res) {
   const { answers = {}, timeTaken = 0 } = req.body;
   const test = await TestSeries.findOne({ publicToken: req.params.token, publicShare: true }).populate("questions");
   if (!test) return res.status(404).json({ message: "This test link is invalid or public sharing was turned off." });
+  if (publicLinkExpired(test)) return res.status(403).json({ message: "This public test link has expired." });
 
   const g = gradeSubmission(test, answers);
   await TestSeries.findByIdAndUpdate(test._id, { $inc: { attempts: 1 } });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Users, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Users, Search, Share2 } from "lucide-react";
 import { practiceService, testService, contentService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -12,6 +12,7 @@ import QuestionView from "../../components/admin/QuestionView";
 import PickFromBank from "../../components/admin/PickFromBank";
 import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
+import ShareTestModal from "../../components/admin/ShareTestModal";
 import { Files } from "lucide-react";
 
 // Subject names from a practice item's typed plan (for "add to subject" tools).
@@ -54,6 +55,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [dupScope, setDupScope] = useState({ params: null, name: "" }); // duplicate-scan target
   const [viewQ, setViewQ] = useState(null);
   const [viewAll, setViewAll] = useState(false);
+  const [shareItem, setShareItem] = useState(null); // public share-link modal target (tests)
   // Which subject a question-adding tool should target (set when opened from a
   // subject inside the manager). "" / "__unassigned__" means no subject.
   const [forceSection, setForceSection] = useState("");
@@ -273,6 +275,9 @@ export default function AdminPractice({ clientMode = false }) {
               {view === "items" && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => openQuestions(item)} className="btn-outline py-1.5 text-xs"><HelpCircle className="h-3.5 w-3.5" /> Questions</button>
+                  {kind === "test" && (
+                    <button onClick={() => setShareItem(item)} className={`btn-outline py-1.5 text-xs ${item.publicShare ? "text-emerald-600" : ""}`} title="Share public link (no login needed)"><Share2 className="h-3.5 w-3.5" /> Share</button>
+                  )}
                   {!clientMode && (
                     <button onClick={() => openAccess(item)} className="btn-outline py-1.5 text-xs"><Users className="h-3.5 w-3.5" /> Visibility</button>
                   )}
@@ -438,6 +443,18 @@ export default function AdminPractice({ clientMode = false }) {
         scopeName={dupScope.name}
         hideSubjectPicker
       />
+
+      {/* Public share-link modal (My Test / Client Test) */}
+      {shareItem && (
+        <ShareTestModal
+          test={shareItem}
+          onClose={() => setShareItem(null)}
+          onUpdated={(patch) => {
+            setShareItem((s) => (s ? { ...s, ...patch } : s));
+            setItems((list) => list.map((x) => (x._id === shareItem._id ? { ...x, ...patch } : x)));
+          }}
+        />
+      )}
 
       {/* Visibility modal */}
       {access && (

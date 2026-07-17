@@ -90,7 +90,7 @@ export const testService = {
   // public share link — no account/login needed (auth header omitted)
   getPublic: (token) => api.get(`/tests/public/${token}`, { auth: false }),
   submitPublic: (token, answers, timeTaken) => api.post(`/tests/public/${token}/submit`, { answers, timeTaken }, { auth: false }),
-  togglePublicLink: (id, enable) => api.patch(`/tests/${id}/public-link`, { enable }),
+  togglePublicLink: (id, enable, expiresAt) => api.patch(`/tests/${id}/public-link`, { enable, ...(expiresAt !== undefined ? { expiresAt } : {}) }),
   // admin
   create: (data) => api.post("/tests", data),
   update: (id, data) => api.put(`/tests/${id}`, data),
