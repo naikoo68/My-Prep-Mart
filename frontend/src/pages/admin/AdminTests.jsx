@@ -75,7 +75,7 @@ export default function AdminTests() {
   const [tqSaving, setTqSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question preview
   const [viewAllQ, setViewAllQ] = useState(false); // all questions preview
-  const [studentView, setStudentView] = useState(false); // View All: admin vs student view
+  const [studentView, setStudentView] = useState(true); // View All: defaults to student view (answers hidden)
 
 
   const openQuestions = async (t) => {

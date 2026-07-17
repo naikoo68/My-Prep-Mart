@@ -54,7 +54,7 @@ export default function AdminContent() {
   const [saving, setSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question to preview
   const [viewAll, setViewAll] = useState(false); // preview all questions
-  const [studentView, setStudentView] = useState(false); // View All: admin vs student view
+  const [studentView, setStudentView] = useState(true); // View All: defaults to student view (answers hidden)
   const [selected, setSelected] = useState([]); // bulk-selected question ids
   const [search, setSearch] = useState(""); // question search query
 
