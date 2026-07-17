@@ -200,7 +200,7 @@ export async function globalSearch(req, res) {
           options: qq.options, correct: qq.correct, optionExplanations: qq.optionExplanations,
           columnA: qq.columnA, columnB: qq.columnB, tableRows: qq.tableRows,
           assertion: qq.assertion, reason: qq.reason, explanation: qq.explanation,
-          difficulty: qq.difficulty, status: qq.status, section: qq.section, createdAt: qq.createdAt,
+          difficulty: qq.difficulty, status: qq.status, section: qq.section, createdAt: qq.createdAt, updatedAt: qq.updatedAt,
           stream: streamName, subject: subjName, topicName: topicTitle, session: sessTitle, quiz: quizTitle,
         };
         results.push(result);

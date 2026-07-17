@@ -16,10 +16,29 @@ export function questionDate(item) {
   return null;
 }
 
-// Formatted upload date/time for a question ("" if unknown).
+// Latest EDIT date of a question — only when it was actually edited after upload.
+// Mongoose keeps a single `updatedAt` that it overwrites on every save, so this
+// is always just the MOST RECENT edit (editing 5 times shows only the last one).
+// A ~5s threshold ignores the sub-second gap Mongo records at creation time, so
+// a never-edited question reports no update date.
+export function questionUpdatedDate(item) {
+  if (!item?.updatedAt) return null;
+  const upd = new Date(item.updatedAt);
+  if (isNaN(upd.getTime())) return null;
+  const created = questionDate(item);
+  if (created && upd.getTime() - created.getTime() <= 5000) return null; // not edited since upload
+  return upd;
+}
+
+// Formatted upload date/time for a question ("" if unknown), with the latest
+// update time appended when the question has been edited since upload. The
+// upload time always stays visible.
 export const questionDateText = (item) => {
-  const d = questionDate(item);
-  return d ? fmtDateTime(d) : "";
+  const created = questionDate(item);
+  if (!created) return "";
+  const updated = questionUpdatedDate(item);
+  const base = `Uploaded ${fmtDateTime(created)}`;
+  return updated ? `${base} · Updated ${fmtDateTime(updated)}` : base;
 };
 
 // Every piece of searchable text for a question, covering ALL question types:

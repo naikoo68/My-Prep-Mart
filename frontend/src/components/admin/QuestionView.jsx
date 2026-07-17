@@ -26,7 +26,7 @@ export default function QuestionView({ q, index }) {
         )}
         {questionDateText(q) && (
           <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-            <Clock className="h-3 w-3" /> Uploaded {questionDateText(q)}
+            <Clock className="h-3 w-3" /> {questionDateText(q)}
           </span>
         )}
       </div>
