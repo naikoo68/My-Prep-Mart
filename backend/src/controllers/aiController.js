@@ -523,12 +523,26 @@ async function callProvider({ key, baseUrl, model, userPrompt, maxTokens, system
   // the next configured key. Only "busy" server errors are retried on this key.
   const TRANSIENT = [500, 502, 503, 504];
   const WAITS = [1500, 3000, 6000, 9000];
+  const TIMEOUT_MS = 90000; // hard cap per call so a hung provider can't stall the whole job
   for (let attempt = 0; ; attempt++) {
-    const resp = await fetch(`${(baseUrl || "https://api.tokenlab.sh/v1").replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify(payload),
-    });
+    let resp;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      resp = await fetch(`${(baseUrl || "https://api.tokenlab.sh/v1").replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      // Network error or a timeout (abort). Retry a few times on this key, then
+      // give up so the worker moves on to another chunk/key instead of hanging.
+      if (attempt < WAITS.length) { await new Promise((r) => setTimeout(r, WAITS[attempt])); continue; }
+      return { ok: false, status: 0, detail: err?.name === "AbortError" ? "Request timed out." : (err?.message || "Network error.") };
+    }
+    clearTimeout(timer);
     if (resp.ok) {
       const data = await resp.json();
       return { ok: true, content: extractContent(data), tokens: data?.usage?.total_tokens || 0 };
@@ -621,6 +635,14 @@ async function runGenerationJob(id, ctx) {
   const job = genJobs.get(id);
   const deadline = Date.now() + 8 * 60 * 1000; // overall time budget
 
+  // Spread the work across ALL keys at once. With many keys and a modest target
+  // (e.g. 40 questions across 20 keys) each key produces a SMALL batch (~2) so
+  // every key runs simultaneously, instead of a few keys doing big 12-question
+  // chunks while the rest sit idle. Smaller batches also finish faster and mean
+  // one slow/failing key can't stall the whole run.
+  const workerCount = Math.max(1, workers?.length || 1);
+  const chunkSize = Math.max(1, Math.min(CHUNK_SIZE, Math.ceil(target / workerCount)));
+
   // Signature of a question (normalised stem) used to guarantee NO duplicates —
   // neither within this batch nor against questions from an earlier batch
   // (the caller passes their stems in `avoid`). This is the reliable no-repeat
@@ -650,7 +672,7 @@ async function runGenerationJob(id, ctx) {
     return false;
   };
   const MAX_QUOTA_WAITS = 6; // per key: how many per-minute 429s we ride out before retiring it
-  const MAX_ATTEMPTS = Math.ceil(target / CHUNK_SIZE) + 12 + (workers?.length || 1) * MAX_QUOTA_WAITS; // global safety cap
+  const MAX_ATTEMPTS = Math.ceil(target / chunkSize) + 12 + workerCount * MAX_QUOTA_WAITS; // global safety cap
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const collected = [];
@@ -666,13 +688,13 @@ async function runGenerationJob(id, ctx) {
     if (plan) {
       const rem = planGaps(plan, collected, reserved);
       if (!rem.length) return null;
-      const chunk = takeChunk(rem, CHUNK_SIZE);
+      const chunk = takeChunk(rem, chunkSize);
       for (const b of chunk) reserved[`${b.type}|${b.difficulty}`] = (reserved[`${b.type}|${b.difficulty}`] || 0) + b.count;
       return { chunk, n: chunk.reduce((s, b) => s + b.count, 0) };
     }
     const remaining = target - collected.length - reservedCount;
     if (remaining <= 0) return null;
-    const n = Math.min(CHUNK_SIZE, remaining);
+    const n = Math.min(chunkSize, remaining);
     reservedCount += n;
     return { n };
   };

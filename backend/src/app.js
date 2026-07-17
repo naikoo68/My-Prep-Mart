@@ -95,8 +95,8 @@ app.get("/api/health", (req, res) =>
     // Bump this whenever backend code changes so we can verify Render actually
     // redeployed: open /api/health and check `version`. If it's older than the
     // latest, the backend did NOT deploy and server-side fixes aren't live.
-    version: "2026-07-17-currency-dollar-fix-v6",
-    features: ["ai-scope", "ai-key-owner", "extract-batches", "matching-labels", "documents", "extract-remaining", "notes-gen", "latex-json-repair", "no-currency-dollar"],
+    version: "2026-07-17-parallel-gen-v7",
+    features: ["ai-scope", "ai-key-owner", "extract-batches", "matching-labels", "documents", "extract-remaining", "notes-gen", "latex-json-repair", "no-currency-dollar", "parallel-small-chunks", "provider-timeout"],
     mailConfigured: isMailConfigured(),
     uploadConfigured: isCloudinaryConfigured(),
   })
