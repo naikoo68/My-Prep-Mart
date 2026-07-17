@@ -395,7 +395,7 @@ export default function AdminPractice({ clientMode = false }) {
             )}
             <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
               {tq.map((it, i) => (
-                <div key={it._id} className="relative rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                <div key={(studentView ? "s" : "a") + it._id} className="relative rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                   {!studentView && (
                     <div className="absolute right-2 top-2 z-10 flex gap-1">
                       <button onClick={() => { setViewAll(false); setTqModal({ mode: "edit", data: it }); }} title="Edit" className="rounded-lg bg-white p-1.5 text-brand-600 shadow hover:bg-brand-50 dark:bg-slate-800 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
