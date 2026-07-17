@@ -377,11 +377,11 @@ export default function AdminTests() {
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {tests.map((t) => (
-                <tr key={t._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                <tr key={t._id} onClick={() => openQuestions(t)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td className="px-5 py-3">
-                    <button onClick={() => openQuestions(t)} title="Open test — view, edit, add or remove questions" className="text-left font-medium text-brand-600 hover:underline dark:text-brand-400">
+                    <span className="text-left font-medium text-brand-600 dark:text-brand-400">
                       {t.name}
-                    </button>
+                    </span>
                   </td>
                   <td className="px-5 py-3">{t.category}</td>
                   <td className="px-5 py-3">{t.questionCount}</td>
@@ -395,7 +395,7 @@ export default function AdminTests() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => togglePublish(t)}
