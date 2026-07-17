@@ -30,6 +30,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
   // generate: type × difficulty count matrix (same as the AI Generator).
   // matrix[typeId] = { Easy, Medium, Hard }. Default: 5 medium MCQs.
   const [matrix, setMatrix] = useState({ mcq: { Easy: 0, Medium: 5, Hard: 0 } });
+  const [notes, setNotes] = useState(""); // optional strong instructions (both tabs)
   const [status, setStatus] = useState(null);
   const [model, setModel] = useState("");
   const [section, setSection] = useState(defaultSection || sections[0] || "");
@@ -187,6 +188,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         model: model || undefined,
         mode: isClient ? source : undefined,
         have: append ? preview : undefined,
+        notes: notes.trim() || undefined,
       });
       if (!jobId) throw new Error("Could not start the import.");
       if (questionsDetected) setDetected(questionsDetected);
@@ -268,6 +270,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         source: text.trim() || undefined,
         url: url.trim() || undefined,
         plan,
+        notes: notes.trim() || undefined,
         model: model || undefined,
         mode: isClient ? source : undefined,
       });
@@ -515,6 +518,21 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
             {text.trim() && (
               <p className="mt-1 text-xs text-slate-400">{text.trim().length.toLocaleString()} characters ready.</p>
             )}
+
+            {/* Strong optional instructions — followed exactly for both modes. */}
+            <label className="mb-1 mt-3 block text-sm font-semibold">Instructions (optional — followed strictly)</label>
+            <textarea
+              rows={2}
+              className="input resize-y"
+              placeholder={task === "generate"
+                ? 'e.g. "Only about the French Revolution", "Questions in Hindi", "Focus on dates & numbers", "Keep language simple"'
+                : 'e.g. "Only keep General Knowledge questions", "Translate questions to English", "Fix obvious OCR typos"'}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Leave empty to use defaults. Anything you write here is treated as a top-priority instruction the AI must follow.
+            </p>
 
             {task === "generate" && (
               <div className="mt-3">

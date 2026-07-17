@@ -244,7 +244,11 @@ function buildUserPrompt({ topic, count, difficulty, types, notes, plan, avoid, 
     );
   }
 
-  if (notes) lines.push(`Extra instructions: ${notes}`);
+  if (notes) {
+    lines.push(
+      `======================\nMANDATORY USER INSTRUCTIONS (HIGHEST PRIORITY)\nThe following instructions come directly from the user and OVERRIDE any conflicting guidance above. Follow them EXACTLY and COMPLETELY for every single question. If they specify a language, style, focus, sub-topics to include or avoid, difficulty emphasis, format, or anything else, obey them without exception:\n${notes}\n======================`
+    );
+  }
   lines.push(
     `For every question write a rich, complete "explanation" that includes all relevant facts (dates, years, historical context, definitions, formulas with calculations, named laws/principles) — not a single line. Whenever a term/place/concept/option has a local or alternative name (common name, vernacular/Hindi/regional name, synonym, abbreviation's full form, or old name), add it in brackets. Write the explanation across several short lines — each point on its own line, not one paragraph. Vary which option (A/B/C/D) is correct across the set.`
   );
@@ -260,6 +264,9 @@ function buildUserPrompt({ topic, count, difficulty, types, notes, plan, avoid, 
   if (source) {
     lines.push(`SOURCE MATERIAL (base the questions on this):\n${source}`);
   }
+  // Reinforce the user's instructions right before the model answers (recency)
+  // so they are followed reliably.
+  if (notes) lines.push(`REMINDER — apply the MANDATORY USER INSTRUCTIONS above to EVERY question: ${notes}`);
   lines.push(`Return ONLY the JSON object {"questions":[...]}.`);
   return lines.join("\n");
 }
@@ -1051,9 +1058,13 @@ async function fetchPageText(url) {
   }
 }
 
-function buildExtractPrompt(sourceText) {
+function buildExtractPrompt(sourceText, notes = "") {
+  const instr = String(notes || "").trim();
   return [
     'You extract questions from an exam/quiz document. Return ONLY JSON: {"questions":[...]}.',
+    ...(instr
+      ? ["", `======================\nMANDATORY USER INSTRUCTIONS (HIGHEST PRIORITY)\nThe user gave these instructions — follow them EXACTLY while extracting (e.g. only keep questions on a given topic, translate/clean wording, fix obvious OCR typos, set difficulty, etc.). They OVERRIDE any conflicting rule below:\n${instr}\n======================`]
+      : []),
     "",
     "MOST IMPORTANT: capture EVERY question in the material below — do not skip, summarise or merge any. If the text contains 40 questions, return all 40, in their original order.",
     "Equally important: do NOT invent questions, do NOT repeat/duplicate a question, and do NOT split one question (or its sub-parts/options) into multiple questions. The number you return must NOT exceed the number actually present in the text.",
@@ -1089,7 +1100,7 @@ function buildExtractPrompt(sourceText) {
 // de-dup set with them so a re-run collects ONLY the ones that were missed —
 // this powers the "Extract remaining" button (e.g. got 68 of 80, fetch the
 // other 12 without duplicates).
-async function runExtractionJob(id, { endpoints, model, chunks, owner = null, have = [] }) {
+async function runExtractionJob(id, { endpoints, model, chunks, owner = null, have = [], notes = "" }) {
   const job = genJobs.get(id);
   const deadline = Date.now() + 8 * 60 * 1000; // 8-minute budget (smaller chunks = more calls)
   const collected = [];
@@ -1110,7 +1121,7 @@ async function runExtractionJob(id, { endpoints, model, chunks, owner = null, ha
       const r = await callWithFallback({
         endpoints,
         model,
-        userPrompt: buildExtractPrompt(chunks[c]),
+        userPrompt: buildExtractPrompt(chunks[c], notes),
         maxTokens: 16000,
         owner,
       });
@@ -1212,8 +1223,10 @@ export async function extractQuestions(req, res) {
   // Already-extracted questions from a previous pass (for "Extract remaining") —
   // they seed the de-dup set so only the missed questions come back. Capped.
   const have = Array.isArray(req.body?.have) ? req.body.have.slice(0, 500) : [];
+  // Optional strong user instructions to steer extraction.
+  const notes = String(req.body?.notes || "").trim();
 
-  runExtractionJob(id, { endpoints, model, chunks, owner: scope.owner, have });
+  runExtractionJob(id, { endpoints, model, chunks, owner: scope.owner, have, notes });
   res.json({ jobId: id, chunks: chunks.length, questionsDetected: detected?.count || 0, model });
 }
 

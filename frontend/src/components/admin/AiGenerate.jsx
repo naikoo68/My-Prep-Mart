@@ -293,13 +293,17 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
               Up to 50 per batch (generated in the background in smaller groups).
             </p>
 
-            <label className="mb-1 mt-3 block text-sm font-semibold">Extra instructions (optional)</label>
-            <input
-              className="input"
-              placeholder='e.g. "Focus on numerical problems" or "Keep language simple"'
+            <label className="mb-1 mt-3 block text-sm font-semibold">Instructions (optional — followed strictly)</label>
+            <textarea
+              rows={2}
+              className="input resize-y"
+              placeholder='e.g. "Questions in Hindi", "Focus on numerical problems", "Only NCERT Class 10 syllabus", "Keep language simple"'
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
+            <p className="mt-1 text-xs text-slate-400">
+              Leave empty to use defaults. Anything you write here is treated as a top-priority instruction the AI must follow for every question.
+            </p>
 
             <button
               type="button"
