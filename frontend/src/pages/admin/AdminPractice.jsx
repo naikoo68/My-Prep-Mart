@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Users, Search, Share2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Users, Search, Share2, ClipboardList } from "lucide-react";
 import { practiceService, testService, contentService, aiService } from "../../services";
 import { loadNav, saveNav } from "../../lib/navState";
 import Badge from "../../components/ui/Badge";
@@ -10,6 +10,7 @@ import AiGenerate from "../../components/admin/AiGenerate";
 import AiImport from "../../components/admin/AiImport";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import QuestionView from "../../components/admin/QuestionView";
+import AddToTestModal from "../../components/admin/AddToTestModal";
 import PickFromBank from "../../components/admin/PickFromBank";
 import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
@@ -59,6 +60,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ params: null, name: "" }); // duplicate-scan target
   const [viewQ, setViewQ] = useState(null);
+  const [addToTestQ, setAddToTestQ] = useState(null); // question being copied into a test
   const [viewAll, setViewAll] = useState(false);
   const [studentView, setStudentView] = useState(true); // View All: defaults to student view (answers hidden)
   const [shareItem, setShareItem] = useState(null); // public share-link modal target (tests)
@@ -369,9 +371,17 @@ export default function AdminPractice({ clientMode = false }) {
           <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-2xl animate-scale-in card p-6">
             <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-bold">Question</h3><button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button></div>
             <QuestionView q={viewQ} />
-            <div className="mt-6 flex justify-end"><button onClick={() => setViewQ(null)} className="btn-outline">Close</button></div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setAddToTestQ(viewQ)} className="btn-outline"><ClipboardList className="h-4 w-4" /> Add to test</button>
+              <button onClick={() => setViewQ(null)} className="btn-outline">Close</button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Copy the viewed question into a chosen test */}
+      {addToTestQ && (
+        <AddToTestModal question={addToTestQ} clientMode={clientMode} onClose={() => setAddToTestQ(null)} />
       )}
 
       {/* View all questions (with edit/delete per question) */}
@@ -396,12 +406,15 @@ export default function AdminPractice({ clientMode = false }) {
             <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
               {tq.map((it, i) => (
                 <div key={(studentView ? "s" : "a") + it._id} className="relative rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  {!studentView && (
-                    <div className="absolute right-2 top-2 z-10 flex gap-1">
-                      <button onClick={() => { setViewAll(false); setTqModal({ mode: "edit", data: it }); }} title="Edit" className="rounded-lg bg-white p-1.5 text-brand-600 shadow hover:bg-brand-50 dark:bg-slate-800 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => removeTq(it._id)} title="Delete" className="rounded-lg bg-white p-1.5 text-rose-600 shadow hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  )}
+                  <div className="absolute right-2 top-2 z-10 flex gap-1">
+                    <button onClick={() => setAddToTestQ(it)} title="Add to test" className="rounded-lg bg-white p-1.5 text-emerald-600 shadow hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-900/30"><ClipboardList className="h-4 w-4" /></button>
+                    {!studentView && (
+                      <>
+                        <button onClick={() => { setViewAll(false); setTqModal({ mode: "edit", data: it }); }} title="Edit" className="rounded-lg bg-white p-1.5 text-brand-600 shadow hover:bg-brand-50 dark:bg-slate-800 dark:hover:bg-brand-900/30"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => removeTq(it._id)} title="Delete" className="rounded-lg bg-white p-1.5 text-rose-600 shadow hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-900/30"><Trash2 className="h-4 w-4" /></button>
+                      </>
+                    )}
+                  </div>
                   <QuestionView q={it} index={i + 1} studentView={studentView} />
                 </div>
               ))}

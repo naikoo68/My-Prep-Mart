@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Loader2, CheckCircle2, ClipboardList } from "lucide-react";
-import { testService } from "../../services";
+import { testService, practiceService } from "../../services";
 import { Loading, ErrorState } from "../ui/AsyncState";
 
 // Question fields copied when adding an existing question into a test series.
@@ -12,11 +12,12 @@ const COPY_FIELDS = [
   "image", "status",
 ];
 
-// Lets an admin add ONE existing question (e.g. from the quiz bank) into a Test
-// Series. Shows a picker of the admin's tests; when the chosen test defines
-// per-subject sections, an optional section can be selected (the backend also
-// enforces the per-subject limit).
-export default function AddToTestModal({ question, onClose }) {
+// Lets an admin (or a self-service client) add ONE existing question into a
+// test. Shows a picker of the available tests — for the admin those are the
+// platform Test Series, for a client their OWN "My Test" items (`clientMode`).
+// When the chosen test defines per-subject sections an optional section can be
+// picked (the backend also enforces the per-subject limit).
+export default function AddToTestModal({ question, onClose, clientMode = false }) {
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -27,12 +28,15 @@ export default function AddToTestModal({ question, onClose }) {
 
   useEffect(() => {
     setLoading(true);
-    testService
-      .adminList()
-      .then((rows) => setTests(Array.isArray(rows) ? rows : []))
+    // Admin → platform Test Series; client → their own My Test items.
+    const loader = clientMode
+      ? practiceService.myItems().then((rows) => (Array.isArray(rows) ? rows : []).filter((r) => r.kind === "test"))
+      : testService.adminList().then((rows) => (Array.isArray(rows) ? rows : []));
+    loader
+      .then((rows) => setTests(rows))
       .catch((e) => setError(e.message || "Could not load tests."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [clientMode]);
 
   const selected = tests.find((t) => t._id === testId);
   const sections = Array.isArray(selected?.subjectPlan)
@@ -77,11 +81,11 @@ export default function AddToTestModal({ question, onClose }) {
         ) : error && !tests.length ? (
           <ErrorState message={error} />
         ) : !tests.length ? (
-          <p className="py-6 text-center text-sm text-slate-500">No test series found. Create a test first, then add questions to it.</p>
+          <p className="py-6 text-center text-sm text-slate-500">No {clientMode ? "tests" : "test series"} found. Create a test first, then add questions to it.</p>
         ) : (
           <div className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">Test series</label>
+              <label className="mb-1 block text-sm font-medium">{clientMode ? "My Test" : "Test series"}</label>
               <select className="input" value={testId} onChange={(e) => { setTestId(e.target.value); setSection(""); }}>
                 <option value="">— Select a test —</option>
                 {tests.map((t) => (
