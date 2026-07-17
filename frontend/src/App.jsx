@@ -130,6 +130,12 @@ const router = createHashRouter([
     element: <ProtectedRoute>{S(TestAttempt)}</ProtectedRoute>,
   },
 
+  // Public shared test — NO login required (anyone with the link can take it)
+  {
+    path: "/public/test/:token",
+    element: S(TestAttempt),
+  },
+
   // Client "My Practice" workspace (separate shell, own content only)
   {
     path: "/client",

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 import TestSeries from "../models/TestSeries.js";
 import Question from "../models/Question.js";
 import Attempt from "../models/Attempt.js";
@@ -236,17 +237,14 @@ export async function deleteTest(req, res) {
   res.json({ message: "Test deleted" });
 }
 
-// POST /api/tests/:id/submit — grade a submitted test attempt
-export async function submitTest(req, res) {
-  const { answers = {}, timeTaken = 0 } = req.body; // answers: { questionId: optionIndex }
-  const test = await TestSeries.findById(req.params.id).populate("questions");
-  if (!test) return res.status(404).json({ message: "Test not found" });
-
+// Grade a populated test against submitted answers. Returns the stored
+// `responses` array + a rich `review` (with correct answers) and summary stats.
+// Shared by the authenticated submit and the public (no-login) submit.
+function gradeSubmission(test, answers = {}) {
   const total = test.questions.length;
   let correct = 0;
   let attempted = 0;
 
-  // Build both the stored responses and a rich review for the result screen.
   const responses = [];
   const review = test.questions.map((q) => {
     const raw = answers[q._id];
@@ -281,17 +279,28 @@ export async function submitTest(req, res) {
   const score = Math.round(correct * perQuestion - incorrect * (test.negativeMarking || 0));
   const percentage = total ? Math.round((correct / total) * 100) : 0;
 
+  return { responses, review, total, attempted, skipped, correct, incorrect, score, percentage };
+}
+
+// POST /api/tests/:id/submit — grade a submitted test attempt (logged-in user)
+export async function submitTest(req, res) {
+  const { answers = {}, timeTaken = 0 } = req.body; // answers: { questionId: optionIndex }
+  const test = await TestSeries.findById(req.params.id).populate("questions");
+  if (!test) return res.status(404).json({ message: "Test not found" });
+
+  const g = gradeSubmission(test, answers);
+
   const attempt = await Attempt.create({
     user: req.user._id,
     type: "test",
     testSeries: test._id,
-    responses,
-    total,
-    attempted,
-    correct,
-    incorrect,
-    score,
-    percentage,
+    responses: g.responses,
+    total: g.total,
+    attempted: g.attempted,
+    correct: g.correct,
+    incorrect: g.incorrect,
+    score: g.score,
+    percentage: g.percentage,
     timeTaken,
   });
 
@@ -299,16 +308,74 @@ export async function submitTest(req, res) {
   // Return the graded summary + full review (with correct answers) for the UI.
   res.status(201).json({
     _id: attempt._id,
-    total,
-    attempted,
-    skipped,
-    correct,
-    incorrect,
-    score,
+    total: g.total,
+    attempted: g.attempted,
+    skipped: g.skipped,
+    correct: g.correct,
+    incorrect: g.incorrect,
+    score: g.score,
     maxScore: test.marks,
-    percentage,
+    percentage: g.percentage,
     timeTaken,
-    review,
+    review: g.review,
+  });
+}
+
+/* ---------------- Public share link (no account required) ---------------- */
+
+// PATCH /api/tests/:id/public-link  (admin or owning client) — turn the public
+// share link on/off. Enabling generates a token (once) that never changes so an
+// existing link keeps working; disabling just flips the flag (token is kept so
+// re-enabling restores the same link).
+export async function togglePublicLink(req, res) {
+  const test = await TestSeries.findById(req.params.id);
+  if (!test) return res.status(404).json({ message: "Test not found" });
+  if (!canManage(req, test)) return res.status(403).json({ message: "Not your content" });
+
+  const enable = req.body?.enable !== false; // default: enable
+  if (enable) {
+    test.publicShare = true;
+    if (!test.publicToken) test.publicToken = crypto.randomBytes(12).toString("hex");
+  } else {
+    test.publicShare = false;
+  }
+  await test.save();
+  res.json({ publicShare: test.publicShare, publicToken: test.publicToken });
+}
+
+// GET /api/tests/public/:token — fetch a publicly shared test for taking. No
+// auth required. Correct answers/explanations are stripped (like getTest).
+export async function getPublicTest(req, res) {
+  const test = await TestSeries.findOne({ publicToken: req.params.token, publicShare: true })
+    .populate({ path: "questions", select: "-correct -explanation -optionExplanations" });
+  if (!test) return res.status(404).json({ message: "This test link is invalid or public sharing was turned off." });
+  const obj = test.toObject();
+  delete obj.access; // never expose the access list
+  delete obj.publicToken; // already in the URL; no need to echo
+  res.json(obj);
+}
+
+// POST /api/tests/public/:token/submit — grade a public (guest) attempt. No
+// account required, so nothing is stored against a user — the graded result is
+// simply returned. The test's attempt counter is still incremented.
+export async function submitPublicTest(req, res) {
+  const { answers = {}, timeTaken = 0 } = req.body;
+  const test = await TestSeries.findOne({ publicToken: req.params.token, publicShare: true }).populate("questions");
+  if (!test) return res.status(404).json({ message: "This test link is invalid or public sharing was turned off." });
+
+  const g = gradeSubmission(test, answers);
+  await TestSeries.findByIdAndUpdate(test._id, { $inc: { attempts: 1 } });
+  res.status(201).json({
+    total: g.total,
+    attempted: g.attempted,
+    skipped: g.skipped,
+    correct: g.correct,
+    incorrect: g.incorrect,
+    score: g.score,
+    maxScore: test.marks,
+    percentage: g.percentage,
+    timeTaken,
+    review: g.review,
   });
 }
 

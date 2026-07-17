@@ -38,6 +38,11 @@ const testSeriesSchema = new mongoose.Schema(
     schedule: { type: Date },
     status: { type: String, enum: ["draft", "scheduled", "published"], default: "draft" },
     attempts: { type: Number, default: 0 },
+    // Public share link. When publicShare is on, ANYONE with the publicToken
+    // URL can take this test without an account or login (read-only public
+    // access — attempts are graded but not stored against a user).
+    publicShare: { type: Boolean, default: false },
+    publicToken: { type: String, index: true, default: null },
     // Per-user access control. Test series are PRIVATE by default: a new
     // student sees a test only if visibleToAll is turned on, or they have an
     // explicit access entry (visible:true, optionally time-limited).

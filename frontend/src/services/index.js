@@ -87,6 +87,10 @@ export const testService = {
   adminList: (postId) => api.get(`/tests/admin/all${postId ? `?post=${postId}` : ""}`),
   get: (id) => api.get(`/tests/${id}`),
   submit: (id, answers, timeTaken) => api.post(`/tests/${id}/submit`, { answers, timeTaken }),
+  // public share link — no account/login needed (auth header omitted)
+  getPublic: (token) => api.get(`/tests/public/${token}`, { auth: false }),
+  submitPublic: (token, answers, timeTaken) => api.post(`/tests/public/${token}/submit`, { answers, timeTaken }, { auth: false }),
+  togglePublicLink: (id, enable) => api.patch(`/tests/${id}/public-link`, { enable }),
   // admin
   create: (data) => api.post("/tests", data),
   update: (id, data) => api.put(`/tests/${id}`, data),

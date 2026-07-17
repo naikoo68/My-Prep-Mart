@@ -19,6 +19,9 @@ import {
   moveTestSeries,
   toQuiz,
   quizToMyQuiz,
+  togglePublicLink,
+  getPublicTest,
+  submitPublicTest,
 } from "../controllers/testController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -28,8 +31,14 @@ const admin = [protect, authorize("admin")];
 // controllers guard each record by owner.
 const manage = [protect, authorize("admin", "client")];
 
+// Public share link — NO auth. Declared first so "public" is never captured by
+// the "/:id" param routes below.
+router.get("/public/:token", getPublicTest);
+router.post("/public/:token/submit", submitPublicTest);
+
 router.get("/", optionalAuth, listTests);
 router.get("/admin/all", ...admin, listAllTests);
+router.patch("/:id/public-link", ...manage, togglePublicLink); // enable/disable public sharing
 router.get("/:id/access", ...admin, getTestAccess);
 router.put("/:id/access", ...admin, updateTestAccess);
 router.get("/:id/questions", ...manage, getTestQuestions);

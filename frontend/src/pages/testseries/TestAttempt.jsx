@@ -52,7 +52,8 @@ const STATUS = {
 };
 
 export default function TestAttempt() {
-  const { testId } = useParams();
+  const { testId, token } = useParams();
+  const isPublic = !!token; // opened via /public/test/:token — no login needed
   const navigate = useNavigate();
   const { user } = useAuth();
   const isClient = user?.role === "client"; // clients return to their own workspace
@@ -81,8 +82,7 @@ export default function TestAttempt() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    testService
-      .get(testId)
+    (isPublic ? testService.getPublic(token) : testService.get(testId))
       .then((t) => {
         setTest(t);
         // Order questions by the test's subject plan so each subject's questions
@@ -99,7 +99,7 @@ export default function TestAttempt() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [testId, seed]);
+  }, [testId, token, isPublic, seed]);
 
   useEffect(load, [load]);
 
@@ -113,7 +113,9 @@ export default function TestAttempt() {
     });
     const elapsed = (test?.duration || 0) * 60 - remaining;
     try {
-      const res = await testService.submit(testId, byId, elapsed);
+      const res = isPublic
+        ? await testService.submitPublic(token, byId, elapsed)
+        : await testService.submit(testId, byId, elapsed);
       setResult(res);
     } catch (e) {
       setError(e.message || "Could not submit the test.");
@@ -121,7 +123,7 @@ export default function TestAttempt() {
       setSubmitting(false);
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     }
-  }, [answers, questions, test, remaining, testId, submitting, result]);
+  }, [answers, questions, test, remaining, testId, token, isPublic, submitting, result]);
 
   // Countdown with auto-submit at 0.
   useEffect(() => {
@@ -143,7 +145,7 @@ export default function TestAttempt() {
   // Leave the test. After submitting, just go back; mid-test, confirm first
   // (answers are not saved) and drop out of fullscreen.
   const exitTest = () => {
-    const dest = isClient ? "/client" : "/test-series";
+    const dest = isPublic ? "/" : isClient ? "/client" : "/test-series";
     if (!result && !window.confirm("Exit the test? Your answers won't be submitted or saved.")) return;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     navigate(dest);
@@ -279,8 +281,10 @@ export default function TestAttempt() {
                 </button>
               )}
               {review.length > 0 && <PaperExport title={test.name || "Test"} questions={review} />}
-              <FeedbackButton context="test" source={testSource} label="Give Feedback" className="btn-outline" />
-              {isClient ? (
+              {!isPublic && <FeedbackButton context="test" source={testSource} label="Give Feedback" className="btn-outline" />}
+              {isPublic ? (
+                <button onClick={() => navigate("/")} className="btn-primary">Done</button>
+              ) : isClient ? (
                 <button onClick={() => navigate("/client")} className="btn-primary">Back to My Practice</button>
               ) : (
                 <>
@@ -329,16 +333,18 @@ export default function TestAttempt() {
                       }`}>
                         {r.chosen === null ? "Skipped" : r.isCorrect ? "Correct" : "Wrong"}
                       </span>
-                      <FeedbackButton
-                        context="question"
-                        label="Feedback"
-                        questionNumber={i + 1}
-                        questionText={r.text}
-                        source={testSource}
-                        details={`Correct: ${optLetter(r.correct)}${r.chosen != null ? `, Chosen: ${optLetter(r.chosen)}` : ", Skipped"}`}
-                        question={r}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
-                      />
+                      {!isPublic && (
+                        <FeedbackButton
+                          context="question"
+                          label="Feedback"
+                          questionNumber={i + 1}
+                          questionText={r.text}
+                          source={testSource}
+                          details={`Correct: ${optLetter(r.correct)}${r.chosen != null ? `, Chosen: ${optLetter(r.chosen)}` : ", Skipped"}`}
+                          question={r}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400"
+                        />
+                      )}
                     </div>
                   </div>
                   {(r._match != null || questionDateText(r)) && (
@@ -469,7 +475,7 @@ export default function TestAttempt() {
               )}
             </span>
             <div className="flex items-center gap-4">
-              <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={testSource} question={{ ...q, chosen: answers[current] ?? null }} label="Feedback" />
+              {!isPublic && <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={testSource} question={{ ...q, chosen: answers[current] ?? null }} label="Feedback" />}
               <span className="text-sm text-slate-500">
                 +{(test.marks / questions.length).toFixed(1)} / -{test.negativeMarking ?? 0.25}
               </span>
