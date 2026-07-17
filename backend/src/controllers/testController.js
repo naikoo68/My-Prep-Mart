@@ -136,28 +136,6 @@ export async function listAllTests(req, res) {
   res.json(tests.map((t) => ({ ...t, questionCount: t.questions?.length || 0, questions: undefined })));
 }
 
-// Randomise the ORDER OF SUBJECTS (sections) on every test attempt so the same
-// subject (e.g. General Knowledge) doesn't always come first. Questions keep
-// their relative order WITHIN each subject, and grading is unaffected because
-// answers are keyed by question id. No-op when the test has 0/1 subjects.
-function reshuffleSubjectOrder(questions = []) {
-  const groups = new Map();
-  const order = [];
-  for (const q of questions) {
-    const key = (q.section || "").trim();
-    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
-    groups.get(key).push(q);
-  }
-  if (order.length <= 1) return questions; // single/no subject → nothing to reshuffle
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
-  }
-  const out = [];
-  for (const key of order) out.push(...groups.get(key));
-  return out;
-}
-
 // GET /api/tests/:id  (questions without correct answers for taking the test)
 export async function getTest(req, res) {
   const test = await TestSeries.findById(req.params.id)
@@ -173,8 +151,7 @@ export async function getTest(req, res) {
   }
   const obj = test.toObject();
   delete obj.access; // hide access list from students
-  obj.questions = reshuffleSubjectOrder(obj.questions); // fresh subject order each attempt
-  res.json(obj);
+  res.json(obj); // subject/question/option shuffling is done per-attempt on the client
 }
 
 // GET /api/tests/:id/access  (admin) — all users with their access to this test
@@ -285,6 +262,7 @@ function gradeSubmission(test, answers = {}) {
     return {
       _id: q._id,
       type: q.type,
+      section: q.section, // so the review can mirror the attempt's subject order
       text: q.text,
       image: q.image,
       options: q.options,
@@ -399,7 +377,6 @@ export async function getPublicTest(req, res) {
   const obj = test.toObject();
   delete obj.access; // never expose the access list
   delete obj.publicToken; // already in the URL; no need to echo
-  obj.questions = reshuffleSubjectOrder(obj.questions); // fresh subject order each attempt
   res.json(obj);
 }
 

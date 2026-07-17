@@ -29,7 +29,7 @@ import Watermark from "../../components/ui/Watermark";
 import FeedbackButton from "../../components/ui/FeedbackButton";
 import { useZoom } from "../../context/ZoomContext";
 import { questionDateText, searchQuestions } from "../../lib/questions";
-import { shuffleAll, shuffleQuestion, toOriginalIndex, toDisplayIndex, makeSeed } from "../../lib/shuffleOptions";
+import { shuffleAll, shuffleQuestion, shuffleQuestionOrder, toOriginalIndex, toDisplayIndex, makeSeed } from "../../lib/shuffleOptions";
 import PaperExport from "../../components/admin/PaperExport";
 
 // Roman numerals for Column B labels (I, II, III, IV…)
@@ -85,16 +85,11 @@ export default function TestAttempt() {
     (isPublic ? testService.getPublic(token) : testService.get(testId))
       .then((t) => {
         setTest(t);
-        // Order questions by the test's subject plan so each subject's questions
-        // sit together (English block, then Economics block, …), unassigned last.
-        const plan = (t.subjectPlan || []).map((p) => p.subject);
-        const rank = (sec) => {
-          const i = plan.indexOf(sec || "");
-          if (i !== -1) return i;
-          return sec ? plan.length : plan.length + 1; // unknown section, then unassigned
-        };
-        const qs = [...(t.questions || [])].sort((a, b) => rank(a.section) - rank(b.section));
-        setQuestions(shuffleAll(qs, seed)); // reshuffle options for this attempt
+        // Keep each subject's questions together, but reshuffle the SUBJECT
+        // order and the questions WITHIN each subject for this attempt (so GK
+        // isn't always first), then reshuffle each question's OPTIONS too.
+        const qs = shuffleQuestionOrder(t.questions || [], seed);
+        setQuestions(shuffleAll(qs, seed));
         setRemaining((t.duration || 30) * 60);
       })
       .catch((e) => setError(e.message))
@@ -250,7 +245,7 @@ export default function TestAttempt() {
     // Searchable review list — keep the original index for numbering. Re-apply
     // the SAME per-attempt shuffle so the review shows options in the exact
     // order the user saw during the test (correct & chosen remapped to match).
-    const reviewEntries = review.map((r, i) => {
+    const reviewEntries = shuffleQuestionOrder(review, seed).map((r, i) => {
       const s = shuffleQuestion(r, seed);
       return { ...s, chosen: toDisplayIndex(s, r.chosen), _idx: i };
     });

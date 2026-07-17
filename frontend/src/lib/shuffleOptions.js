@@ -69,6 +69,43 @@ export function shuffleAll(list, seed) {
   return (Array.isArray(list) ? list : []).map((q) => shuffleQuestion(q, seed));
 }
 
+// Reorder a test's questions for one attempt: keep each SUBJECT (section)
+// together, but randomise (a) the ORDER of the subjects and (b) the order of
+// questions WITHIN each subject — so "General Knowledge" isn't always first and
+// its questions aren't always in the same sequence. Deterministic given `seed`
+// (a re-render keeps the same order). Questions with no section are grouped last.
+export function shuffleQuestionOrder(questions, seed) {
+  const list = Array.isArray(questions) ? questions : [];
+  const groups = new Map();
+  const order = [];
+  for (const q of list) {
+    const key = (q?.section || "").trim();
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key).push(q);
+  }
+  // Randomise the subject order (named sections only); keep unsectioned last.
+  const named = order.filter((k) => k !== "");
+  const gRand = mulberry32(((seed >>> 0) ^ 0x9e3779b9) >>> 0);
+  for (let i = named.length - 1; i > 0; i--) {
+    const j = Math.floor(gRand() * (i + 1));
+    [named[i], named[j]] = [named[j], named[i]];
+  }
+  const finalOrder = groups.has("") ? [...named, ""] : named;
+
+  // Randomise questions within each subject (seeded per section).
+  const out = [];
+  for (const key of finalOrder) {
+    const arr = groups.get(key).slice();
+    const qRand = mulberry32(((seed >>> 0) ^ strHash("section:" + key)) >>> 0);
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(qRand() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    out.push(...arr);
+  }
+  return out;
+}
+
 // Map a chosen DISPLAY option index back to the ORIGINAL stored index (for the
 // server). No-op when the question wasn't shuffled.
 export function toOriginalIndex(q, displayIdx) {
