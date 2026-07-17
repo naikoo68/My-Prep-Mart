@@ -16,6 +16,7 @@ const Q_TYPES = [
   { id: "assertion", label: "Assertion & Reason" },
   { id: "table", label: "Table" },
 ];
+const DIFFS = ["Easy", "Medium", "Hard"];
 
 // Import questions from a saved document, a PDF (text or OCR), a web page, or
 // pasted text. The AI extracts the questions present (it doesn't invent them);
@@ -26,9 +27,9 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
   const canChooseSource = isClient && user?.aiAllowInbuilt !== false && user?.aiAllowSelf !== false;
   const [source, setSource] = useState(user?.aiMode === "self" ? "self" : "inbuilt"); // "inbuilt" | "self"
   const [task, setTask] = useState("extract"); // "extract" (pull existing) | "generate" (make new from source)
-  const [count, setCount] = useState(10); // generate: how many questions
-  const [qTypes, setQTypes] = useState(["mcq"]); // generate: which question types
-  const [difficulty, setDifficulty] = useState(""); // generate: "" = mix
+  // generate: type × difficulty count matrix (same as the AI Generator).
+  // matrix[typeId] = { Easy, Medium, Hard }. Default: 5 medium MCQs.
+  const [matrix, setMatrix] = useState({ mcq: { Easy: 0, Medium: 5, Hard: 0 } });
   const [status, setStatus] = useState(null);
   const [model, setModel] = useState("");
   const [section, setSection] = useState(defaultSection || sections[0] || "");
@@ -235,28 +236,38 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     }
   };
 
-  const toggleType = (id) =>
-    setQTypes((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+  // ---- Generate: type × difficulty matrix (mirrors the AI Generator) ----
+  const setCell = (type, diff, val) => {
+    const n = Math.max(0, Math.min(50, parseInt(val, 10) || 0));
+    setMatrix((m) => ({ ...m, [type]: { ...(m[type] || {}), [diff]: n } }));
+  };
+  const rowTotal = (type) => DIFFS.reduce((s, d) => s + (matrix[type]?.[d] || 0), 0);
+  // Flatten the matrix into [{ type, difficulty, count }] entries with count>0.
+  const buildPlan = () =>
+    Q_TYPES.flatMap((t) =>
+      DIFFS.map((d) => ({ type: t.id, difficulty: d, count: matrix[t.id]?.[d] || 0 })).filter((e) => e.count > 0)
+    );
+  const genTotal = Q_TYPES.reduce((s, t) => s + rowTotal(t.id), 0);
 
-  // GENERATE mode: make NEW questions FROM the link/paragraph — the chosen count
-  // and question types. Uses the same background job + polling as extraction.
+  // GENERATE mode: make NEW questions FROM the link/paragraph, using the exact
+  // per-type × per-difficulty counts. Uses the same background job + polling.
   const runGenerate = async () => {
     if (!url.trim() && !text.trim()) {
       setMsg("Add a link or paste a paragraph to generate questions from.");
       return;
     }
-    if (!qTypes.length) { setMsg("Pick at least one question type."); return; }
+    const plan = buildPlan();
+    if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
+    if (genTotal > 50) { setMsg("Please keep the total to 50 questions or fewer per run."); return; }
     setBusy(true);
     setPreview([]);
     setDetected(0);
-    setMsg("Generating questions from your source…");
+    setMsg(`Generating ${genTotal} question(s) from your source…`);
     try {
       const { jobId, requested } = await aiService.generate({
         source: text.trim() || undefined,
         url: url.trim() || undefined,
-        count: Number(count) || 10,
-        types: qTypes,
-        difficulty: difficulty || undefined,
+        plan,
         model: model || undefined,
         mode: isClient ? source : undefined,
       });
@@ -506,32 +517,54 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
             )}
 
             {task === "generate" && (
-              <div className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <span className="mb-1 block font-semibold">How many questions</span>
-                    <input type="number" min={1} max={50} value={count} onChange={(e) => setCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))} className="input !py-1.5 !text-sm" />
-                    <span className="mt-1 block text-xs text-slate-400">Up to 50 per run.</span>
-                  </label>
-                  <label className="text-sm">
-                    <span className="mb-1 block font-semibold">Difficulty</span>
-                    <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="input !py-1.5 !text-sm">
-                      <option value="">Mixed</option>
-                      <option value="Easy">Easy</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Hard">Hard</option>
-                    </select>
-                  </label>
+              <div className="mt-3">
+                {/* How many of each type × difficulty. Total = sum of all cells. */}
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-semibold">Questions by type &amp; difficulty</label>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${genTotal > 50 ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
+                    Total: {genTotal}
+                  </span>
                 </div>
-                <p className="mb-1 mt-3 text-sm font-semibold">Which question types</p>
-                <div className="flex flex-wrap gap-2">
-                  {Q_TYPES.map((t) => (
-                    <button key={t.id} type="button" onClick={() => toggleType(t.id)}
-                      className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${qTypes.includes(t.id) ? "border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300" : "border-slate-200 text-slate-600 hover:border-brand-400 dark:border-slate-700 dark:text-slate-300"}`}>
-                      {t.label}
-                    </button>
-                  ))}
+                <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="w-full min-w-[380px] text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
+                        <th className="px-3 py-2 text-left font-semibold">Type</th>
+                        {DIFFS.map((d) => (
+                          <th key={d} className="px-2 py-2 text-center font-semibold">{d}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Q_TYPES.map((t) => (
+                        <tr key={t.id} className={`border-b border-slate-100 last:border-0 dark:border-slate-800 ${rowTotal(t.id) > 0 ? "bg-brand-50/40 dark:bg-brand-900/10" : ""}`}>
+                          <td className="px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200">{t.label}</td>
+                          {DIFFS.map((d) => (
+                            <td key={d} className="px-2 py-1.5 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={50}
+                                value={matrix[t.id]?.[d] || 0}
+                                onChange={(e) => setCell(t.id, d, e.target.value)}
+                                className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm dark:border-slate-700 dark:bg-slate-900"
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+                <div className={`mt-2 flex items-center justify-between rounded-xl border px-4 py-2.5 ${genTotal > 50 ? "border-rose-300 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-900/20" : "border-brand-200 bg-brand-50 dark:border-brand-900/40 dark:bg-brand-900/20"}`}>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Total questions</span>
+                  <span className={`text-lg font-extrabold tabular-nums ${genTotal > 50 ? "text-rose-600 dark:text-rose-400" : "text-brand-600 dark:text-brand-300"}`}>
+                    {genTotal} <span className="text-xs font-medium text-slate-400">/ 50</span>
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  Set a count in any cell — e.g. 3 Easy MCQs + 2 Medium Matching. Leave cells at 0 to skip. Up to 50 per run.
+                </p>
               </div>
             )}
 
