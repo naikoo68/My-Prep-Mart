@@ -323,11 +323,52 @@ export async function login(req, res) {
   res.json({ user: sanitize(user), token: generateToken(user._id) });
 }
 
-// POST /api/auth/google  (verify Google token client-side or via google-auth-library)
+// POST /api/auth/google  — verify the Google ID token server-side before trusting it.
+// The client sends { credential } (the raw Google ID token from Sign In with Google).
+// We verify it against Google's public tokeninfo endpoint (or certs) so a forged
+// request cannot log in as any email. Falls back to the old { email, name, googleId }
+// body ONLY in development for testing convenience.
 export async function googleLogin(req, res) {
-  const { name, googleId, avatar } = req.body;
-  const email = norm(req.body.email);
-  if (!email) return res.status(400).json({ message: "Missing Google profile" });
+  const { credential } = req.body;
+
+  let email, name, avatar, googleId;
+
+  if (credential) {
+    // Verify the ID token with Google's tokeninfo endpoint.
+    try {
+      const gRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+      if (!gRes.ok) {
+        return res.status(401).json({ message: "Google token verification failed. Please try again." });
+      }
+      const payload = await gRes.json();
+      // Verify the audience matches our app's client ID (prevents tokens issued
+      // for other apps from being accepted).
+      const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+      if (expectedClientId && payload.aud !== expectedClientId) {
+        return res.status(401).json({ message: "Google token audience mismatch." });
+      }
+      if (!payload.email || payload.email_verified === "false") {
+        return res.status(401).json({ message: "Google account email not verified." });
+      }
+      email = norm(payload.email);
+      name = payload.name || payload.given_name || "";
+      avatar = payload.picture || "";
+      googleId = payload.sub;
+    } catch (err) {
+      console.error("[google-login] Token verification error:", err.message);
+      return res.status(500).json({ message: "Failed to verify Google token." });
+    }
+  } else if (process.env.NODE_ENV !== "production") {
+    // Legacy path: trust raw profile data ONLY in development/testing.
+    email = norm(req.body.email);
+    name = req.body.name || "";
+    avatar = req.body.avatar || "";
+    googleId = req.body.googleId || "";
+    if (!email) return res.status(400).json({ message: "Missing Google profile" });
+  } else {
+    return res.status(400).json({ message: "Google credential token is required." });
+  }
+
   let user = await User.findOne({ email });
   if (!user) {
     user = await User.create({ name, email, googleId, avatar, isEmailVerified: true });
@@ -336,14 +377,11 @@ export async function googleLogin(req, res) {
   res.json({ user: sanitize(user), token: generateToken(user._id) });
 }
 
-// GET /api/auth/verify-email/:token
+// GET /api/auth/verify-email/:token — DEPRECATED: the app uses OTP-based
+// verification (verifyOtp) instead. This route is kept only for backwards
+// compatibility with very old email links, if any were ever sent.
 export async function verifyEmail(req, res) {
-  const user = await User.findOne({ emailVerificationToken: req.params.token });
-  if (!user) return res.status(400).json({ message: "Invalid or expired token" });
-  user.isEmailVerified = true;
-  user.emailVerificationToken = undefined;
-  await user.save();
-  res.json({ message: "Email verified successfully" });
+  res.status(410).json({ message: "This verification method is no longer supported. Please use the OTP code sent to your email." });
 }
 
 // POST /api/auth/forgot-password
@@ -354,7 +392,19 @@ export async function forgotPassword(req, res) {
     user.resetPasswordToken = crypto.randomBytes(20).toString("hex");
     user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
     await user.save();
-    // In production: email the reset link with resetPasswordToken.
+
+    // Send the reset link via email. CLIENT_URL is the frontend base URL.
+    const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+    const resetLink = `${clientUrl}/#/reset-password/${user.resetPasswordToken}`;
+    await sendMail({
+      to: user.email,
+      subject: "Reset your My Study Guide password",
+      text: `Hi ${user.name || "there"},\n\nYou requested a password reset. Click this link to set a new password (expires in 1 hour):\n\n${resetLink}\n\nIf you didn't request this, ignore this email — your password won't change.`,
+      html: `<p>Hi ${user.name || "there"},</p>
+             <p>You requested a password reset. Click the link below to set a new password (expires in 1 hour):</p>
+             <p><a href="${resetLink}" style="font-size:16px;font-weight:600">${resetLink}</a></p>
+             <p>If you didn't request this, ignore this email — your password won't change.</p>`,
+    }).catch((err) => console.error("[forgotPassword] email send failed:", err?.message));
   }
   res.json({ message: "If the account exists, a reset link has been sent." });
 }

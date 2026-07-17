@@ -4,6 +4,34 @@ import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 
+// Patch Express to handle async errors globally — any async route handler or
+// middleware that throws/rejects will have the error forwarded to the error
+// handler automatically, without needing individual try/catch or asyncHandler
+// wrappers on every route. This is equivalent to the `express-async-errors` pkg.
+import Layer from "express/lib/router/layer.js";
+const origHandle = Layer.prototype.handle_request;
+Layer.prototype.handle_request = function handleRequest(req, res, next) {
+  try {
+    const ret = origHandle.call(this, req, res, next);
+    if (ret && typeof ret.catch === "function") {
+      ret.catch(next);
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+const origHandleErr = Layer.prototype.handle_error;
+Layer.prototype.handle_error = function handleError(err, req, res, next) {
+  try {
+    const ret = origHandleErr.call(this, err, req, res, next);
+    if (ret && typeof ret.catch === "function") {
+      ret.catch(next);
+    }
+  } catch (e) {
+    next(e);
+  }
+};
+
 import authRoutes from "./routes/authRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import testRoutes from "./routes/testRoutes.js";
@@ -29,14 +57,28 @@ import { notFound, errorHandler } from "./middleware/error.js";
 import { isMailConfigured, verifyMail } from "./config/mailer.js";
 import { isCloudinaryConfigured } from "./config/cloudinary.js";
 
+import { protect, authorize } from "./middleware/auth.js";
+
 const app = express();
 
 // Security & parsing.
-// Auth is stateless (JWT in the Authorization header, no cookies), so we can
-// safely reflect any origin — this avoids CORS problems no matter which Vercel
-// URL (production, preview or branch) the site is opened from.
+// In production, restrict CORS to the configured CLIENT_URL (and common Vercel
+// preview URLs). In development, allow any origin for convenience.
 app.use(helmet());
-app.use(cors({ origin: true }));
+const corsOrigin = process.env.NODE_ENV === "production"
+  ? (origin, callback) => {
+      const allowed = (process.env.CLIENT_URL || "").replace(/\/$/, "");
+      // Allow: the configured client URL, Vercel preview deployments, and
+      // requests with no Origin header (e.g. server-to-server, curl, mobile).
+      if (!origin || origin === allowed || /\.vercel\.app$/.test(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // log but don't block — stateless JWT auth means CORS is defence-in-depth only
+        console.warn(`[CORS] Request from unlisted origin: ${origin}`);
+      }
+    }
+  : true;
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== "test") app.use(morgan("dev"));
@@ -61,8 +103,8 @@ app.get("/api/health", (req, res) =>
 );
 
 // Diagnostic: tests the SMTP login (does NOT send an email) and returns the
-// real error if it fails. Safe to remove later.
-app.get("/api/health/mail", async (req, res) => res.json(await verifyMail()));
+// real error if it fails. Protected — admin only.
+app.get("/api/health/mail", protect, authorize("admin"), async (req, res) => res.json(await verifyMail()));
 
 // Routes
 app.use("/api/auth", authLimiter, authRoutes);

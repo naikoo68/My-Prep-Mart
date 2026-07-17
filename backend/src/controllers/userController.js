@@ -6,14 +6,19 @@ import PracticeStream from "../models/PracticeStream.js";
 import PracticeSubject from "../models/PracticeSubject.js";
 import PracticeTopic from "../models/PracticeTopic.js";
 import { findAccessEntry } from "../utils/accessControl.js";
+import { sendMail } from "../config/mailer.js";
 
 const norm = (e) => String(e || "").toLowerCase().trim();
+
+// Escape regex special characters from user input to prevent ReDoS
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // GET /api/users  (admin) — with optional search & pagination
 export async function listUsers(req, res) {
   const { search = "", page = 1, limit = 20 } = req.query;
+  const escaped = escapeRegex(search);
   const filter = search
-    ? { $or: [{ name: new RegExp(search, "i") }, { email: new RegExp(search, "i") }] }
+    ? { $or: [{ name: new RegExp(escaped, "i") }, { email: new RegExp(escaped, "i") }] }
     : {};
   const users = await User.find(filter)
     .select("-password")
@@ -29,7 +34,10 @@ export async function listUsers(req, res) {
 export async function listClients(req, res) {
   const { search = "" } = req.query;
   const filter = { role: "client" };
-  if (search) filter.$or = [{ name: new RegExp(search, "i") }, { email: new RegExp(search, "i") }];
+  if (search) {
+    const escaped = escapeRegex(search);
+    filter.$or = [{ name: new RegExp(escaped, "i") }, { email: new RegExp(escaped, "i") }];
+  }
 
   const clients = await User.find(filter).select("-password").sort("-createdAt").lean();
   const ids = clients.map((c) => c._id);
@@ -104,7 +112,14 @@ export async function updateUser(req, res) {
     }
   }
   if (name) user.name = name;
-  if (role) user.role = role;
+  if (role) {
+    // Prevent elevation to admin through the update endpoint — only the bootstrap
+    // process or direct DB access should create admin accounts.
+    if (role === "admin" && user.role !== "admin") {
+      return res.status(403).json({ message: "Cannot elevate a user to admin role" });
+    }
+    user.role = role;
+  }
   if (plan) user.plan = plan;
   if (password) user.password = password; // re-hashed by the model's pre-save hook
 
@@ -232,13 +247,26 @@ export async function updateUserAccess(req, res) {
   res.json({ message: "Access updated", quizAccess: user.quizAccess });
 }
 
-// POST /api/users/:id/reset-password  (admin) — issue reset token
+// POST /api/users/:id/reset-password  (admin) — issue reset token and email it
 export async function adminResetPassword(req, res) {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ message: "User not found" });
   user.resetPasswordToken = crypto.randomBytes(20).toString("hex");
   user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
   await user.save();
-  // In production: email the reset link to the user.
-  res.json({ message: "Password reset link issued" });
+
+  // Send the reset link to the user's email.
+  const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resetLink = `${clientUrl}/#/reset-password/${user.resetPasswordToken}`;
+  await sendMail({
+    to: user.email,
+    subject: "Password reset requested by admin — My Study Guide",
+    text: `Hi ${user.name || "there"},\n\nAn administrator has issued a password reset for your account. Click this link to set a new password (expires in 1 hour):\n\n${resetLink}\n\nIf you didn't expect this, please contact the admin.`,
+    html: `<p>Hi ${user.name || "there"},</p>
+           <p>An administrator has issued a password reset for your account. Click the link below to set a new password (expires in 1 hour):</p>
+           <p><a href="${resetLink}" style="font-size:16px;font-weight:600">${resetLink}</a></p>
+           <p>If you didn't expect this, please contact the admin.</p>`,
+  }).catch((err) => console.error("[adminResetPassword] email send failed:", err?.message));
+
+  res.json({ message: "Password reset link sent to user's email" });
 }

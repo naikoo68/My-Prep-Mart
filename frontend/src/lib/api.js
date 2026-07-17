@@ -64,6 +64,20 @@ async function request(path, { method = "GET", body, auth = true, headers = {} }
       const err = new Error(message);
       err.status = res.status;
       err.data = data; // full response body (e.g. { needsVerification, email })
+
+      // If the server says the token is invalid/expired, clear local auth state
+      // and redirect to login so the user isn't stuck in a broken session.
+      if (res.status === 401 && auth) {
+        clearToken();
+        localStorage.removeItem("mpm-user");
+        // Only redirect if we're not already on an auth page (avoid loops).
+        const hash = window.location.hash || "";
+        const isAuthPage = /^\#?\/(login|register|forgot-password|admin\/login|client\/register)/.test(hash);
+        if (!isAuthPage) {
+          window.location.hash = "#/login";
+        }
+      }
+
       throw err;
     }
     return data;

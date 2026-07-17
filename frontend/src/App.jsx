@@ -11,6 +11,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ZoomProvider } from "./context/ZoomContext";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import ContentProtection from "./components/ui/ContentProtection";
+import ErrorBoundary from "./components/ui/ErrorBoundary";
 import Layout from "./components/layout/Layout";
 import { Loading } from "./components/ui/AsyncState";
 
@@ -181,7 +182,9 @@ export default function App() {
         <AuthProvider>
           <ZoomProvider>
             <ContentProtection />
-            <RouterProvider router={router} />
+            <ErrorBoundary>
+              <RouterProvider router={router} />
+            </ErrorBoundary>
           </ZoomProvider>
         </AuthProvider>
       </SettingsProvider>

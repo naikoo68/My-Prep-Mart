@@ -571,7 +571,8 @@ function remainingPlan(planArr, collected) {
    Big batches (up to 100 questions) are produced across many small provider
    calls. Doing that inside one HTTP request risks proxy timeouts, so instead we
    run the work in the background and let the client poll for progress.
-   NOTE: jobs are kept in memory — fine for a single backend instance. */
+   NOTE: jobs are kept in memory — fine for a single backend instance. They are
+   automatically cleaned up after 20 minutes via a periodic interval. */
 const genJobs = new Map(); // id -> { status, questions, requested, error, model, updatedAt }
 
 function newJobId() {
@@ -581,6 +582,11 @@ function cleanupJobs() {
   const cutoff = Date.now() - 20 * 60 * 1000; // 20 min
   for (const [id, j] of genJobs) if (j.updatedAt < cutoff) genJobs.delete(id);
 }
+
+// Periodically clean up expired jobs every 5 minutes to prevent unbounded
+// memory growth (previously cleanup only ran when a new job was started).
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+setInterval(cleanupJobs, CLEANUP_INTERVAL_MS).unref();
 
 // Buckets still short — accounting for BOTH what's collected AND what parallel
 // workers currently have reserved (in-flight), so two keys never target the
