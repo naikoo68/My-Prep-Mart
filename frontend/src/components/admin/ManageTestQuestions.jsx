@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Eye, X, Search, ChevronRight, Copy, Download, Clock, Upload, Sparkles, Globe, Library } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, X, Search, ChevronRight, Copy, Download, Clock, Upload, Sparkles, Globe, Library, Wand2 } from "lucide-react";
 import { Files } from "lucide-react";
 import { questionDateText, searchQuestions } from "../../lib/questions";
 import Badge from "../ui/Badge";
@@ -31,6 +31,7 @@ export default function ManageTestQuestions({
   onAiGenerate,
   onImportWeb,
   onPickFromBank,
+  onExtendExplanations,
 }) {
   const [activeSubject, setActiveSubject] = useState(null);
   const [selectedTq, setSelectedTq] = useState([]);
@@ -135,11 +136,18 @@ export default function ManageTestQuestions({
               <> / {qTest.subjectPlan.reduce((s, p) => s + (p.count || 0), 0)} planned</>
             )}
           </span>
-          {tq.length > 0 && (
-            <button onClick={onViewAll} className="btn-outline py-1.5 text-xs">
-              <Eye className="h-3.5 w-3.5" /> View All
-            </button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {tq.length > 0 && onExtendExplanations && (
+              <button onClick={onExtendExplanations} className="btn-outline py-1.5 text-xs text-brand-600" title="AI: make all explanations detailed for this test">
+                <Wand2 className="h-3.5 w-3.5" /> Extend Explanations
+              </button>
+            )}
+            {tq.length > 0 && (
+              <button onClick={onViewAll} className="btn-outline py-1.5 text-xs">
+                <Eye className="h-3.5 w-3.5" /> View All
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4 flex justify-end">
@@ -195,6 +203,9 @@ export default function ManageTestQuestions({
               <Download className="h-4 w-4" /> CSV{selectedTq.length ? ` (${selectedTq.length})` : ""}
             </button>
             <button onClick={onDuplicates} className="btn-outline"><Files className="h-4 w-4" /> Duplicates</button>
+            {onExtendExplanations && (
+              <button onClick={onExtendExplanations} className="btn-outline text-brand-600" title="AI: make all explanations detailed for this test"><Wand2 className="h-4 w-4" /> Extend Explanations</button>
+            )}
           </>
         )}
       </div>

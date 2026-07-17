@@ -13,6 +13,7 @@ import PickFromBank from "../../components/admin/PickFromBank";
 import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
 import ShareTestModal from "../../components/admin/ShareTestModal";
+import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import { Files } from "lucide-react";
 
 // Subject names from a practice item's typed plan (for "add to subject" tools).
@@ -56,6 +57,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [viewQ, setViewQ] = useState(null);
   const [viewAll, setViewAll] = useState(false);
   const [shareItem, setShareItem] = useState(null); // public share-link modal target (tests)
+  const [extendItem, setExtendItem] = useState(null); // AI extend-explanations target
   // Which subject a question-adding tool should target (set when opened from a
   // subject inside the manager). "" / "__unassigned__" means no subject.
   const [forceSection, setForceSection] = useState("");
@@ -324,6 +326,7 @@ export default function AdminPractice({ clientMode = false }) {
               onAiGenerate={(subject) => { setForceSection(subject); setAiOpen(true); }}
               onImportWeb={(subject) => { setForceSection(subject); setImportOpen(true); }}
               onPickFromBank={(subject) => { setForceSection(subject); setBankOpen(true); }}
+              onExtendExplanations={() => setExtendItem(qItem)}
             />
           </div>
         </div>
@@ -455,6 +458,14 @@ export default function AdminPractice({ clientMode = false }) {
           }}
         />
       )}
+
+      <ExtendExplanationsModal
+        open={!!extendItem}
+        target={{ testSeries: extendItem?._id }}
+        title={`Extend all explanations${extendItem ? ` — ${extendItem.name}` : ""}`}
+        onClose={() => setExtendItem(null)}
+        onDone={() => { if (qItem) reloadTq(); }}
+      />
 
       {/* Visibility modal */}
       {access && (

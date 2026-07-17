@@ -1,5 +1,7 @@
 // AI Question Generator — talks to any OpenAI-compatible provider
 import AiKey from "../models/AiKey.js";
+import Question from "../models/Question.js";
+import { ownerFilter } from "../utils/ownership.js";
 
 // Works with any OpenAI-compatible provider (Gemini, TokenLab, OpenAI, Groq,
 // DeepSeek, …). Keys come from TWO places, both used together:
@@ -1290,6 +1292,160 @@ export async function generateNotes(req, res) {
     .trim();
   if (!text) return res.status(502).json({ message: "The AI did not return any notes. Try a more specific topic." });
   res.json({ notes: text, model: chosen.model });
+}
+
+
+/* --------------------- Extend explanations (bulk, in place) ---------------------
+   Rewrites the explanation + per-option notes of EVERY question in one quiz or
+   test — without changing the question, options or correct answer. Runs as a
+   background job (reuses genJobs/jobStatus) so big quizzes don't time out. */
+
+const EXTEND_SYSTEM_PROMPT = `You are an expert exam teacher. You are given ONE existing exam question (its stem, options, the CORRECT option, its type, and any columns/assertion/reason). Your ONLY job is to write a richer, clearer EXPLANATION and per-option notes for it.
+Output ONLY valid JSON of the exact shape: {"explanation":"...","optionExplanations":["","","",""]}. No markdown, no commentary.
+- "explanation": a THOROUGH, self-contained explanation of the correct answer (3-6 sentences). Include EVERY relevant supporting fact — exact dates/years, historical background, definitions, full formulas WITH the actual calculation, laws/theorems/principles by name, and cause-and-effect reasoning. Teach the concept as if to someone seeing it for the first time; never just restate the option. FORMAT: break it into MULTIPLE short lines — each sentence or distinct point on its OWN line, NOT one long paragraph.
+- LOCAL / ALTERNATIVE NAMES: whenever a term/place/concept/person/disease/chemical/unit/law has a common local or vernacular (Hindi/regional) name, synonym, abbreviation's full form or old name, add it in brackets right after it.
+- "optionExplanations": array of EXACTLY 4 strings, one per option, saying why each option is right or wrong (for wrong ones name the exact misconception/fact). Leave the CORRECT option's entry an empty string "".
+STRICT: Do NOT change the question, the options, or which answer is correct. Do NOT invent a different question. Return ONLY the JSON object.`;
+
+const EXT_LETTERS = ["A", "B", "C", "D"];
+const toRomanLite = (n) => { const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]]; let r = ""; for (const [s, v] of m) while (n >= v) { r += s; n -= v; } return r; };
+
+function buildExtendPrompt(q, notes) {
+  const lines = [`Question type: ${q.type || "mcq"}`];
+  if (q.text) lines.push(`Question: ${q.text}`);
+  if (q.assertion) lines.push(`Assertion (A): ${q.assertion}`);
+  if (q.reason) lines.push(`Reason (R): ${q.reason}`);
+  if (Array.isArray(q.columnA) && q.columnA.length) lines.push(`Column A: ${q.columnA.map((x, i) => `${i + 1}. ${x}`).join("  |  ")}`);
+  if (Array.isArray(q.columnB) && q.columnB.length) lines.push(`Column B: ${q.columnB.map((x, i) => `${toRomanLite(i + 1)}. ${x}`).join("  |  ")}`);
+  const opts = Array.isArray(q.options) ? q.options : [];
+  if (opts.length) lines.push(`Options:\n${opts.map((o, i) => `${EXT_LETTERS[i] || i}) ${o}`).join("\n")}`);
+  if (typeof q.correct === "number" && opts[q.correct] != null) lines.push(`CORRECT answer: ${EXT_LETTERS[q.correct]}) ${opts[q.correct]}`);
+  if (q.explanation) lines.push(`Existing explanation (improve and expand it — keep anything correct): ${q.explanation}`);
+  if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
+  lines.push(`Write a THOROUGH "explanation" and 4 "optionExplanations" for THIS question. Do NOT change the question or the correct answer. Return ONLY {"explanation":"...","optionExplanations":["","","",""]}.`);
+  return lines.join("\n");
+}
+
+// Robustly pull { explanation, optionExplanations } from the model's text.
+function parseExplanationJson(content) {
+  let t = String(content || "").trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  let obj = null;
+  try { obj = JSON.parse(t); } catch { /* fall through */ }
+  if (!obj) {
+    const s = t.indexOf("{"), e = t.lastIndexOf("}");
+    if (s !== -1 && e > s) { try { obj = JSON.parse(t.slice(s, e + 1)); } catch { /* ignore */ } }
+  }
+  if (!obj || typeof obj !== "object") return null;
+  const explanation = typeof obj.explanation === "string" ? obj.explanation.trim() : "";
+  let oe = Array.isArray(obj.optionExplanations) ? obj.optionExplanations.map((x) => (x == null ? "" : String(x))) : null;
+  if (oe) { oe = oe.slice(0, 4); while (oe.length < 4) oe.push(""); }
+  return explanation || oe ? { explanation, optionExplanations: oe } : null;
+}
+
+async function runExtendJob(id, { endpoints, model, questions, owner = null, notes = "" }) {
+  const job = genJobs.get(id);
+  const deadline = Date.now() + 9 * 60 * 1000; // overall time budget
+  const save = (patch) => Object.assign(job, patch, { updatedAt: Date.now() });
+  let idx = 0;
+  let updated = 0;
+  let lastError = null;
+
+  const worker = async () => {
+    while (idx < questions.length && Date.now() < deadline) {
+      const q = questions[idx++];
+      const r = await callWithFallback({
+        endpoints,
+        model,
+        systemPrompt: EXTEND_SYSTEM_PROMPT,
+        userPrompt: buildExtendPrompt(q, notes),
+        maxTokens: 1600,
+        owner,
+      });
+      if (!r.ok) {
+        lastError = r;
+        if ([401, 403].includes(r.status)) break; // key dead — stop this worker
+        job.questions.push(0); // count as processed (skipped) so progress advances
+        save({});
+        continue;
+      }
+      const parsed = parseExplanationJson(r.content);
+      if (parsed) {
+        const set = {};
+        if (parsed.explanation) set.explanation = parsed.explanation;
+        if (Array.isArray(parsed.optionExplanations)) {
+          const oe = parsed.optionExplanations.slice(0, 4);
+          while (oe.length < 4) oe.push("");
+          if (typeof q.correct === "number" && q.correct >= 0 && q.correct < 4) oe[q.correct] = ""; // correct option carries no note
+          set.optionExplanations = oe;
+        }
+        if (Object.keys(set).length) {
+          await Question.updateOne({ _id: q._id }, { $set: set }).catch(() => {});
+          updated += 1;
+        }
+      }
+      job.questions.push(1); // progress marker (jobStatus reports count = length)
+      save({});
+    }
+  };
+
+  try {
+    const WORKERS = Math.min(4, Math.max(1, (endpoints?.length || 1)));
+    await Promise.all(Array.from({ length: WORKERS }, () => worker()));
+    if (updated === 0) {
+      save({
+        status: "error",
+        error: lastError
+          ? (lastError.status === 429
+            ? "AI quota/rate limit reached before any explanation was updated. Wait a minute and try again."
+            : `AI provider error (${lastError.status || 0}). ${(lastError.detail || "").slice(0, 150)}`)
+          : "No explanations could be updated. Try again.",
+      });
+    } else {
+      const short = updated < questions.length;
+      save({ status: "done", updatedCount: updated, error: short && lastError?.status === 429 ? "quota" : null });
+    }
+  } catch (err) {
+    save(updated ? { status: "done", updatedCount: updated } : { status: "error", error: err?.message || "Failed to extend explanations." });
+  }
+}
+
+// POST /api/ai/extend-explanations  (admin or owning client)
+// Body: { quiz? | testSeries?, model?, notes?, mode? } — starts a background job
+// that rewrites the explanation + option notes of EVERY question in that quiz or
+// test, updating them in place. Poll /api/ai/job/:id for progress.
+export async function extendExplanations(req, res) {
+  const scope = resolveScope(req.user, req.body?.mode);
+  if (scope.denied) {
+    return res.status(403).json({ message: "AI access is not enabled for your account. Please contact the administrator." });
+  }
+  const chosen = await resolveModel(String(req.body?.model || "").trim(), scope);
+  if (!chosen || !chosen.endpoints.length) {
+    return res.status(400).json({
+      message: scope.mode === "self"
+        ? "No API keys added yet. Add at least one key in the AI tab."
+        : "AI is not configured. Add an API key in Admin → AI Keys.",
+    });
+  }
+
+  // Load the target quiz/test's questions, scoped to the caller's own space so a
+  // client can only touch their own content and an admin only platform content.
+  const own = ownerFilter(req);
+  let filter = null;
+  if (req.body?.testSeries) filter = { testSeries: req.body.testSeries, ...own };
+  else if (req.body?.quiz) filter = { quiz: req.body.quiz, ...own };
+  if (!filter) return res.status(400).json({ message: "Provide a quiz or test to update." });
+
+  const questions = await Question.find(filter).select("_id type text options correct columnA columnB assertion reason explanation").lean();
+  if (!questions.length) return res.status(400).json({ message: "No questions found to update (or not your content)." });
+
+  const notes = String(req.body?.notes || "").trim();
+  cleanupJobs();
+  const id = newJobId();
+  genJobs.set(id, { status: "pending", questions: [], requested: questions.length, error: null, model: chosen.model, updatedAt: Date.now() });
+  runExtendJob(id, { endpoints: chosen.endpoints, model: chosen.model, questions, owner: scope.owner, notes });
+  res.json({ jobId: id, requested: questions.length, model: chosen.model });
 }
 
 

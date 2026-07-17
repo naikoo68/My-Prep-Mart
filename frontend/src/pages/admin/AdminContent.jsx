@@ -10,7 +10,8 @@ import QuestionView from "../../components/admin/QuestionView";
 import { questionDateText, searchQuestions } from "../../lib/questions";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
-import { Sparkles, Files, Globe } from "lucide-react";
+import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
+import { Sparkles, Files, Globe, Wand2 } from "lucide-react";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -42,6 +43,7 @@ export default function AdminContent() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [extendOpen, setExtendOpen] = useState(false); // AI extend-explanations
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ id: "all", name: "" }); // which subject the duplicate scan targets
   const [saving, setSaving] = useState(false);
@@ -265,6 +267,9 @@ export default function AdminContent() {
               <button onClick={() => setImportOpen(true)} className="btn-outline text-brand-600">
                 <Globe className="h-4 w-4" /> Import from Web
               </button>
+              <button onClick={() => setExtendOpen(true)} disabled={!items.length} className="btn-outline text-brand-600" title="AI: make all explanations detailed for this quiz">
+                <Wand2 className="h-4 w-4" /> Extend Explanations
+              </button>
               <button onClick={() => copyCsv(selected.length ? items.filter((q) => selected.includes(q._id)) : items)} disabled={!items.length} className="btn-outline">
                 <Copy className="h-4 w-4" /> Copy CSV{selected.length ? ` (${selected.length})` : ""}
               </button>
@@ -487,6 +492,14 @@ export default function AdminContent() {
         onClose={() => setDupOpen(false)}
         defaultSubject={dupScope.id}
         defaultSubjectName={dupScope.name}
+      />
+
+      <ExtendExplanationsModal
+        open={extendOpen}
+        target={{ quiz: quiz?._id }}
+        title={`Extend all explanations${quiz ? ` — ${quiz.title}` : ""}`}
+        onClose={() => setExtendOpen(false)}
+        onDone={() => load("questions")}
       />
 
       {/* View single question */}

@@ -15,6 +15,7 @@ import QuestionFormModal from "../../components/admin/QuestionFormModal";
 import QuestionView from "../../components/admin/QuestionView";
 import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import ShareTestModal from "../../components/admin/ShareTestModal";
+import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -56,6 +57,7 @@ export default function AdminTests() {
   const [weightTest, setWeightTest] = useState(null); // auto-fill by subject (weightage)
   const [dupTest, setDupTest] = useState(null); // find-duplicates within a test
   const [shareTest, setShareTest] = useState(null); // public share-link modal target
+  const [extendTest, setExtendTest] = useState(null); // AI extend-explanations target
 
   // Manual subject plan (typed) for the create/edit popup
   const [composition, setComposition] = useState([]);
@@ -664,6 +666,14 @@ export default function AdminTests() {
         />
       )}
 
+      <ExtendExplanationsModal
+        open={!!extendTest}
+        target={{ testSeries: extendTest?._id }}
+        title={`Extend all explanations${extendTest ? ` — ${extendTest.name}` : ""}`}
+        onClose={() => setExtendTest(null)}
+        onDone={() => { if (qTest) reloadTq(); }}
+      />
+
       <BulkUploadQuestions
         open={!!bulkTest}
         title={`Bulk Upload Questions${bulkTest ? ` — ${bulkTest.name}${bulkTest._forceSection ? ` (${bulkTest._forceSection})` : ""}` : ""}`}
@@ -772,6 +782,7 @@ export default function AdminTests() {
               onAiGenerate={(subject) => { setAiTest({ ...qTest, _forceSection: subject }); }}
               onImportWeb={(subject) => { setImportTest({ ...qTest, _forceSection: subject }); }}
               onPickFromBank={(subject) => { setBankTest({ ...qTest, _forceSection: subject }); }}
+              onExtendExplanations={() => setExtendTest(qTest)}
             />
           </div>
         </div>
