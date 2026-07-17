@@ -36,6 +36,71 @@ function normalizeDelimiters(t) {
 // on non-math segments so real LaTeX commands (\neq, \nu, \times…) are safe.
 const fixProseNewlines = (t) => t.replace(/\\r\\n|\\n|\\r/g, "\n");
 
+// Does the text between a pair of "$" actually look like MATH — or is it prose
+// that got trapped because a stray "$" (a currency sign like "$300"/"$900")
+// mis-paired with a real math delimiter? AI explanations frequently write money
+// as "$300", which collides with "$…$" math and scrambles the whole line.
+// We only treat a "$…$" span as math when its content is genuinely math-like.
+function looksLikeMath(s) {
+  if (!s || !s.trim()) return false;
+  // Definitive LaTeX / math markers (commands, sub/superscripts, groups, "=").
+  if (/[\\^_={}]/.test(s)) return true;
+  // Anything longer than this with NO math marker is almost certainly prose
+  // dragged in by a stray currency "$".
+  if (s.length > 120) return false;
+  // A pure numeric / operator expression, e.g. "30 + 20 = 65", "3.14".
+  if (/^[\s\d.,+\-*/()×÷=<>%]+$/.test(s)) return true;
+  // A short symbol/token like "n", "x", "H", "R_1".
+  const words = s.trim().split(/\s+/).filter(Boolean);
+  return words.length <= 3 && /[A-Za-z0-9]/.test(s);
+}
+
+// Split text into text/math parts WITHOUT the naive global-regex pairing (which
+// breaks the moment a stray currency "$" appears). We scan left-to-right and a
+// "$" only opens math when it can be paired with a later "$" AND the enclosed
+// content looks like math; otherwise the "$" is emitted as a literal dollar
+// sign. This makes "$300 … $H=\frac{a}{b}$ … $900 … $30+20=65$" render with the
+// prose (and dollar amounts) intact and only the real formulas as math.
+function parseMathParts(text) {
+  const parts = [];
+  let buf = "";
+  let i = 0;
+  const n = text.length;
+  const pushText = (s) => { if (s) parts.push({ type: "text", value: s }); };
+
+  while (i < n) {
+    const c = text[i];
+    if (c !== "$") { buf += c; i += 1; continue; }
+
+    // Block math: $$ … $$
+    if (text[i + 1] === "$") {
+      const close = text.indexOf("$$", i + 2);
+      if (close !== -1) {
+        pushText(buf); buf = "";
+        parts.push({ type: "math", value: text.slice(i + 2, close), block: true });
+        i = close + 2;
+        continue;
+      }
+      buf += "$$"; i += 2; continue; // no closing $$ → literal
+    }
+
+    // Inline math: $ … $ — only when the paired content is genuinely math.
+    const close = text.indexOf("$", i + 1);
+    if (close !== -1 && looksLikeMath(text.slice(i + 1, close))) {
+      pushText(buf); buf = "";
+      parts.push({ type: "math", value: text.slice(i + 1, close), block: false });
+      i = close + 1;
+      continue;
+    }
+
+    // A stray/currency "$" (e.g. "$300") — keep it as a literal dollar sign so
+    // it does not mis-pair with the real math further along the line.
+    buf += "$"; i += 1;
+  }
+  pushText(buf);
+  return parts;
+}
+
 export default function MathText({ children, className = "" }) {
   const text = normalizeDelimiters(recoverEatenLatex(children));
 
@@ -44,16 +109,7 @@ export default function MathText({ children, className = "" }) {
     return <span className={`whitespace-pre-line ${className}`}>{fixProseNewlines(text)}</span>;
   }
 
-  const parts = [];
-  const regex = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
-  let last = 0;
-  let m;
-  while ((m = regex.exec(text)) !== null) {
-    if (m.index > last) parts.push({ type: "text", value: text.slice(last, m.index) });
-    parts.push({ type: "math", value: m[1] ?? m[2], block: !!m[1] });
-    last = regex.lastIndex;
-  }
-  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
+  const parts = parseMathParts(text);
 
   return (
     <span className={`whitespace-pre-line ${className}`}>

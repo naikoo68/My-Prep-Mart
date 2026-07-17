@@ -217,6 +217,7 @@ Type-specific rules — each type needs specific extra fields AND a specific sty
 - "table": include "tableRows" (a 2D array; the first inner array is the header row). "text" is the intro. 4 normal options.
 Do NOT prefix columnA / columnB / statement items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4), Column B (I,II,III,IV) and statements (1,2,3) automatically.
 VARIETY IS MANDATORY: within the set, every question must test a DIFFERENT fact / sub-topic and a DIFFERENT angle (definition, cause, effect, date or number, example, comparison, application, exception, sequence). NEVER ask about the same fact, entity or correct answer more than once, and NEVER reword or rephrase another question — a different sentence with the same meaning counts as a duplicate and is forbidden. Spread the questions across the full breadth of the topic rather than clustering on the few most obvious facts.
+CURRENCY: NEVER use the "$" character for money/amounts anywhere ("text", "options", "explanation", "optionExplanations") — "$" is reserved ONLY for wrapping inline math, and a stray "$" (e.g. "$300") corrupts the rendering of the whole field. Write money as a plain number with the currency word, e.g. "300 dollars" or "900 rupees" or just "300".
 Never include image URLs. Keep questions factually correct and self-contained.`;
 
 function buildUserPrompt({ topic, count, difficulty, types, notes, plan, avoid, source }) {
@@ -1073,6 +1074,7 @@ function buildExtractPrompt(sourceText, notes = "") {
     "Equally important: do NOT invent questions, do NOT repeat/duplicate a question, and do NOT split one question (or its sub-parts/options) into multiple questions. The number you return must NOT exceed the number actually present in the text.",
     "The source questions are NUMBERED (1, 2, 3, …). For EACH question, include its exact source number as an integer field \"n\". Return EXACTLY ONE object per numbered question — if the text has questions numbered up to 50, return 50 objects with n = 1..50. Never merge two numbers into one object and never split one number into two.",
     "Write any mathematical or numerical content as INLINE MATH using $…$ (LaTeX) inside \"text\" and \"options\": equations, fractions, exponents/powers, roots, ratios, percentages, and the numbers used in quantitative questions. Examples: $2^{10}\\times5^{8}$, $\\frac{3}{4}$, $x\\%$ of $y$, $45678x9231$, $\\sqrt{2}$. (Numbers that are just part of ordinary prose need not be wrapped.)",
+    "NEVER use the \"$\" character for money/currency — \"$\" is reserved only for wrapping math, and a stray \"$\" (e.g. \"$300\") corrupts rendering. Write money as \"300 dollars\"/\"900 rupees\"/just the number.",
     "",
     "Output ONLY actual questions — NOTHING else. A valid question has a stem AND answer options. IGNORE and never output: titles, headings, exam/booklet names, exam-centre or hall names (e.g. \"Clerical Hall JKSSB\"), file/reference/computer numbers (e.g. \"8233675/2026/0/0\", \"File No. …\"), page numbers, \"Set-A\", \"P.T.O.\", maximum marks, time/duration, roll-number/candidate fields, invigilator or signature lines, general instructions, section headers, and watermarks. If a line or block is not a real question with options, drop it entirely.",
     "",
@@ -1245,6 +1247,7 @@ Output PLAIN TEXT using light Markdown ONLY — no HTML, no code fences:
 - Include key dates, formulas, definitions and short examples where relevant.
 - Whenever a term/place/concept has a common local or alternative name, add it in brackets.
 Write mathematical/numeric content as inline math between $...$ (LaTeX).
+NEVER use the "$" sign for money/currency (write "300 dollars"/"900 rupees"/just the number) — "$" is reserved only for wrapping math and a stray "$" corrupts rendering.
 Return ONLY the notes — no preamble, no closing remarks.`;
 
 function buildNotesPrompt({ topic, notes }) {
@@ -1308,6 +1311,7 @@ CRITICAL — you MUST ALWAYS respond, for EVERY question, with ONE single valid 
 JSON VALIDITY RULES (follow exactly or the answer is discarded):
 - Escape any double quote inside a string as \\". You MAY use normal line breaks inside the strings for readability.
 - MATH: write ALL mathematical/numeric content (equations, fractions, powers, roots, ratios, %) as inline LaTeX between single dollar signs — e.g. $x^2+2x-3=0$, $\\frac{3}{4}$, $2^{10}\\times5^{8}$, $\\sqrt{2}$. Do NOT use \\( \\) or \\[ \\] delimiters and do NOT write bare LaTeX outside dollar signs.
+- CURRENCY: NEVER use the "$" character for money or amounts — "$" is RESERVED solely for opening/closing math, and a stray "$" (e.g. "$300") corrupts the rendering of the ENTIRE explanation. Write money as a plain number with the currency word AFTER it, e.g. "300 dollars", "900 rupees", or just "300". The only "$" characters allowed are the matched pairs that wrap math.
 - Do NOT use markdown (no **bold**, no bullet characters), no code fences, no trailing commas.
 - Never refuse and never return an empty object — always produce a full explanation.
 
