@@ -1348,7 +1348,12 @@ NUMERICAL / QUANTITATIVE QUESTIONS — you MUST verify by SOLVING, not just desc
 - If your verified correct option DIFFERS from the given CORRECT answer, the stored answer is wrong — return the corrected 0-based index as "correct" (0=A, 1=B, 2=C, 3=D).
 - If the correct value is NOT present among the options (or an option's value is numerically wrong), return a corrected "options" array of EXACTLY 4 values that INCLUDES your computed correct value, keep the other three as plausible distractors in the same style/units, and set "correct" to the index of the right value.
 - Re-check your arithmetic before responding; the steps shown in "explanation" must match the option you mark correct.
-STRICT: Do NOT change the question's wording or meaning, and do NOT invent a different question. You MAY fix the "correct" index and option VALUES ONLY when your explicit step-by-step calculation proves the stored answer is wrong — otherwise omit "correct"/"options" and leave them unchanged. Return ONLY the JSON object.`;
+MATCHING / PAIR / STATEMENT questions ("match the columns", "how many pairs are correctly matched", "which statements are correct"):
+- Evaluate EACH pair / statement / match INDIVIDUALLY in the explanation: say whether it is correctly matched or true, and if not, give the CORRECT match/characteristic. (Item i in Column A pairs with item i in Column B.)
+- Then COUNT how many are correct and choose the option that states that exact count/combination.
+- If your verified count/combination DIFFERS from the marked answer, return the corrected "correct" index.
+- If NO option matches the true answer (e.g. ZERO pairs are correctly matched but there is no "None" option), return a corrected "options" array of EXACTLY 4 that INCLUDES the right choice (e.g. "None of the pairs are correctly matched") and set "correct" to its index.
+STRICT: Do NOT change the question's wording or meaning, and do NOT invent a different question. You MAY fix the "correct" index and option VALUES ONLY when your explicit verification (step-by-step calculation, or a pair-by-pair / statement-by-statement check) proves the stored answer is wrong — otherwise omit "correct"/"options" and leave them unchanged. Return ONLY the JSON object.`;
 
 const EXT_LETTERS = ["A", "B", "C", "D"];
 const toRomanLite = (n) => { const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]]; let r = ""; for (const [s, v] of m) while (n >= v) { r += s; n -= v; } return r; };
@@ -1365,7 +1370,7 @@ function buildExtendPrompt(q, notes) {
   if (typeof q.correct === "number" && opts[q.correct] != null) lines.push(`CORRECT answer: ${EXT_LETTERS[q.correct]}) ${opts[q.correct]}`);
   if (q.explanation) lines.push(`Existing explanation (improve and expand it — keep anything correct): ${q.explanation}`);
   if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
-  lines.push(`Write a THOROUGH "explanation" and verify EACH of the 4 "optionExplanations" (state whether each option is correct or wrong and why). If this is a numerical/quantitative question, SOLVE it yourself step by step — put each calculation step on its own line in the explanation — then check which option is truly correct; if the marked CORRECT answer is wrong, return the corrected "correct" index (0-3), and a fixed "options" array of 4 values if a value itself is wrong. Do NOT change the question's wording. Write any math as inline LaTeX between $...$ (never \\( \\) or \\[ \\]). Return ONLY one valid JSON object.`);
+  lines.push(`Write a THOROUGH "explanation" and verify EACH of the 4 "optionExplanations" (state whether each option is correct or wrong and why). If this is a numerical/quantitative question, SOLVE it yourself step by step — put each calculation step on its own line in the explanation — then check which option is truly correct. If this is a matching / "how many pairs are correctly matched" / statement question, evaluate EACH pair or statement one by one and COUNT the correct ones. In either case, if the marked CORRECT answer is wrong, return the corrected "correct" index (0-3); if a value is wrong or no option matches the true answer (e.g. zero pairs match but there is no "None" option), return a fixed "options" array of 4 that includes the right choice. Do NOT change the question's wording. Write any math as inline LaTeX between $...$ (never \\( \\) or \\[ \\]). Return ONLY one valid JSON object.`);
   return lines.join("\n");
 }
 
@@ -1507,13 +1512,16 @@ function buildExtendSet(q, parsed) {
     Array.isArray(parsed?.options) && parsed.options.length === 4 && parsed.options.every((s) => String(s).trim() !== "")
       ? parsed.options.map((x) => String(x))
       : null;
-  // Only free-form option types (plain MCQ / table) may have their answer/options
-  // corrected — never structured types (matching/assertion/statement/pair), whose
-  // options carry fixed meaning. Numerical questions are MCQs, so this covers them.
-  const canFix = !q.type || q.type === "mcq" || q.type === "table";
-  if (canFix && newOptions && newCorrect != null) set.options = newOptions; // replace values only with a corrected index
-  if (canFix && newCorrect != null) set.correct = newCorrect;
-  const effectiveCorrect = canFix && newCorrect != null ? newCorrect : q.correct;
+  // The correct answer is verifiable for EVERY question type, so a corrected
+  // index may be applied to any type. Option VALUES may be rewritten for the
+  // free-form + "how many are correct" families (plain MCQ, table, and
+  // pair/pairselect/statement/matching) — e.g. to insert a missing "None of the
+  // pairs" choice — but NOT for assertion–reason, whose four options are a fixed
+  // rubric.
+  const canFixOptions = !q.type || ["mcq", "table", "pair", "pairselect", "statement", "matching"].includes(q.type);
+  if (newOptions && newCorrect != null && canFixOptions) set.options = newOptions; // replace values only with a corrected index
+  if (newCorrect != null) set.correct = newCorrect;
+  const effectiveCorrect = newCorrect != null ? newCorrect : q.correct;
   if (Array.isArray(parsed?.optionExplanations)) {
     const oe = parsed.optionExplanations.slice(0, 4);
     while (oe.length < 4) oe.push("");
