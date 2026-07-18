@@ -122,3 +122,20 @@
 .dark ::-webkit-scrollbar-thumb {
   background: #334155;
 }
+
+
+/* --- KaTeX line fix ---------------------------------------------------------
+   KaTeX draws fraction bars, sqrt/overline/underline vinculums and \rule using
+   element BORDERS. Tailwind's Preflight resets every element's border-color to a
+   faint gray, which makes those lines nearly invisible — the fraction "divide"
+   bar in $\frac{a}{b}$ disappears. Force these rules back to the current text
+   colour so they render in both light and dark mode. */
+.katex .frac-line,
+.katex .overline .overline-line,
+.katex .underline .underline-line,
+.katex .hline,
+.katex .hdashline,
+.katex .rule {
+  border-color: currentColor !important;
+}
+.katex .frac-line { border-bottom-color: currentColor !important; }
