@@ -1561,9 +1561,9 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
 
   // Extend ONE question: call AI, parse (robustly), update in place. Returns
   // true only when the DB was actually updated with a real explanation.
-  const extendOne = async (q) => {
+  const extendOne = async (q, eps) => {
     const r = await callWithFallback({
-      endpoints,
+      endpoints: eps && eps.length ? eps : endpoints,
       model,
       systemPrompt: EXTEND_SYSTEM_PROMPT,
       userPrompt: buildExtendPrompt(q, notes),
@@ -1594,16 +1594,23 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
     for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline; pass++) {
       const failed = [];
       let idx = 0;
-      const worker = async () => {
+      // One worker PER KEY (up to 10) — each starts on a DIFFERENT key (rotated
+      // endpoint order) so they don't all hammer the same key at once; a 429 on
+      // one still falls back to the others. This uses every key in parallel and
+      // is why bulk extend now gets through the whole quiz, not just a few.
+      const rotate = (arr, k) => arr.slice(k).concat(arr.slice(0, k));
+      const nEps = endpoints?.length || 1;
+      const WORKERS = Math.min(Math.max(nEps, 1), 10);
+      const worker = async (wi) => {
+        const eps = nEps > 1 ? rotate(endpoints, wi % nEps) : endpoints;
         while (idx < pending.length && !keyDead && Date.now() < deadline) {
           const q = pending[idx++];
           let ok = false;
-          try { ok = await extendOne(q); } catch { ok = false; }
+          try { ok = await extendOne(q, eps); } catch { ok = false; }
           if (!ok) failed.push(q);
         }
       };
-      const WORKERS = Math.min(4, Math.max(1, endpoints?.length || 1));
-      await Promise.all(Array.from({ length: WORKERS }, () => worker()));
+      await Promise.all(Array.from({ length: WORKERS }, (_, wi) => worker(wi)));
       pending = failed;
       // Brief pause before retrying the stragglers (eases transient/quota errors).
       if (pending.length && pass < MAX_PASSES - 1 && !keyDead && Date.now() < deadline) {
