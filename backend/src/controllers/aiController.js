@@ -1330,6 +1330,7 @@ const EXTEND_SYSTEM_PROMPT = `You are an expert exam teacher. You are given ONE 
 
 CRITICAL — you MUST ALWAYS respond, for EVERY question, with ONE single valid JSON object and NOTHING else: no markdown, no code fences, no text before or after. The exact shape is:
 {"explanation":"...","optionExplanations":["","","",""]}
+(For a NUMERICAL question whose stored answer turns out wrong, ALSO include "correct":<0-3>, and, if an option value itself must change, "options":["A","B","C","D"] — see the NUMERICAL rules below.)
 JSON VALIDITY RULES (follow exactly or the answer is discarded):
 - Escape any double quote inside a string as \\". You MAY use normal line breaks inside the strings for readability.
 - MATH: write ALL mathematical/numeric content (equations, fractions, powers, roots, ratios, %) as inline LaTeX between single dollar signs — e.g. $x^2+2x-3=0$, $\\frac{3}{4}$, $2^{10}\\times5^{8}$, $\\sqrt{2}$. Do NOT use \\( \\) or \\[ \\] delimiters and do NOT write bare LaTeX outside dollar signs.
@@ -1340,8 +1341,14 @@ JSON VALIDITY RULES (follow exactly or the answer is discarded):
 Content rules:
 - "explanation": a THOROUGH, self-contained explanation of the correct answer (3-6 sentences). Include EVERY relevant supporting fact — exact dates/years, historical background, definitions, full formulas WITH the actual calculation, laws/theorems/principles by name, and cause-and-effect reasoning. Teach the concept as if to someone seeing it for the first time; never just restate the option. Put each sentence or distinct point on its OWN line (a real line break between points), not one long paragraph.
 - LOCAL / ALTERNATIVE NAMES: whenever a term/place/concept/person/disease/chemical/unit/law has a common local or vernacular (Hindi/regional) name, synonym, abbreviation's full form or old name, add it in brackets right after it.
-- "optionExplanations": an array of EXACTLY 4 strings, one per option, saying why each option is right or wrong (for wrong ones name the exact misconception/fact). Keep each to 1-2 short sentences so the JSON is never cut off. Leave the CORRECT option's entry an empty string "".
-STRICT: Do NOT change the question, the options, or which answer is correct. Do NOT invent a different question. Return ONLY the JSON object.`;
+- "optionExplanations": an array of EXACTLY 4 strings, one per option. For EACH option state clearly whether it is correct or incorrect and WHY (for a wrong numeric option, show what mistake produces that value). Keep each to 1-2 short sentences. Leave the truly-CORRECT option's entry an empty string "".
+NUMERICAL / QUANTITATIVE QUESTIONS — you MUST verify by SOLVING, not just describe:
+- Solve the problem yourself from scratch. In "explanation" show the working STEP BY STEP: state the formula, substitute the actual values, and show each intermediate result on its OWN line, ending with the final computed value. Every arithmetic step must be correct and lead exactly to the answer you choose.
+- Compare your computed value with the four options and decide which option is TRULY correct.
+- If your verified correct option DIFFERS from the given CORRECT answer, the stored answer is wrong — return the corrected 0-based index as "correct" (0=A, 1=B, 2=C, 3=D).
+- If the correct value is NOT present among the options (or an option's value is numerically wrong), return a corrected "options" array of EXACTLY 4 values that INCLUDES your computed correct value, keep the other three as plausible distractors in the same style/units, and set "correct" to the index of the right value.
+- Re-check your arithmetic before responding; the steps shown in "explanation" must match the option you mark correct.
+STRICT: Do NOT change the question's wording or meaning, and do NOT invent a different question. You MAY fix the "correct" index and option VALUES ONLY when your explicit step-by-step calculation proves the stored answer is wrong — otherwise omit "correct"/"options" and leave them unchanged. Return ONLY the JSON object.`;
 
 const EXT_LETTERS = ["A", "B", "C", "D"];
 const toRomanLite = (n) => { const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]]; let r = ""; for (const [s, v] of m) while (n >= v) { r += s; n -= v; } return r; };
@@ -1358,7 +1365,7 @@ function buildExtendPrompt(q, notes) {
   if (typeof q.correct === "number" && opts[q.correct] != null) lines.push(`CORRECT answer: ${EXT_LETTERS[q.correct]}) ${opts[q.correct]}`);
   if (q.explanation) lines.push(`Existing explanation (improve and expand it — keep anything correct): ${q.explanation}`);
   if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
-  lines.push(`Write a THOROUGH "explanation" and 4 "optionExplanations" for THIS question. Do NOT change the question or the correct answer. Write any math as inline LaTeX between $...$ (never \\( \\) or \\[ \\]). Return ONLY one valid JSON object {"explanation":"...","optionExplanations":["","","",""]}.`);
+  lines.push(`Write a THOROUGH "explanation" and verify EACH of the 4 "optionExplanations" (state whether each option is correct or wrong and why). If this is a numerical/quantitative question, SOLVE it yourself step by step — put each calculation step on its own line in the explanation — then check which option is truly correct; if the marked CORRECT answer is wrong, return the corrected "correct" index (0-3), and a fixed "options" array of 4 values if a value itself is wrong. Do NOT change the question's wording. Write any math as inline LaTeX between $...$ (never \\( \\) or \\[ \\]). Return ONLY one valid JSON object.`);
   return lines.join("\n");
 }
 
@@ -1468,12 +1475,52 @@ function parseExplanationJson(content) {
     const explanation = typeof obj.explanation === "string" ? obj.explanation.trim() : "";
     let oe = Array.isArray(obj.optionExplanations) ? obj.optionExplanations.map((x) => (x == null ? "" : String(x))) : null;
     if (oe) { oe = oe.slice(0, 4); while (oe.length < 4) oe.push(""); }
-    if (explanation || oe) return { explanation, optionExplanations: oe };
+    // Optional numerical-correction fields: a corrected 0-based answer index and
+    // a corrected 4-option array (only present when the AI's working proves the
+    // stored answer wrong). Accept a number, a "0".."3" string, or a letter A-D.
+    let correct = null;
+    const rc = obj.correct;
+    if (typeof rc === "number" && Number.isInteger(rc)) correct = rc;
+    else if (typeof rc === "string" && /^[0-3]$/.test(rc.trim())) correct = parseInt(rc.trim(), 10);
+    else if (typeof rc === "string" && /^[A-Da-d]$/.test(rc.trim())) correct = rc.trim().toUpperCase().charCodeAt(0) - 65;
+    if (correct != null && (correct < 0 || correct > 3)) correct = null;
+    const options = Array.isArray(obj.options) && obj.options.length === 4
+      ? obj.options.map((x) => (x == null ? "" : String(x)))
+      : null;
+    if (explanation || oe) return { explanation, optionExplanations: oe, correct, options };
   }
 
   // Couldn't parse as JSON at all — salvage the explanation with regex (from the
   // backslash-repaired text so single-backslash LaTeX survives the salvage too).
   return salvageExplanation(repairJson(t));
+}
+
+// Build the Mongo $set for an extended question. Always updates the explanation
+// (+ per-option notes). For NUMERICAL corrections, when the AI returned a valid
+// corrected answer index it also updates `correct`; option VALUES are replaced
+// only together with a corrected index (so options and answer stay in sync).
+function buildExtendSet(q, parsed) {
+  const set = { explanation: parsed.explanation };
+  const newCorrect =
+    Number.isInteger(parsed?.correct) && parsed.correct >= 0 && parsed.correct <= 3 ? parsed.correct : null;
+  const newOptions =
+    Array.isArray(parsed?.options) && parsed.options.length === 4 && parsed.options.every((s) => String(s).trim() !== "")
+      ? parsed.options.map((x) => String(x))
+      : null;
+  // Only free-form option types (plain MCQ / table) may have their answer/options
+  // corrected — never structured types (matching/assertion/statement/pair), whose
+  // options carry fixed meaning. Numerical questions are MCQs, so this covers them.
+  const canFix = !q.type || q.type === "mcq" || q.type === "table";
+  if (canFix && newOptions && newCorrect != null) set.options = newOptions; // replace values only with a corrected index
+  if (canFix && newCorrect != null) set.correct = newCorrect;
+  const effectiveCorrect = canFix && newCorrect != null ? newCorrect : q.correct;
+  if (Array.isArray(parsed?.optionExplanations)) {
+    const oe = parsed.optionExplanations.slice(0, 4);
+    while (oe.length < 4) oe.push("");
+    if (typeof effectiveCorrect === "number" && effectiveCorrect >= 0 && effectiveCorrect < 4) oe[effectiveCorrect] = "";
+    set.optionExplanations = oe;
+  }
+  return set;
 }
 
 async function runExtendJob(id, { endpoints, model, questions, owner = null, notes = "" }) {
@@ -1503,13 +1550,7 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
     }
     const parsed = parseExplanationJson(r.content);
     if (!parsed || !parsed.explanation) return false; // require a real explanation
-    const set = { explanation: parsed.explanation };
-    if (Array.isArray(parsed.optionExplanations)) {
-      const oe = parsed.optionExplanations.slice(0, 4);
-      while (oe.length < 4) oe.push("");
-      if (typeof q.correct === "number" && q.correct >= 0 && q.correct < 4) oe[q.correct] = ""; // correct option carries no note
-      set.optionExplanations = oe;
-    }
+    const set = buildExtendSet(q, parsed); // may also fix a wrong numerical answer/options
     await Question.updateOne({ _id: q._id }, { $set: set }).catch(() => {});
     updated += 1;
     job.questions.push(1); // progress = actual successes (jobStatus reports count)
@@ -1657,15 +1698,15 @@ export async function extendOneExplanation(req, res) {
     return res.status(502).json({ message: msg });
   }
 
-  const set = { explanation: parsed.explanation };
-  if (Array.isArray(parsed.optionExplanations)) {
-    const oe = parsed.optionExplanations.slice(0, 4);
-    while (oe.length < 4) oe.push("");
-    if (typeof q.correct === "number" && q.correct >= 0 && q.correct < 4) oe[q.correct] = "";
-    set.optionExplanations = oe;
-  }
+  const set = buildExtendSet(q, parsed); // may also fix a wrong numerical answer/options
   await Question.updateOne({ _id: q._id }, { $set: set });
-  res.json({ _id: q._id, explanation: set.explanation, optionExplanations: set.optionExplanations || q.optionExplanations });
+  res.json({
+    _id: q._id,
+    explanation: set.explanation,
+    optionExplanations: set.optionExplanations || q.optionExplanations,
+    correct: set.correct ?? q.correct, // reflect any answer correction so the UI updates
+    options: set.options || q.options,
+  });
 }
 
 

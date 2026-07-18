@@ -95,8 +95,8 @@ app.get("/api/health", (req, res) =>
     // Bump this whenever backend code changes so we can verify Render actually
     // redeployed: open /api/health and check `version`. If it's older than the
     // latest, the backend did NOT deploy and server-side fixes aren't live.
-    version: "2026-07-17-db-indexes-v12",
-    features: ["ai-scope", "ai-key-owner", "extract-batches", "matching-labels", "documents", "extract-remaining", "notes-gen", "latex-json-repair", "no-currency-dollar", "parallel-small-chunks", "provider-timeout", "addtotest-drilldown", "mytest-subjectplan", "reshuffle-subjects-questions-options", "db-indexes"],
+    version: "2026-07-18-extend-verify-numeric-v13",
+    features: ["ai-scope", "ai-key-owner", "extract-batches", "matching-labels", "documents", "extract-remaining", "notes-gen", "latex-json-repair", "no-currency-dollar", "parallel-small-chunks", "provider-timeout", "addtotest-drilldown", "mytest-subjectplan", "reshuffle-subjects-questions-options", "db-indexes", "extend-verify-numeric"],
     mailConfigured: isMailConfigured(),
     uploadConfigured: isCloudinaryConfigured(),
   })
