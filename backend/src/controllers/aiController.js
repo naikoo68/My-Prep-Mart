@@ -1456,7 +1456,11 @@ const repairJson = (t) => escapeRawControlCharsInStrings(escapeLatexBackslashes(
 // Last resort: pull the "explanation" (and optionExplanations) out with regex,
 // even from broken or truncated JSON.
 function salvageExplanation(t) {
-  const m = t.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  // Prefer a fully-terminated explanation string; if the reply was truncated
+  // mid-explanation (no closing quote), grab everything after the key so a long
+  // answer that ran past the token limit is still recovered.
+  let m = t.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) m = t.match(/"explanation"\s*:\s*"((?:[^"\\]|\\.)*)$/);
   if (!m) return null;
   let explanation = "";
   try { explanation = JSON.parse(`"${m[1]}"`); } catch { explanation = m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"'); }
@@ -1563,7 +1567,7 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
       model,
       systemPrompt: EXTEND_SYSTEM_PROMPT,
       userPrompt: buildExtendPrompt(q, notes),
-      maxTokens: 4000, // generous so the JSON is never truncated
+      maxTokens: 8000, // the verified/step-by-step replies are long — avoid truncation
       owner,
     });
     if (!r.ok) {
@@ -1702,7 +1706,7 @@ export async function extendOneExplanation(req, res) {
       model: chosen.model,
       systemPrompt: EXTEND_SYSTEM_PROMPT,
       userPrompt: buildExtendPrompt(q, notes),
-      maxTokens: 4000,
+      maxTokens: 8000,
       owner: scope.owner,
     });
     if (!r.ok) {
