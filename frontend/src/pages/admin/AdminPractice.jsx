@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Users, Search, Share2, ClipboardList, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ChevronRight, GraduationCap, FolderOpen, ListChecks, FileStack, HelpCircle, Users, Search, Share2, ClipboardList, RefreshCw, Loader2, ArrowRightLeft } from "lucide-react";
 import { practiceService, testService, contentService, aiService } from "../../services";
 import { loadNav, saveNav } from "../../lib/navState";
 import Badge from "../../components/ui/Badge";
@@ -16,6 +16,7 @@ import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
 import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
+import MigrateQuizModal from "../../components/admin/MigrateQuizModal";
 import { Files } from "lucide-react";
 
 // Subject names from a practice item's typed plan (for "add to subject" tools).
@@ -64,6 +65,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [viewAll, setViewAll] = useState(false);
   const [studentView, setStudentView] = useState(true); // View All: defaults to student view (answers hidden)
   const [shareItem, setShareItem] = useState(null); // public share-link modal target (tests)
+  const [migrateItem, setMigrateItem] = useState(null); // per-quiz migrate modal target (My Quiz)
   const [extendItem, setExtendItem] = useState(null); // AI extend-explanations target
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
@@ -298,6 +300,9 @@ export default function AdminPractice({ clientMode = false }) {
               {view === "items" && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => openQuestions(item)} className="btn-outline py-1.5 text-xs"><HelpCircle className="h-3.5 w-3.5" /> Questions</button>
+                  {kind === "quiz" && (
+                    <button onClick={() => setMigrateItem(item)} className="btn-outline py-1.5 text-xs" title="Move or copy this quiz (My Quiz → My Quiz, or My Quiz → Content)"><ArrowRightLeft className="h-3.5 w-3.5" /> Migrate</button>
+                  )}
                   {kind === "test" && (
                     <button onClick={() => setShareItem(item)} className={`btn-outline py-1.5 text-xs ${item.publicShare ? "text-emerald-600" : ""}`} title="Share public link (no login needed)"><Share2 className="h-3.5 w-3.5" /> Share</button>
                   )}
@@ -501,6 +506,16 @@ export default function AdminPractice({ clientMode = false }) {
         scopeName={dupScope.name}
         hideSubjectPicker
       />
+
+      {/* Per-quiz migrate modal (My Quiz → My Quiz, or My Quiz → Content) */}
+      {migrateItem && (
+        <MigrateQuizModal
+          quiz={migrateItem}
+          clientMode={clientMode}
+          onClose={() => setMigrateItem(null)}
+          onDone={() => load("items")}
+        />
+      )}
 
       {/* Public share-link modal (My Test / Client Test) */}
       {shareItem && (
