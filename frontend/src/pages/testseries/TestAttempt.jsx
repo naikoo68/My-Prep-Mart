@@ -84,6 +84,12 @@ export default function TestAttempt() {
     setError("");
     (isPublic ? testService.getPublic(token) : testService.get(testId))
       .then((t) => {
+        // A shared QUIZ (practiceKind "quiz") should open in the quiz-style
+        // player, not this exam UI. Redirect old /public/test links accordingly.
+        if (isPublic && t?.practiceKind === "quiz") {
+          navigate(`/public/quiz/${token}`, { replace: true });
+          return;
+        }
         setTest(t);
         // Keep each subject's questions together, but reshuffle the SUBJECT
         // order and the questions WITHIN each subject for this attempt (so GK

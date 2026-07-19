@@ -64,11 +64,13 @@ const TIMER_OPTIONS = [
 // bookmarks. Loads questions WITH answers from the practice endpoint and
 // records the attempt via testService.submit (so it shows in My Progress).
 export default function PracticeQuizPlay() {
-  const { itemId } = useParams();
+  const { itemId, token } = useParams();
+  const isPublic = !!token; // opened via a public share link (no login needed)
+  const playId = itemId || token;
   const navigate = useNavigate();
   const { user } = useAuth();
   const isClient = user?.role === "client"; // clients return to their own workspace
-  const storageKey = `mpm-practice-quiz-${itemId}`;
+  const storageKey = `mpm-practice-quiz-${playId}`;
 
   // Any saved, unfinished progress for this quiz (so an exit/refresh can resume).
   const saved = (() => {
@@ -125,16 +127,24 @@ export default function PracticeQuizPlay() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    practiceService
-      .quizPlay(itemId)
+    (isPublic ? testService.getPublic(token) : practiceService.quizPlay(itemId))
       .then((data) => {
         setQuestions(shuffleAll(data.questions || [], seed)); // reshuffle options
         setTitle(data.name || "Practice Quiz");
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [itemId, seed]);
+  }, [itemId, token, isPublic, seed]);
   useEffect(load, [load]);
+
+  // Count a public OPEN once per browser (impression tracking for shared links).
+  useEffect(() => {
+    if (!isPublic || !token) return;
+    const key = `mpm-viewed-${token}`;
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+    testService.registerPublicView(token).catch(() => {});
+  }, [isPublic, token]);
 
   // Saved position may point past a changed question list — clamp it.
   useEffect(() => {
@@ -187,7 +197,9 @@ export default function PracticeQuizPlay() {
     });
     let graded = null;
     try {
-      graded = await testService.submit(itemId, byId, seconds);
+      graded = await (isPublic
+        ? testService.submitPublic(token, byId, seconds)
+        : testService.submit(itemId, byId, seconds));
     } catch {
       /* still show a local result even if recording fails */
     }
@@ -211,7 +223,7 @@ export default function PracticeQuizPlay() {
     setResult(graded);
     setSubmitting(false);
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-  }, [answers, questions, seconds, itemId, storageKey]);
+  }, [answers, questions, seconds, itemId, token, isPublic, storageKey]);
 
   if (loading) return <div className="container-page"><Loading label="Loading quiz..." /></div>;
   if (error) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;
@@ -254,11 +266,13 @@ export default function PracticeQuizPlay() {
               <Lightbulb className="h-4 w-4" /> {showReview ? "Hide Answers" : "Review Answers"}
             </button>
             <PaperExport title={title || "Practice Quiz"} questions={questions} />
-            {isClient ? (
+            {isPublic ? (
+              <button onClick={() => navigate("/")} className="btn-primary">Done</button>
+            ) : isClient ? (
               <button onClick={() => navigate("/client")} className="btn-primary">Back to My Practice</button>
             ) : (
               <>
-                <button onClick={() => navigate(-1)} className="btn-primary">Back to Quizzes</button>
+                <button onClick={() => navigate(isPublic ? "/" : -1)} className="btn-primary">Back to Quizzes</button>
                 <button onClick={() => navigate("/dashboard")} className="btn-outline">My Progress</button>
               </>
             )}
@@ -388,7 +402,7 @@ export default function PracticeQuizPlay() {
     const answeredCount = Object.keys(saved.answers || {}).length;
     return (
       <div className="container-page py-10">
-        <button onClick={() => navigate(-1)} className="btn-ghost -ml-2 mb-6">
+        <button onClick={() => navigate(isPublic ? "/" : -1)} className="btn-ghost -ml-2 mb-6">
           <ChevronLeft className="h-4 w-4" /> Back
         </button>
         <div className="mx-auto max-w-lg card p-8 text-center">
@@ -429,7 +443,7 @@ export default function PracticeQuizPlay() {
   if (!started) {
     return (
       <div className="container-page py-10">
-        <button onClick={() => navigate(-1)} className="btn-ghost -ml-2 mb-6">
+        <button onClick={() => navigate(isPublic ? "/" : -1)} className="btn-ghost -ml-2 mb-6">
           <ChevronLeft className="h-4 w-4" /> Back
         </button>
         <div className="mx-auto max-w-lg card p-8 text-center">
@@ -522,7 +536,7 @@ export default function PracticeQuizPlay() {
     <div ref={containerRef} className={fullscreen ? "fixed inset-0 z-[60] overflow-y-auto bg-slate-50 px-4 py-6 dark:bg-slate-950" : "container-page py-6"}>
       <Watermark />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <button onClick={() => navigate(-1)} className="btn-ghost -ml-2">
+        <button onClick={() => navigate(isPublic ? "/" : -1)} className="btn-ghost -ml-2">
           <ChevronLeft className="h-4 w-4" /> Exit
         </button>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -568,7 +582,7 @@ export default function PracticeQuizPlay() {
               )}
             </div>
             <div className="flex items-center gap-4">
-              <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={title} question={{ ...q, chosen: answers[current] ?? null }} label="Feedback" />
+              {!isPublic && <FeedbackButton context="question" questionText={q.text} questionNumber={current + 1} source={title} question={{ ...q, chosen: answers[current] ?? null }} label="Feedback" />}
               <button onClick={toggleBookmark} className={`flex items-center gap-1.5 text-sm font-medium transition ${bookmarks[current] ? "text-accent-600 dark:text-accent-400" : "text-slate-400 hover:text-accent-500"}`}>
                 {bookmarks[current] ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
                 {bookmarks[current] ? "Bookmarked" : "Bookmark"}

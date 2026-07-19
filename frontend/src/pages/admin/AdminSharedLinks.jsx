@@ -3,8 +3,10 @@ import { Share2, Users, Eye, ExternalLink, Copy, Check, RefreshCw, ChevronDown, 
 import { testService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
-// Public link for a share token (hash-router friendly) — same as ShareTestModal.
-const publicUrl = (token) => `${window.location.origin}${window.location.pathname}#/public/test/${token}`;
+// Public link for a share token (hash-router friendly). My Quiz opens in the
+// quiz-style player; tests use the exam-style player.
+const publicUrl = (token, kind) =>
+  `${window.location.origin}${window.location.pathname}#/public/${kind === "My Quiz" ? "quiz" : "test"}/${token}`;
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleString() : "—");
 const fmtTime = (s) => {
@@ -37,13 +39,13 @@ export default function AdminSharedLinks() {
   }, []);
   useEffect(load, [load]);
 
-  const copy = async (token) => {
+  const copy = async (token, kind) => {
     try {
-      await navigator.clipboard.writeText(publicUrl(token));
+      await navigator.clipboard.writeText(publicUrl(token, kind));
       setCopied(token);
       setTimeout(() => setCopied(""), 2000);
     } catch {
-      window.prompt("Copy this public link:", publicUrl(token));
+      window.prompt("Copy this public link:", publicUrl(token, kind));
     }
   };
 
@@ -139,10 +141,10 @@ export default function AdminSharedLinks() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <a href={publicUrl(r.publicToken)} target="_blank" rel="noreferrer" className="btn-primary py-1.5 text-xs">
+                  <a href={publicUrl(r.publicToken, r.kind)} target="_blank" rel="noreferrer" className="btn-primary py-1.5 text-xs">
                     <ExternalLink className="h-3.5 w-3.5" /> Open link
                   </a>
-                  <button onClick={() => copy(r.publicToken)} className="btn-outline py-1.5 text-xs">
+                  <button onClick={() => copy(r.publicToken, r.kind)} className="btn-outline py-1.5 text-xs">
                     {copied === r.publicToken ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy link</>}
                   </button>
                   <button onClick={() => openDetail(r)} disabled={!r.completions} className="btn-outline py-1.5 text-xs disabled:opacity-50">

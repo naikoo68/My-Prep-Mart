@@ -2,8 +2,10 @@ import { useState } from "react";
 import { X, Share2, Copy, Check, Clock } from "lucide-react";
 import { testService } from "../../services";
 
-// Build the public URL for a share token (hash-router friendly).
-const publicUrl = (token) => `${window.location.origin}${window.location.pathname}#/public/test/${token}`;
+// Build the public URL for a share token (hash-router friendly). A My Quiz opens
+// in the quiz-style player; everything else uses the exam-style test player.
+const publicUrl = (token, kind) =>
+  `${window.location.origin}${window.location.pathname}#/public/${kind === "quiz" ? "quiz" : "test"}/${token}`;
 
 // ISO date -> value for <input type="datetime-local"> (local time).
 const toLocalInput = (iso) => {
@@ -71,11 +73,11 @@ export default function ShareTestModal({ test, onClose, onUpdated }) {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(publicUrl(token));
+      await navigator.clipboard.writeText(publicUrl(token, test.practiceKind));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt("Copy this public link:", publicUrl(token));
+      window.prompt("Copy this public link:", publicUrl(token, test.practiceKind));
     }
   };
 
@@ -100,7 +102,7 @@ export default function ShareTestModal({ test, onClose, onUpdated }) {
               Anyone with this link can take the test — <b>no account or login required</b>. Results are graded but not saved to any account.
             </p>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-              <input readOnly value={publicUrl(token)} className="w-full bg-transparent text-sm outline-none" onFocus={(e) => e.target.select()} />
+              <input readOnly value={publicUrl(token, test.practiceKind)} className="w-full bg-transparent text-sm outline-none" onFocus={(e) => e.target.select()} />
               <button onClick={copyLink} className="btn-primary flex-shrink-0 py-1.5 text-sm">
                 {copied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy</>}
               </button>
@@ -135,7 +137,7 @@ export default function ShareTestModal({ test, onClose, onUpdated }) {
             </div>
 
             <div className="mt-5 flex items-center justify-between">
-              <a href={publicUrl(token)} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-600 hover:underline">Open link ↗</a>
+              <a href={publicUrl(token, test.practiceKind)} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-600 hover:underline">Open link ↗</a>
               <button onClick={disable} disabled={loading} className="btn-outline py-1.5 text-sm text-rose-600">
                 {loading ? "Turning off…" : "Turn off public link"}
               </button>

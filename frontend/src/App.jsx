@@ -136,6 +136,11 @@ const router = createHashRouter([
     path: "/public/test/:token",
     element: S(TestAttempt),
   },
+  // Public shared QUIZ — quiz-style player (one at a time, tap to reveal)
+  {
+    path: "/public/quiz/:token",
+    element: S(PracticeQuizPlay),
+  },
 
   // Client "My Practice" workspace (separate shell, own content only)
   {

@@ -372,12 +372,21 @@ function publicLinkExpired(test) {
 // auth required. Correct answers/explanations are stripped (like getTest).
 export async function getPublicTest(req, res) {
   const test = await TestSeries.findOne({ publicToken: req.params.token, publicShare: true })
-    .populate({ path: "questions", select: "-correct -explanation -optionExplanations" });
+    .populate("questions");
   if (!test) return res.status(404).json({ message: "This test link is invalid or public sharing was turned off." });
   if (publicLinkExpired(test)) return res.status(403).json({ message: "This public test link has expired." });
   const obj = test.toObject();
   delete obj.access; // never expose the access list
   delete obj.publicToken; // already in the URL; no need to echo
+  // An exam-style TEST hides the answers (anti-cheat). A shared QUIZ is played
+  // reveal-style (the correct option + explanation show after each tap, exactly
+  // like a student's My Quiz), so it KEEPS answers/explanations.
+  if (obj.practiceKind !== "quiz") {
+    obj.questions = (obj.questions || []).map((q) => {
+      const { correct, explanation, optionExplanations, ...rest } = q;
+      return rest;
+    });
+  }
   res.json(obj);
 }
 
