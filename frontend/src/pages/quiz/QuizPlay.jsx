@@ -86,7 +86,15 @@ export default function QuizPlay() {
   const [qTime, setQTime] = useState(saved.qTime ?? 0); // remaining for current question
   // Seed for per-attempt option shuffling — persisted so a refresh resumes the
   // SAME order; a new attempt (storage cleared on submit) gets a new order.
-  const [seed] = useState(() => (typeof saved.seed === "number" ? saved.seed : makeSeed()));
+  const [seed, setSeed] = useState(() => (typeof saved.seed === "number" ? saved.seed : makeSeed()));
+  // If a previous, UNFINISHED attempt is saved, ask whether to resume it or
+  // start fresh — instead of silently resuming. "Continue" keeps the saved
+  // answers AND the same question/option order (same seed); "Start new" clears
+  // it and reshuffles.
+  const hasSavedSession =
+    saved.timerMode != null &&
+    (Object.keys(saved.answers || {}).length > 0 || (saved.current || 0) > 0 || (saved.seconds || 0) > 0);
+  const [showResume, setShowResume] = useState(hasSavedSession);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -144,7 +152,7 @@ export default function QuizPlay() {
 
   // Total elapsed timer (runs once the quiz has started)
   useEffect(() => {
-    if (!started) return;
+    if (!started || showResume) return;
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [started]);
@@ -166,7 +174,7 @@ export default function QuizPlay() {
 
   // Per-question countdown → when it hits 0, lock the question (reveal answer).
   useEffect(() => {
-    if (!isTimed || lockedAt(current)) return;
+    if (!isTimed || showResume || lockedAt(current)) return;
     if (qTime <= 0) {
       setTimedOut((t) => ({ ...t, [current]: true }));
       return;
@@ -248,10 +256,58 @@ export default function QuizPlay() {
     navigate(`/quiz/${subjectId}/${topicId}/${sessionId}/${quizId}/result`, { state: result });
   }, [answers, questions, seconds, subjectId, topicId, sessionId, quizId, subjectName, navigate, storageKey]);
 
+  // Resume an unfinished attempt as-is, or wipe it and begin a fresh one.
+  const continueSession = () => setShowResume(false);
+  const startNewSession = () => {
+    localStorage.removeItem(storageKey);
+    setAnswers({});
+    setTimedOut({});
+    setBookmarks({});
+    setSeconds(0);
+    setCurrent(0);
+    setTimerMode(null);
+    setQTime(0);
+    setSeed(makeSeed()); // fresh seed → questions & options reshuffle
+    setShowResume(false);
+  };
+
   if (loading) return <div className="container-page"><Loading label="Loading quiz..." /></div>;
   if (error) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;
   if (!questions.length)
     return <div className="container-page"><EmptyState message="No questions in this session yet." /></div>;
+
+  // ---- Resume prompt (an unfinished attempt exists) ----
+  if (showResume) {
+    const answeredCount = Object.keys(saved.answers || {}).length;
+    return (
+      <div className="container-page py-10">
+        <button onClick={() => navigate(`/quiz/${subjectId}/${topicId}`)} className="btn-ghost -ml-2 mb-6">
+          <ChevronLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="mx-auto max-w-lg card p-8 text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+            <Play className="h-7 w-7" />
+          </span>
+          <h1 className="mt-4 text-2xl font-extrabold">Resume {subjectName} Quiz?</h1>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            You have an unfinished attempt — {answeredCount} of {questions.length} question(s) answered.
+          </p>
+          <div className="mt-6 space-y-3">
+            <button onClick={continueSession} className="btn-primary w-full justify-center">
+              <Play className="h-4 w-4" /> Continue previous session
+            </button>
+            <button onClick={startNewSession} className="btn-outline w-full justify-center">
+              Start a new session
+            </button>
+          </div>
+          <p className="mt-4 text-xs text-slate-400">
+            Continuing keeps your saved answers and the same question &amp; option order.
+            Starting new discards the previous answers and reshuffles.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ---- Timer setup screen (shown before the quiz starts) ----
   if (!started) {

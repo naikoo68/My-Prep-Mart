@@ -68,25 +68,38 @@ export default function PracticeQuizPlay() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isClient = user?.role === "client"; // clients return to their own workspace
+  const storageKey = `mpm-practice-quiz-${itemId}`;
+
+  // Any saved, unfinished progress for this quiz (so an exit/refresh can resume).
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem(storageKey)) || {}; } catch { return {}; }
+  })();
 
   const [questions, setQuestions] = useState([]);
   const [title, setTitle] = useState("Practice Quiz");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [current, setCurrent] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [timedOut, setTimedOut] = useState({});
-  const [bookmarks, setBookmarks] = useState({});
-  const [seconds, setSeconds] = useState(0);
-  const [timerMode, setTimerMode] = useState(null); // null=not chosen, "off", or seconds
-  const [qTime, setQTime] = useState(0);
+  const [current, setCurrent] = useState(saved.current || 0);
+  const [answers, setAnswers] = useState(saved.answers || {});
+  const [timedOut, setTimedOut] = useState(saved.timedOut || {});
+  const [bookmarks, setBookmarks] = useState(saved.bookmarks || {});
+  const [seconds, setSeconds] = useState(saved.seconds || 0);
+  const [timerMode, setTimerMode] = useState(saved.timerMode ?? null); // null=not chosen, "off", or seconds
+  const [qTime, setQTime] = useState(saved.qTime ?? 0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [showReview, setShowReview] = useState(false);
   const [reviewSearch, setReviewSearch] = useState("");
-  const [seed] = useState(makeSeed()); // per-attempt option shuffle
+  // Per-attempt option-shuffle seed — persisted so "Continue" keeps the SAME
+  // question/option order; a new attempt gets a fresh seed (reshuffle).
+  const [seed, setSeed] = useState(() => (typeof saved.seed === "number" ? saved.seed : makeSeed()));
+  // Offer Continue/Start-new when an unfinished attempt is saved.
+  const hasSavedSession =
+    saved.timerMode != null &&
+    (Object.keys(saved.answers || {}).length > 0 || (saved.current || 0) > 0 || (saved.seconds || 0) > 0);
+  const [showResume, setShowResume] = useState(hasSavedSession);
   const [fullscreen, setFullscreen] = useState(false);
   const containerRef = useRef(null);
   const { zoom, zoomIn, zoomOut } = useZoom();
@@ -123,12 +136,27 @@ export default function PracticeQuizPlay() {
   }, [itemId, seed]);
   useEffect(load, [load]);
 
+  // Saved position may point past a changed question list — clamp it.
+  useEffect(() => {
+    if (questions.length && current > questions.length - 1) setCurrent(0);
+  }, [questions, current]);
+
   // Total elapsed timer.
   useEffect(() => {
-    if (!started || result) return;
+    if (!started || result || showResume) return;
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
-  }, [started, result]);
+  }, [started, result, showResume]);
+
+  // Auto-save progress so an exit/refresh can resume this attempt.
+  useEffect(() => {
+    if (!loading && started && !result) {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ answers, timedOut, bookmarks, seconds, current, timerMode, qTime, seed })
+      );
+    }
+  }, [answers, timedOut, bookmarks, seconds, current, timerMode, qTime, seed, storageKey, loading, started, result]);
 
   const lockedAt = (i) => answers[i] !== undefined || !!timedOut[i];
 
@@ -141,7 +169,7 @@ export default function PracticeQuizPlay() {
 
   // Per-question countdown → lock (reveal) at 0.
   useEffect(() => {
-    if (!isTimed || lockedAt(current)) return;
+    if (!isTimed || showResume || lockedAt(current)) return;
     if (qTime <= 0) {
       setTimedOut((t) => ({ ...t, [current]: true }));
       return;
@@ -179,10 +207,11 @@ export default function PracticeQuizPlay() {
       };
     }
     graded.timeTaken = seconds;
+    localStorage.removeItem(storageKey); // attempt finished — clear saved session
     setResult(graded);
     setSubmitting(false);
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-  }, [answers, questions, seconds, itemId]);
+  }, [answers, questions, seconds, itemId, storageKey]);
 
   if (loading) return <div className="container-page"><Loading label="Loading quiz..." /></div>;
   if (error) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;
@@ -350,6 +379,48 @@ export default function PracticeQuizPlay() {
             })}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ---- Resume prompt (an unfinished attempt exists) ----
+  if (showResume) {
+    const answeredCount = Object.keys(saved.answers || {}).length;
+    return (
+      <div className="container-page py-10">
+        <button onClick={() => navigate(-1)} className="btn-ghost -ml-2 mb-6">
+          <ChevronLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="mx-auto max-w-lg card p-8 text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
+            <Play className="h-7 w-7" />
+          </span>
+          <h1 className="mt-4 text-2xl font-extrabold">Resume {title}?</h1>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">
+            You have an unfinished attempt — {answeredCount} of {questions.length} question(s) answered.
+          </p>
+          <div className="mt-6 space-y-3">
+            <button onClick={() => setShowResume(false)} className="btn-primary w-full justify-center">
+              <Play className="h-4 w-4" /> Continue previous session
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem(storageKey);
+                setAnswers({}); setTimedOut({}); setBookmarks({});
+                setSeconds(0); setCurrent(0); setTimerMode(null); setQTime(0);
+                setSeed(makeSeed()); // fresh seed → questions & options reshuffle
+                setShowResume(false);
+              }}
+              className="btn-outline w-full justify-center"
+            >
+              Start a new session
+            </button>
+          </div>
+          <p className="mt-4 text-xs text-slate-400">
+            Continuing keeps your saved answers and the same question &amp; option order.
+            Starting new discards the previous answers and reshuffles.
+          </p>
+        </div>
       </div>
     );
   }
