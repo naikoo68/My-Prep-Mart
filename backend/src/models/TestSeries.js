@@ -46,6 +46,9 @@ const testSeriesSchema = new mongoose.Schema(
     // Optional expiry for the public link. When set and in the past, the link
     // stops working (null = never expires).
     publicExpiresAt: { type: Date, default: null },
+    // How many people OPENED the public link (counted once per browser). Lets the
+    // admin see reach/impressions, not just completions.
+    publicViews: { type: Number, default: 0 },
     // Per-user access control. Test series are PRIVATE by default: a new
     // student sees a test only if visibleToAll is turned on, or they have an
     // explicit access entry (visible:true, optionally time-limited).

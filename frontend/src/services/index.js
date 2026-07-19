@@ -92,6 +92,7 @@ export const testService = {
   submit: (id, answers, timeTaken) => api.post(`/tests/${id}/submit`, { answers, timeTaken }),
   // public share link — no account/login needed (auth header omitted)
   getPublic: (token) => api.get(`/tests/public/${token}`, { auth: false }),
+  registerPublicView: (token) => api.post(`/tests/public/${token}/view`, {}, { auth: false }), // count an open
   submitPublic: (token, answers, timeTaken) => api.post(`/tests/public/${token}/submit`, { answers, timeTaken }, { auth: false }),
   togglePublicLink: (id, enable, expiresAt) => api.patch(`/tests/${id}/public-link`, { enable, ...(expiresAt !== undefined ? { expiresAt } : {}) }),
   // admin

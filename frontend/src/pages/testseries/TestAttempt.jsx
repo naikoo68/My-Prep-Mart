@@ -98,6 +98,15 @@ export default function TestAttempt() {
 
   useEffect(load, [load]);
 
+  // Count a public OPEN once per browser (impression tracking for shared links).
+  useEffect(() => {
+    if (!isPublic || !token) return;
+    const key = `mpm-viewed-${token}`;
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+    testService.registerPublicView(token).catch(() => {});
+  }, [isPublic, token]);
+
   const finalize = useCallback(async () => {
     if (submitting || result) return;
     setSubmitting(true);

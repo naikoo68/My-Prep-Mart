@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Share2, Users, ExternalLink, Copy, Check, RefreshCw, ChevronDown, Clock, Loader2, X } from "lucide-react";
+import { Share2, Users, Eye, ExternalLink, Copy, Check, RefreshCw, ChevronDown, Clock, Loader2, X } from "lucide-react";
 import { testService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
@@ -56,6 +56,7 @@ export default function AdminSharedLinks() {
   };
 
   const totalCompletions = rows.reduce((s, r) => s + (r.completions || 0), 0);
+  const totalOpens = rows.reduce((s, r) => s + (r.opens || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -75,8 +76,9 @@ export default function AdminSharedLinks() {
 
       {/* Summary */}
       {!loading && !error && rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="card p-4"><p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{rows.length}</p><p className="text-xs text-slate-500">Shared links</p></div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="card p-4"><p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{rows.length}</p><p className="text-xs text-slate-500">Shared links</p></div>
+          <div className="card p-4"><p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{totalOpens}</p><p className="text-xs text-slate-500">Total opens</p></div>
           <div className="card p-4"><p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{totalCompletions}</p><p className="text-xs text-slate-500">Total completions</p></div>
           <div className="card p-4"><p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{rows.filter((r) => isExpired(r.publicExpiresAt)).length}</p><p className="text-xs text-slate-500">Expired links</p></div>
         </div>
@@ -113,8 +115,14 @@ export default function AdminSharedLinks() {
                     </p>
                   </div>
 
-                  {/* Completions stat */}
+                  {/* Opens + completions stats */}
                   <div className="flex flex-shrink-0 items-center gap-4">
+                    <div className="text-center">
+                      <p className="flex items-center gap-1 text-2xl font-extrabold text-brand-600 dark:text-brand-400">
+                        <Eye className="h-5 w-5" /> {r.opens ?? 0}
+                      </p>
+                      <p className="text-[11px] text-slate-500">opened</p>
+                    </div>
                     <div className="text-center">
                       <p className="flex items-center gap-1 text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
                         <Users className="h-5 w-5" /> {r.completions}

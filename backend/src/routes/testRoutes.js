@@ -22,6 +22,7 @@ import {
   togglePublicLink,
   getPublicTest,
   submitPublicTest,
+  registerPublicView,
   listSharedTests,
   listPublicAttempts,
 } from "../controllers/testController.js";
@@ -36,6 +37,7 @@ const manage = [protect, authorize("admin", "client")];
 // Public share link — NO auth. Declared first so "public" is never captured by
 // the "/:id" param routes below.
 router.get("/public/:token", getPublicTest);
+router.post("/public/:token/view", registerPublicView); // count an open (impression)
 router.post("/public/:token/submit", submitPublicTest);
 
 router.get("/", optionalAuth, listTests);

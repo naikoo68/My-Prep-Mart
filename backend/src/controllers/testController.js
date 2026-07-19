@@ -413,8 +413,19 @@ export async function submitPublicTest(req, res) {
   });
 }
 
+// POST /api/tests/public/:token/view — count that someone OPENED the public
+// link. No auth. The client calls this once per browser (localStorage-guarded)
+// so it approximates unique opens rather than every page refresh.
+export async function registerPublicView(req, res) {
+  const test = await TestSeries.findOne({ publicToken: req.params.token, publicShare: true }).select("_id publicShare publicExpiresAt");
+  if (!test) return res.status(404).json({ message: "This test link is invalid or public sharing was turned off." });
+  if (publicLinkExpired(test)) return res.status(403).json({ message: "This public test link has expired." });
+  await TestSeries.updateOne({ _id: test._id }, { $inc: { publicViews: 1 } });
+  res.json({ ok: true });
+}
+
 // GET /api/tests/admin/shared  (admin) — every quiz/test with a public share
-// link, plus how many people have completed it, for the Shared Links tracker.
+// link, plus how many people have opened / completed it, for the tracker.
 export async function listSharedTests(req, res) {
   const tests = await TestSeries.find({ publicShare: true, ...ownerFilter(req) })
     .populate("exam", "name")
@@ -443,6 +454,7 @@ export async function listSharedTests(req, res) {
         context: t.practice
           ? [t.practiceStream?.name, t.practiceSubject?.name].filter(Boolean).join(" › ")
           : [t.exam?.name, t.post?.name].filter(Boolean).join(" › "),
+        opens: t.publicViews || 0,
         completions: c?.count || 0,
         avgPercentage: c?.avg != null ? Math.round(c.avg) : null,
         lastCompletedAt: c?.last || null,
