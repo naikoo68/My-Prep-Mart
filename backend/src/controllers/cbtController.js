@@ -329,6 +329,9 @@ export async function listCbtCandidates(req, res) {
       questionCount: t.questions?.length || 0,
       duration: t.duration,
       marks: t.marks,
+      // Grouping fields so the picker can drill down Stream → Subject → Test.
+      stream: t.practiceStream ? { id: String(t.practiceStream._id), name: t.practiceStream.name } : null,
+      subject: t.practiceSubject ? { id: String(t.practiceSubject._id), name: t.practiceSubject.name } : null,
       context: [t.practiceStream?.name, t.practiceSubject?.name].filter(Boolean).join(" › "),
       cbtEnabled: !!t.cbtEnabled,
     }))

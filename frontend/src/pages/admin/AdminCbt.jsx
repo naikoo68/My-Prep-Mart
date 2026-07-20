@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MonitorCheck, Users, Eye, ExternalLink, Copy, Check, RefreshCw, Trophy, Clock,
-  Loader2, X, Plus, Search, CalendarClock, Trash2, Mail, Medal, Send, Link2,
+  Loader2, X, Plus, Search, CalendarClock, Trash2, Mail, Medal, Send, Link2, ChevronRight,
 } from "lucide-react";
 import { cbtService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
@@ -283,12 +283,23 @@ export default function AdminCbt() {
   );
 }
 
-/* ---------------- Add-test modal: put a My Test on the exam page ---------------- */
+/* ---------------- Add-test modal: put a My Test on the exam page ----------------
+   Drill down the full My Test route: Stream → Subject → Test. */
+const gid = (x) => (x && x.id ? String(x.id) : "none");
+const gname = (x) => (x && x.name ? x.name : "Uncategorized");
+function uniqueBy(rows, keyFn, nameFn) {
+  const m = new Map();
+  for (const r of rows) { const k = keyFn(r); if (!m.has(k)) m.set(k, nameFn(r)); }
+  return [...m.entries()].map(([id, name]) => ({ id, name }));
+}
+
 function AddTestModal({ onClose, onAdded }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [q, setQ] = useState("");
+  const [streamId, setStreamId] = useState(""); // selected stream
+  const [subjectId, setSubjectId] = useState(""); // selected subject
+  const [q, setQ] = useState(""); // optional search across all My Tests
   const [adding, setAdding] = useState("");
 
   useEffect(() => {
@@ -311,7 +322,33 @@ function AddTestModal({ onClose, onAdded }) {
     }
   };
 
-  const filtered = items.filter((i) => i.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const streams = useMemo(() => uniqueBy(items, (t) => gid(t.stream), (t) => gname(t.stream)), [items]);
+  const subjects = useMemo(
+    () => uniqueBy(items.filter((t) => gid(t.stream) === streamId), (t) => gid(t.subject), (t) => gname(t.subject)),
+    [items, streamId]
+  );
+  const searching = q.trim().length > 0;
+  const shownTests = useMemo(() => {
+    if (searching) return items.filter((t) => t.name.toLowerCase().includes(q.trim().toLowerCase()));
+    if (!streamId || !subjectId) return [];
+    return items.filter((t) => gid(t.stream) === streamId && gid(t.subject) === subjectId);
+  }, [items, streamId, subjectId, q, searching]);
+
+  const TestRow = (i) => (
+    <div key={i._id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+      <div className="min-w-0">
+        <p className="truncate font-semibold">{i.name}</p>
+        <p className="text-xs text-slate-400">{i.context && `${i.context} · `}{i.questionCount} questions · {i.duration} min</p>
+      </div>
+      {i.cbtEnabled ? (
+        <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">On the page</span>
+      ) : (
+        <button onClick={() => add(i)} disabled={adding === i._id || !i.questionCount} className="btn-primary flex-shrink-0 py-1.5 text-xs disabled:opacity-50" title={!i.questionCount ? "Add questions first" : "Add to the exam page"}>
+          {adding === i._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
@@ -321,37 +358,78 @@ function AddTestModal({ onClose, onAdded }) {
           <button onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
 
+        {/* Optional global search (skips the drill-down) */}
         <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700">
           <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search My Tests…" className="w-full bg-transparent py-2 text-sm outline-none" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all My Tests by name…" className="w-full bg-transparent py-2 text-sm outline-none" />
+          {q && <button onClick={() => setQ("")} className="flex-shrink-0 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
         </div>
-        <p className="mb-3 text-xs text-slate-400">After adding, switch it <b>Live</b> and set an end time on the exam list.</p>
 
         {loading ? (
           <div className="flex items-center justify-center py-10 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
         ) : error ? (
           <ErrorState message={error} />
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <EmptyState message="No My Tests found. Create a My Test (with questions) first." />
-        ) : (
+        ) : searching ? (
           <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
-            {filtered.map((i) => (
-              <div key={i._id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{i.name}</p>
-                  <p className="text-xs text-slate-400">{i.context && `${i.context} · `}{i.questionCount} questions · {i.duration} min</p>
-                </div>
-                {i.cbtEnabled ? (
-                  <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">On the page</span>
-                ) : (
-                  <button onClick={() => add(i)} disabled={adding === i._id || !i.questionCount} className="btn-primary flex-shrink-0 py-1.5 text-xs disabled:opacity-50" title={!i.questionCount ? "Add questions first" : "Add to the exam page"}>
-                    {adding === i._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
-                  </button>
-                )}
-              </div>
-            ))}
+            {shownTests.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-500">No My Tests match “{q}”.</p>
+            ) : shownTests.map(TestRow)}
           </div>
+        ) : (
+          <>
+            {/* Breadcrumb of the current drill-down path */}
+            <div className="mb-3 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+              <button onClick={() => { setStreamId(""); setSubjectId(""); }} className={`rounded px-1.5 py-0.5 ${!streamId ? "font-bold text-brand-600" : "hover:bg-slate-100 dark:hover:bg-slate-800"}`}>Stream</button>
+              <ChevronRight className="h-3 w-3" />
+              <span className={subjectId ? "" : streamId ? "font-bold text-brand-600" : "opacity-50"}>Subject</span>
+              <ChevronRight className="h-3 w-3" />
+              <span className={subjectId ? "font-bold text-brand-600" : "opacity-50"}>Test</span>
+            </div>
+
+            {/* Level 1: Stream */}
+            {!streamId && (
+              <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+                {streams.map((s) => (
+                  <button key={s.id} onClick={() => { setStreamId(s.id); setSubjectId(""); }} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-left hover:border-brand-300 dark:border-slate-700">
+                    <span className="font-semibold">{s.name}</span>
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Level 2: Subject */}
+            {streamId && !subjectId && (
+              <>
+                <button onClick={() => setStreamId("")} className="mb-2 text-sm text-brand-600 hover:underline">← Back to streams</button>
+                <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+                  {subjects.map((s) => (
+                    <button key={s.id} onClick={() => setSubjectId(s.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-left hover:border-brand-300 dark:border-slate-700">
+                      <span className="font-semibold">{s.name}</span>
+                      <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Level 3: Tests */}
+            {streamId && subjectId && (
+              <>
+                <button onClick={() => setSubjectId("")} className="mb-2 text-sm text-brand-600 hover:underline">← Back to subjects</button>
+                <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
+                  {shownTests.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-slate-500">No tests here yet.</p>
+                  ) : shownTests.map(TestRow)}
+                </div>
+              </>
+            )}
+          </>
         )}
+
+        <p className="mt-3 text-xs text-slate-400">After adding, switch it <b>Live</b> and set an end time on the exam list.</p>
       </div>
     </div>
   );
