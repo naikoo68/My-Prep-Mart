@@ -161,6 +161,8 @@ export const cbtService = {
   registerPortal: (data) => api.post("/cbt/register", data, { auth: false }), // { name, email, password } → OTP
   verifyPortal: (data) => api.post("/cbt/verify", data, { auth: false }), // { email, code } → { sessionToken }
   loginPortal: (data) => api.post("/cbt/login", data, { auth: false }), // { email, password } → { sessionToken }
+  forgotPortal: (data) => api.post("/cbt/forgot", data, { auth: false }), // { email } → reset code
+  resetPortal: (data) => api.post("/cbt/reset", data, { auth: false }), // { email, code, password } → { sessionToken }
   portal: (email) => api.get(`/cbt/portal${email ? `?email=${encodeURIComponent(email)}` : ""}`, { auth: false }), // list exams (+ completed flags)
   examMeta: (token) => api.get(`/cbt/exam/${token}`, { auth: false }), // exam meta
   start: (token, data) => api.post(`/cbt/exam/${token}/start`, data, { auth: false }), // { email, sessionToken } → questions

@@ -45,6 +45,39 @@ function AuthCard({ onAuthed }) {
     }
   };
 
+  const sendResetCode = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!EMAIL_RE.test(email.trim())) return setError("Please enter a valid email address.");
+    setBusy(true);
+    try {
+      const r = await cbtService.forgotPortal({ email: email.trim().toLowerCase() });
+      setInfo(`We emailed a reset code to ${r.email}.`);
+      setStage("otp");
+    } catch (err) {
+      if (err?.data?.noAccount) { setError("No account with this email — please register."); reset("register"); return; }
+      setError(err.message || "Could not send the code.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doReset = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!/^\d{4,8}$/.test(code.trim())) return setError("Enter the code from your email.");
+    if (password.length < 6) return setError("New password must be at least 6 characters.");
+    setBusy(true);
+    try {
+      const v = await cbtService.resetPortal({ email: email.trim().toLowerCase(), code: code.trim(), password });
+      onAuthed({ name: v.name, email: v.email, sessionToken: v.sessionToken });
+    } catch (err) {
+      setError(err.message || "Could not reset your password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sendCode = async (e) => {
     e.preventDefault();
     setError("");
@@ -132,8 +165,61 @@ function AuthCard({ onAuthed }) {
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               {busy ? "Signing in…" : "Log in"}
             </button>
-            <p className="text-center text-xs text-slate-400">New here? <button type="button" onClick={() => reset("register")} className="text-brand-600 hover:underline">Register</button></p>
+            <div className="flex items-center justify-between text-xs">
+              <button type="button" onClick={() => reset("register")} className="text-slate-500 hover:underline">New here? Register</button>
+              <button type="button" onClick={() => reset("reset")} className="text-brand-600 hover:underline">Forgot password?</button>
+            </div>
           </form>
+        ) : mode === "reset" ? (
+          stage === "form" ? (
+            <form onSubmit={sendResetCode} className="space-y-3">
+              <p className="text-sm text-slate-500 dark:text-slate-400">Enter your email and we'll send a code to reset your password.</p>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Email</label>
+                <div className={inputWrap}>
+                  <Mail className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" className="w-full bg-transparent py-2.5 text-sm outline-none" autoFocus />
+                </div>
+              </div>
+              {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
+              <button type="submit" disabled={busy} className="btn-primary w-full">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                {busy ? "Please wait…" : "Send reset code"}
+              </button>
+              <p className="text-center text-xs text-slate-400">Remembered it? <button type="button" onClick={() => reset("login")} className="text-brand-600 hover:underline">Log in</button></p>
+            </form>
+          ) : (
+            <form onSubmit={doReset} className="space-y-3">
+              {info && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">{info}</p>}
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Reset code</label>
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  inputMode="numeric"
+                  placeholder="______"
+                  className="w-full rounded-xl border border-slate-200 py-2.5 text-center text-2xl font-bold tracking-[0.4em] outline-none dark:border-slate-700 dark:bg-slate-800"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">New password</label>
+                <div className={inputWrap}>
+                  <Lock className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                  <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="New password (min 6 chars)" className="w-full bg-transparent py-2.5 text-sm outline-none" />
+                </div>
+              </div>
+              {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
+              <button type="submit" disabled={busy} className="btn-primary w-full">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                {busy ? "Resetting…" : "Reset password & sign in"}
+              </button>
+              <div className="flex items-center justify-between text-xs">
+                <button type="button" onClick={() => setStage("form")} className="text-slate-500 hover:underline">← Back</button>
+                <button type="button" onClick={sendResetCode} disabled={busy} className="text-brand-600 hover:underline disabled:opacity-50">Resend code</button>
+              </div>
+            </form>
+          )
         ) : stage === "form" ? (
           <form onSubmit={sendCode} className="space-y-3">
             <div>

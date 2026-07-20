@@ -62,16 +62,16 @@ async function hasCompleted(testId, email) {
 
 const genOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
-// Email a one-time code to the candidate.
-async function emailOtp(email, code, examName) {
+// Email a one-time code to the candidate. `label` describes what it's for.
+async function emailOtp(email, code, label = "the exam portal") {
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
-      <h2 style="margin:0 0 8px">Your exam sign-in code</h2>
-      <p style="color:#475569;margin:0 0 16px">Use this code to start <b>${esc(examName)}</b>:</p>
+      <h2 style="margin:0 0 8px">Your verification code</h2>
+      <p style="color:#475569;margin:0 0 16px">Use this code to continue with <b>${esc(label)}</b>:</p>
       <div style="font-size:34px;font-weight:800;letter-spacing:8px;background:#f1f5f9;border-radius:12px;padding:16px;text-align:center;color:#4f46e5">${esc(code)}</div>
       <p style="color:#64748b;font-size:13px;margin-top:16px">This code expires in 10 minutes. If you didn't request it, ignore this email.</p>
     </div>`;
-  return sendMail({ to: email, subject: `Exam code: ${code} — ${examName}`, text: `Your code for ${examName} is ${code} (valid 10 minutes).`, html });
+  return sendMail({ to: email, subject: `Your code: ${code}`, text: `Your verification code is ${code} (valid 10 minutes).`, html });
 }
 
 // The canonical leaderboard for a CBT exam: the BEST attempt per student
@@ -276,6 +276,48 @@ export async function verifyPortal(req, res) {
   reg.verified = true;
   reg.sessionToken = crypto.randomBytes(24).toString("hex");
   reg.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // refresh TTL
+  await reg.save();
+  res.json({ sessionToken: reg.sessionToken, name: reg.name, email: cleanEmail });
+}
+
+// POST /api/cbt/forgot — request a password-reset code. Body { email }. Emails a
+// one-time code to a registered candidate.
+export async function forgotPasswordPortal(req, res) {
+  const cleanEmail = String(req.body?.email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ message: "Please enter a valid email address." });
+  const reg = await CbtRegistration.findOne({ email: cleanEmail });
+  if (!reg || !reg.passwordHash) return res.status(404).json({ noAccount: true, message: "No account with this email. Please register." });
+  if (!isMailConfigured()) return res.status(503).json({ message: "Email isn't configured on the server. Please contact the organiser." });
+
+  const code = genOtp();
+  reg.code = code;
+  reg.codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  reg.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await reg.save();
+  const sent = await emailOtp(cleanEmail, code, "your password reset");
+  if (!sent) return res.status(502).json({ message: "Could not send the code email. Please try again shortly." });
+  res.json({ sent: true, email: cleanEmail });
+}
+
+// POST /api/cbt/reset — set a new password with the reset code. Body
+// { email, code, password }. On success logs the student in (issues a session).
+export async function resetPasswordPortal(req, res) {
+  const { email = "", code = "", password = "" } = req.body || {};
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanCode = String(code).trim();
+  if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ message: "Please enter a valid email address." });
+  if (String(password).length < 6) return res.status(400).json({ message: "Password must be at least 6 characters." });
+
+  const reg = await CbtRegistration.findOne({ email: cleanEmail });
+  if (!reg || !reg.code) return res.status(400).json({ message: "Please request a reset code first." });
+  if (!reg.codeExpiresAt || reg.codeExpiresAt.getTime() < Date.now()) return res.status(400).json({ message: "This code has expired. Please request a new one." });
+  if (reg.code !== cleanCode) return res.status(400).json({ message: "Incorrect code. Please check and try again." });
+
+  reg.passwordHash = await bcrypt.hash(String(password), 10);
+  reg.verified = true;
+  reg.code = null;
+  reg.sessionToken = crypto.randomBytes(24).toString("hex");
+  reg.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   await reg.save();
   res.json({ sessionToken: reg.sessionToken, name: reg.name, email: cleanEmail });
 }
