@@ -157,11 +157,11 @@ export const practiceService = {
 
 // ---- CBT online exams (single public portal; name+email sign-in; deferred results) ----
 export const cbtService = {
-  // public (no login)
-  portal: () => api.get("/cbt/portal", { auth: false }), // the one shareable exam page
-  examMeta: (token) => api.get(`/cbt/exam/${token}`, { auth: false }), // meta for the sign-in screen
-  register: (token, data) => api.post(`/cbt/exam/${token}/register`, data, { auth: false }), // { name, email } → OTP
-  verify: (token, data) => api.post(`/cbt/exam/${token}/verify`, data, { auth: false }), // { email, code } → { sessionToken }
+  // public (no login) — registration is portal-wide (once per email)
+  registerPortal: (data) => api.post("/cbt/register", data, { auth: false }), // { name, email } → OTP
+  verifyPortal: (data) => api.post("/cbt/verify", data, { auth: false }), // { email, code } → { sessionToken }
+  portal: (email) => api.get(`/cbt/portal${email ? `?email=${encodeURIComponent(email)}` : ""}`, { auth: false }), // list exams (+ completed flags)
+  examMeta: (token) => api.get(`/cbt/exam/${token}`, { auth: false }), // exam meta
   start: (token, data) => api.post(`/cbt/exam/${token}/start`, data, { auth: false }), // { email, sessionToken } → questions
   registerView: (token) => api.post(`/cbt/exam/${token}/view`, {}, { auth: false }),
   submit: (token, payload) => api.post(`/cbt/exam/${token}/submit`, payload, { auth: false }), // { name, email, sessionToken, answers, timeTaken }

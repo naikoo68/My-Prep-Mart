@@ -23,7 +23,7 @@ import { testService, cbtService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
-import CbtRegister from "../../components/cbt/CbtRegister";
+import { getCbtSession, clearCbtSession } from "../../lib/cbtSession";
 import StatementPairView from "../../components/ui/StatementPairView";
 import TableView from "../../components/ui/TableView";
 import AssertionReasonView from "../../components/ui/AssertionReasonView";
@@ -135,11 +135,38 @@ export default function TestAttempt() {
   const [candidate, setCandidate] = useState(null); // CBT: { name, email } (sign-in gate)
   const containerRef = useRef(null);
 
-  // Load the test + its questions (answers hidden by the API). CBT exams are
-  // NOT loaded here — the CbtRegister gate handles sign-in/OTP and hands us the
-  // questions via startCbtExam() only after the candidate is verified.
+  // CBT: set up questions from the /start response and bind the timer to the
+  // exam's end (late joiners get only the time left until it closes).
+  const startCbtExam = useCallback((res, cand) => {
+    const t = { name: res.name, duration: res.duration, marks: res.marks, negativeMarking: res.negativeMarking, questions: res.questions, endAt: res.endAt };
+    setTest(t);
+    const qs = shuffleQuestionOrder(t.questions || [], seed);
+    setQuestions(shuffleAll(qs, seed));
+    setCandidate(cand);
+    setRemaining(cbtRemainingSeconds(res.endAt, res.serverNow, res.duration));
+  }, [seed]);
+
+  // Load the test + its questions (answers hidden by the API). For CBT the
+  // candidate must already be registered on the portal — we read that session
+  // and start the exam directly; if there's no session we send them to the
+  // portal to register there (registration is NOT done per-test).
   const load = useCallback(() => {
-    if (isCbt) { setLoading(false); return; }
+    if (isCbt) {
+      const session = getCbtSession();
+      if (!session) { navigate("/online-exams", { replace: true }); return; }
+      setLoading(true);
+      setError("");
+      cbtService
+        .start(cbtToken, { email: session.email, sessionToken: session.sessionToken })
+        .then((res) => startCbtExam(res, session))
+        .catch((e) => {
+          // Session expired/invalid → clear it and go register on the portal.
+          if (e?.status === 401 || e?.data?.needRegister) { clearCbtSession(); navigate("/online-exams", { replace: true }); return; }
+          setError(e.message || "Could not start the exam.");
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
     setLoading(true);
     setError("");
     (isPublic ? testService.getPublic(token) : testService.get(testId))
@@ -160,18 +187,7 @@ export default function TestAttempt() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [testId, token, isPublic, isCbt, seed]);
-
-  // CBT: called by the sign-in gate once the candidate is verified and the
-  // exam has started — sets up questions and binds the timer to the exam's end.
-  const startCbtExam = useCallback((res, cand) => {
-    const t = { name: res.name, duration: res.duration, marks: res.marks, negativeMarking: res.negativeMarking, questions: res.questions, endAt: res.endAt };
-    setTest(t);
-    const qs = shuffleQuestionOrder(t.questions || [], seed);
-    setQuestions(shuffleAll(qs, seed));
-    setCandidate(cand);
-    setRemaining(cbtRemainingSeconds(res.endAt, res.serverNow, res.duration));
-  }, [seed]);
+  }, [testId, token, cbtToken, isPublic, isCbt, seed, navigate, startCbtExam]);
 
   useEffect(load, [load]);
 
@@ -318,11 +334,9 @@ export default function TestAttempt() {
   if (loading) return <div className="container-page"><Loading label="Loading test..." /></div>;
   if (error && !result) return <div className="container-page"><ErrorState message={error} onRetry={load} /></div>;
 
-  // CBT: gate the exam behind registration + OTP verification. CbtRegister
-  // fetches meta, sends/verifies the code, then starts the exam via startCbtExam.
-  if (isCbt && !result && !candidate) {
-    return <CbtRegister token={cbtToken} onStarted={startCbtExam} onExit={() => navigate("/online-exams")} />;
-  }
+  // CBT: while the exam is being started from the stored portal session, the
+  // loading state covers it; if it fails we show the error (with retry). There's
+  // no per-test sign-in — registration happens on the portal.
 
   const hh = String(Math.floor(remaining / 3600)).padStart(2, "0");
   const mm = String(Math.floor((remaining % 3600) / 60)).padStart(2, "0");

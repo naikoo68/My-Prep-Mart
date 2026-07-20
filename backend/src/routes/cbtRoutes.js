@@ -2,8 +2,8 @@ import { Router } from "express";
 import {
   getCbtPortal,
   getCbtExam,
-  registerCbt,
-  verifyCbt,
+  registerPortal,
+  verifyPortal,
   startCbt,
   registerCbtView,
   submitCbt,
@@ -25,11 +25,11 @@ const admin = [protect, authorize("admin")];
 // Public (NO auth) — the single exam portal, plus taking an exam and viewing a
 // (deferred) result. Students sign in with just their name + email on the
 // client. Declared before admin routes.
-router.get("/portal", getCbtPortal); // the one shareable exam page
-router.get("/exam/:token", getCbtExam); // exam META (for the sign-in screen)
-router.post("/exam/:token/register", registerCbt); // step 1: send OTP to email
-router.post("/exam/:token/verify", verifyCbt); // step 2: verify OTP → sessionToken
-router.post("/exam/:token/start", startCbt); // hand out questions (verified)
+router.get("/portal", getCbtPortal); // the one shareable exam page (lists exams)
+router.post("/register", registerPortal); // portal sign-in step 1: send OTP to email
+router.post("/verify", verifyPortal); // portal sign-in step 2: verify OTP → sessionToken
+router.get("/exam/:token", getCbtExam); // exam META
+router.post("/exam/:token/start", startCbt); // hand out questions (verified portal session)
 router.post("/exam/:token/view", registerCbtView); // count an open (impression)
 router.post("/exam/:token/submit", submitCbt);
 router.get("/result/:resultToken", getCbtResult); // pending until results released

@@ -101,17 +101,6 @@ export default function AdminCbt() {
     }
   };
 
-  const toggleOtp = async (r) => {
-    const next = !r.cbtRequireOtp;
-    patch(r._id, { cbtRequireOtp: next });
-    try {
-      await cbtService.update(r._id, { requireOtp: next });
-    } catch (e) {
-      patch(r._id, { cbtRequireOtp: r.cbtRequireOtp });
-      alert(e.message || "Could not update the OTP setting.");
-    }
-  };
-
   const releaseNow = async (r) => {
     if (!window.confirm(`End “${r.name}” now and release results?\nRanks are finalised and every candidate is emailed their scorecard. This can't be undone.`)) return;
     setBusy(`rel-${r._id}`);
@@ -249,20 +238,7 @@ export default function AdminCbt() {
                       </button>
                       Live
                     </label>
-
-                    <label className="flex items-center gap-2 text-sm font-medium">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={r.cbtRequireOtp}
-                        disabled={locked}
-                        onClick={() => toggleOtp(r)}
-                        className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${r.cbtRequireOtp ? "bg-brand-500" : "bg-slate-300 dark:bg-slate-600"} ${locked ? "opacity-50" : ""}`}
-                      >
-                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${r.cbtRequireOtp ? "left-[22px]" : "left-0.5"}`} />
-                      </button>
-                      Email OTP
-                    </label>
+                    <span className="text-xs text-slate-400">Candidates register (name + email + OTP) on the portal page.</span>
                   </div>
 
                   <div className="flex flex-wrap items-end gap-3 text-sm">

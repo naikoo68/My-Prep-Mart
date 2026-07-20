@@ -147,6 +147,16 @@ export async function getCbtPortal(req, res) {
   // Keep exams whose window hasn't ended. Scheduled (not-yet-started) exams are
   // still listed so candidates can see what's coming and when.
   const live = tests.filter((t) => !t.cbtEndAt || new Date(t.cbtEndAt).getTime() > now);
+
+  // If the caller passes their (registered) email, flag which exams they've
+  // already completed so the portal can show "Completed" and hide Start.
+  const email = String(req.query.email || "").trim().toLowerCase();
+  let completedSet = new Set();
+  if (email && live.length) {
+    const done = await CbtAttempt.find({ testSeries: { $in: live.map((t) => t._id) }, email }).select("testSeries").lean();
+    completedSet = new Set(done.map((a) => String(a.testSeries)));
+  }
+
   res.json(
     live.map((t) => ({
       _id: t._id,
@@ -159,6 +169,7 @@ export async function getCbtPortal(req, res) {
       startAt: t.cbtStartAt || null,
       endAt: t.cbtEndAt || null,
       state: examWindowState(t), // "open" | "scheduled"
+      completed: completedSet.has(String(t._id)),
     }))
   );
 }
@@ -184,59 +195,59 @@ export async function getCbtExam(req, res) {
   });
 }
 
-// POST /api/cbt/exam/:token/register — step 1 of sign-in. Body { name, email }.
-// Emails a one-time code (OTP) to the candidate. Blocked if the student has
-// already completed this exam (one attempt only).
-export async function registerCbt(req, res) {
+// Validate a portal session (a verified email + its sessionToken). Returns the
+// registration doc when valid, else null. Used to gate start & submit.
+async function findPortalSession(email, sessionToken) {
+  if (!email || !sessionToken) return null;
+  const reg = await CbtRegistration.findOne({ email: String(email).toLowerCase() });
+  if (!reg || !reg.verified || reg.sessionToken !== sessionToken) return null;
+  if (reg.expiresAt && reg.expiresAt.getTime() < Date.now()) return null;
+  return reg;
+}
+
+// POST /api/cbt/register — PORTAL sign-in step 1. Body { name, email }. Emails a
+// one-time code (OTP). This registers the candidate for the whole portal, not a
+// single exam, so they verify once and can then take any live exam.
+export async function registerPortal(req, res) {
   const { name = "", email = "" } = req.body || {};
   const cleanName = String(name).trim();
   const cleanEmail = String(email).trim().toLowerCase();
   if (!cleanName) return res.status(400).json({ message: "Please enter your name." });
   if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ message: "Please enter a valid email address." });
-
-  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).select("name cbtLive cbtStartAt cbtEndAt cbtResultsReleased").lean();
-  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
-  if (test.cbtResultsReleased || endReached(test)) return res.status(403).json({ message: "This exam has ended." });
-  if (notStartedYet(test)) return res.status(403).json({ message: `This exam opens at ${new Date(test.cbtStartAt).toLocaleString()}.` });
-  if (!test.cbtLive) return res.status(403).json({ message: "This exam is not open right now. Please check back later." });
-  if (await hasCompleted(test._id, cleanEmail)) return res.status(409).json({ alreadyCompleted: true, message: "You have already taken this exam. A second attempt isn't allowed." });
   if (!isMailConfigured()) return res.status(503).json({ message: "Email isn't configured on the server, so a code can't be sent. Please contact the organiser." });
 
   const code = genOtp();
   const now = Date.now();
   await CbtRegistration.findOneAndUpdate(
-    { testSeries: test._id, email: cleanEmail },
+    { email: cleanEmail },
     {
-      testSeries: test._id, email: cleanEmail, name: cleanName,
+      email: cleanEmail, name: cleanName,
       code, codeExpiresAt: new Date(now + 10 * 60 * 1000),
       verified: false, sessionToken: null,
       expiresAt: new Date(now + 24 * 60 * 60 * 1000), // TTL cleanup after 24h
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
-  const sent = await emailOtp(cleanEmail, code, test.name);
+  const sent = await emailOtp(cleanEmail, code, "the exam portal");
   if (!sent) return res.status(502).json({ message: "Could not send the code email. Please try again shortly." });
   res.json({ sent: true, email: cleanEmail });
 }
 
-// POST /api/cbt/exam/:token/verify — step 2. Body { email, code }. On success
-// issues a sessionToken the client presents to start & submit.
-export async function verifyCbt(req, res) {
+// POST /api/cbt/verify — PORTAL sign-in step 2. Body { email, code }. On success
+// issues a sessionToken the client keeps for the whole portal session.
+export async function verifyPortal(req, res) {
   const { email = "", code = "" } = req.body || {};
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanCode = String(code).trim();
-  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).select("_id").lean();
-  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
 
-  const reg = await CbtRegistration.findOne({ testSeries: test._id, email: cleanEmail });
+  const reg = await CbtRegistration.findOne({ email: cleanEmail });
   if (!reg || !reg.code) return res.status(400).json({ message: "Please request a code first." });
   if (!reg.codeExpiresAt || reg.codeExpiresAt.getTime() < Date.now()) return res.status(400).json({ message: "This code has expired. Please request a new one." });
   if (reg.code !== cleanCode) return res.status(400).json({ message: "Incorrect code. Please check and try again." });
 
   reg.verified = true;
-  if (!reg.sessionToken) reg.sessionToken = crypto.randomBytes(24).toString("hex");
-  // Keep the code valid until it expires so a transient failure right after
-  // verifying (e.g. the /start call) can be retried without a new code.
+  reg.sessionToken = crypto.randomBytes(24).toString("hex");
+  reg.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // refresh TTL
   await reg.save();
   res.json({ sessionToken: reg.sessionToken, name: reg.name, email: cleanEmail });
 }
@@ -251,11 +262,9 @@ export async function startCbt(req, res) {
   if (!test) return res.status(404).json({ message: "This exam link is invalid." });
   if (!openForTaking(test)) return res.status(403).json({ message: notStartedYet(test) ? "This exam hasn't started yet." : "This exam has ended or is not open right now." });
 
-  if (test.cbtRequireOtp !== false) {
-    const reg = await CbtRegistration.findOne({ testSeries: test._id, email: cleanEmail });
-    if (!reg || !reg.verified || reg.sessionToken !== sessionToken || !sessionToken) {
-      return res.status(401).json({ message: "Please verify your email to start the exam." });
-    }
+  // Must be a verified portal session (registered on the portal page).
+  if (!(await findPortalSession(cleanEmail, sessionToken))) {
+    return res.status(401).json({ needRegister: true, message: "Please register on the exam portal to take this exam." });
   }
   if (await hasCompleted(test._id, cleanEmail)) return res.status(409).json({ alreadyCompleted: true, message: "You have already taken this exam." });
 
@@ -303,12 +312,9 @@ export async function submitCbt(req, res) {
   // results are already released.
   if (test.cbtResultsReleased) return res.status(403).json({ message: "This exam's results are already released." });
 
-  // Verified-session gate (when OTP is required).
-  if (test.cbtRequireOtp !== false) {
-    const reg = await CbtRegistration.findOne({ testSeries: test._id, email: cleanEmail });
-    if (!reg || !reg.verified || reg.sessionToken !== sessionToken || !sessionToken) {
-      return res.status(401).json({ message: "Your exam session is invalid. Please sign in again." });
-    }
+  // Verified portal session gate.
+  if (!(await findPortalSession(cleanEmail, sessionToken))) {
+    return res.status(401).json({ message: "Your exam session is invalid. Please register on the portal again." });
   }
   // One attempt per student.
   if (await hasCompleted(test._id, cleanEmail)) {
