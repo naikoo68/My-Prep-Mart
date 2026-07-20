@@ -9,9 +9,6 @@ import { sendMail, isMailConfigured } from "../config/mailer.js";
 // Only the admin manages CBT exams (they live on platform / ownerless tests).
 const isAdmin = (req) => req.user?.role === "admin";
 
-// Whether a CBT link is currently usable (enabled and not past its expiry).
-const cbtExpired = (t) => t.cbtExpiresAt && new Date(t.cbtExpiresAt).getTime() < Date.now();
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const optLetter = (n) => (n == null ? "—" : String.fromCharCode(65 + Number(n)));
 const esc = (s) =>
@@ -21,22 +18,16 @@ const esc = (s) =>
 // Base URL of the frontend (hash router), for links emailed to students.
 const clientBase = () => (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
 const resultUrlFor = (token) => `${clientBase()}/#/cbt/result/${token}`;
+const portalUrl = () => `${clientBase()}/#/online-exams`;
 
-// Turn OFF any CBT exam whose expiry has passed so it drops off the admin list
-// and can no longer be opened. (getCbtExam also blocks expired links.)
-export async function disableExpiredCbtExams() {
-  try {
-    await TestSeries.updateMany(
-      { cbtEnabled: true, cbtExpiresAt: { $ne: null, $lte: new Date() } },
-      { $set: { cbtEnabled: false } }
-    );
-  } catch { /* ignore — next sweep retries */ }
-}
-setInterval(disableExpiredCbtExams, 10 * 60 * 1000).unref();
+// Whether the exam's taking window has ended (fixed end time reached).
+const endReached = (t) => t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= Date.now();
+// Whether candidates may currently take the exam: on the portal, live, results
+// not yet released, and the end time (if any) not yet reached.
+const openForTaking = (t) => t.cbtEnabled && t.cbtLive && !t.cbtResultsReleased && !endReached(t);
 
 // The canonical leaderboard for a CBT exam: the BEST attempt per student
-// (deduped by email — highest score, then fastest), ranked. Shared by the
-// admin dashboard and by rank computation on submit.
+// (deduped by email — highest score, then fastest), ranked.
 function rankBestPerStudent(attempts) {
   const best = new Map(); // email -> attempt
   for (const a of attempts) {
@@ -52,14 +43,82 @@ function rankBestPerStudent(attempts) {
   return rows.map((a, i) => ({ ...a, rank: i + 1 }));
 }
 
+/* ===================== results release (deferred) ===================== */
+
+// Release results for ONE exam: finalise ranks and email every candidate their
+// scorecard (best attempt per student). Latches cbtResultsReleased so it runs
+// once and stops further taking. Safe to call more than once (no-op if already
+// released) thanks to the atomic guard below.
+async function releaseOneCbtExam(test) {
+  // Atomically flip the latch so concurrent sweeps / a manual click can't
+  // double-send. Only the caller that actually flips it proceeds to email.
+  const flipped = await TestSeries.updateOne(
+    { _id: test._id, cbtResultsReleased: { $ne: true } },
+    { $set: { cbtResultsReleased: true, cbtLive: false } }
+  );
+  if (!flipped.modifiedCount) return; // someone else already released it
+
+  const all = await CbtAttempt.find({ testSeries: test._id }).lean();
+  const board = rankBestPerStudent(all);
+  const candidates = board.length;
+  for (const row of board) {
+    if (!row.resultToken || row.emailed) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await emailCbtResult({ attempt: row, test, rank: row.rank, candidates, resultToken: row.resultToken }).catch(() => {});
+  }
+}
+
+// Sweep: release any exam whose fixed end time has passed but whose results
+// haven't been sent yet. Runs on a timer and opportunistically on list loads.
+export async function releaseEndedCbtExams() {
+  try {
+    const due = await TestSeries.find({
+      cbtEnabled: true,
+      cbtResultsReleased: { $ne: true },
+      cbtEndAt: { $ne: null, $lte: new Date() },
+    });
+    for (const t of due) {
+      // eslint-disable-next-line no-await-in-loop
+      await releaseOneCbtExam(t);
+    }
+  } catch { /* next sweep retries */ }
+}
+setInterval(releaseEndedCbtExams, 5 * 60 * 1000).unref();
+
 /* ===================== public (no auth) endpoints ===================== */
 
+// GET /api/cbt/portal — the single public exam portal: every exam that is added,
+// live, not yet released, and still within its window. No auth.
+export async function getCbtPortal(req, res) {
+  await releaseEndedCbtExams(); // drop just-ended exams from the portal
+  const now = Date.now();
+  const tests = await TestSeries.find({ cbtEnabled: true, cbtLive: true, cbtResultsReleased: { $ne: true } })
+    .populate("practiceStream", "name")
+    .populate("practiceSubject", "name")
+    .sort("-updatedAt")
+    .lean();
+  const live = tests.filter((t) => !t.cbtEndAt || new Date(t.cbtEndAt).getTime() > now);
+  res.json(
+    live.map((t) => ({
+      _id: t._id,
+      name: t.name,
+      token: t.cbtToken,
+      duration: t.duration,
+      marks: t.marks,
+      questionCount: t.questions?.length || 0,
+      context: [t.practiceStream?.name, t.practiceSubject?.name].filter(Boolean).join(" › "),
+      endAt: t.cbtEndAt || null,
+    }))
+  );
+}
+
 // GET /api/cbt/exam/:token — fetch a CBT exam to take. No auth. Correct answers
-// and explanations are ALWAYS stripped (it's a proctored-style exam).
+// are ALWAYS stripped. Blocked if the exam isn't currently open for taking.
 export async function getCbtExam(req, res) {
   const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).populate("questions");
-  if (!test) return res.status(404).json({ message: "This exam link is invalid or the exam is no longer open." });
-  if (cbtExpired(test)) return res.status(403).json({ message: "This exam has closed." });
+  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
+  if (test.cbtResultsReleased || endReached(test)) return res.status(403).json({ message: "This exam has ended." });
+  if (!test.cbtLive) return res.status(403).json({ message: "This exam is not open right now. Please check back later." });
 
   const obj = test.toObject();
   const questions = (obj.questions || []).map((q) => {
@@ -73,24 +132,23 @@ export async function getCbtExam(req, res) {
     marks: obj.marks,
     negativeMarking: obj.negativeMarking,
     questionCount: questions.length,
+    endAt: obj.cbtEndAt || null,
     questions,
   });
 }
 
 // POST /api/cbt/exam/:token/view — count that someone OPENED the exam link.
-// No auth. Called once per browser (localStorage-guarded) for a rough unique count.
 export async function registerCbtView(req, res) {
-  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).select("_id cbtExpiresAt cbtEnabled");
+  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).select("_id cbtLive cbtEndAt cbtResultsReleased");
   if (!test) return res.status(404).json({ message: "This exam link is invalid." });
-  if (cbtExpired(test)) return res.status(403).json({ message: "This exam has closed." });
   await TestSeries.updateOne({ _id: test._id }, { $inc: { cbtViews: 1 } });
   res.json({ ok: true });
 }
 
-// POST /api/cbt/exam/:token/submit — grade a CBT attempt. Body:
-// { name, email, answers:{questionId:optionIndex}, timeTaken }. Stores the
-// attempt WITH the student's identity, computes their rank, emails the result,
-// and returns the graded summary + review + rank + result-page token.
+// POST /api/cbt/exam/:token/submit — record a CBT attempt. Body:
+// { name, email, answers, timeTaken }. The attempt is stored WITH the student's
+// identity and a full graded review snapshot, but NOTHING is revealed now: no
+// rank, no score, no email. Results are released only after the exam ends.
 export async function submitCbt(req, res) {
   const { name = "", email = "", answers = {}, timeTaken = 0 } = req.body || {};
   const cleanName = String(name).trim();
@@ -99,16 +157,13 @@ export async function submitCbt(req, res) {
   if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ message: "Please enter a valid email address." });
 
   const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).populate("questions");
-  if (!test) return res.status(404).json({ message: "This exam link is invalid or the exam is no longer open." });
-  if (cbtExpired(test)) return res.status(403).json({ message: "This exam has closed." });
+  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
+  if (!openForTaking(test)) return res.status(403).json({ message: "This exam has ended or is not open right now." });
 
   const g = gradeSubmission(test, answers);
   const resultToken = crypto.randomBytes(16).toString("hex");
-
-  // Store the attempt with the full graded review snapshot.
-  let attempt;
   try {
-    attempt = await CbtAttempt.create({
+    await CbtAttempt.create({
       testSeries: test._id,
       name: cleanName,
       email: cleanEmail,
@@ -123,46 +178,38 @@ export async function submitCbt(req, res) {
   }
   await TestSeries.findByIdAndUpdate(test._id, { $inc: { attempts: 1 } });
 
-  // Compute this student's rank on the live (best-per-student) leaderboard.
-  let rank = 1, candidates = 1;
-  try {
-    const all = await CbtAttempt.find({ testSeries: test._id }).select("email score timeTaken").lean();
-    const board = rankBestPerStudent(all);
-    candidates = board.length;
-    const mine = board.find((r) => (r.email || "").toLowerCase() === cleanEmail);
-    rank = mine?.rank || 1;
-    await CbtAttempt.updateOne({ _id: attempt._id }, { $set: { rankAtSubmit: rank, candidatesAtSubmit: candidates } });
-  } catch { /* rank is best-effort */ }
-
-  // Email the result (fire-and-forget — never block the student's result).
-  emailCbtResult({ attempt, test, rank, candidates, resultToken }).catch(() => {});
-
+  // Deferred: acknowledge only — no score, rank, or review is returned.
   res.status(201).json({
+    recorded: true,
     resultToken,
-    rank,
-    candidates,
-    total: g.total,
-    attempted: g.attempted,
-    skipped: g.skipped,
-    correct: g.correct,
-    incorrect: g.incorrect,
-    score: g.score,
-    maxScore: test.marks,
-    percentage: g.percentage,
-    timeTaken: Number(timeTaken) || 0,
-    review: g.review,
-    emailQueued: isMailConfigured(),
+    resultsReleased: false,
+    endAt: test.cbtEndAt || null,
+    examName: test.name,
+    emailConfigured: isMailConfigured(),
   });
 }
 
-// GET /api/cbt/result/:resultToken — the stored result for the printable public
-// result page (no login — reached from the link emailed to the student). Rank
-// is recomputed live so it reflects the current standings.
+// GET /api/cbt/result/:resultToken — the student's result. Until the exam's
+// results are released this returns a "pending" payload (no score/rank/answers);
+// afterwards it returns the full graded breakdown + live rank.
 export async function getCbtResult(req, res) {
   const attempt = await CbtAttempt.findOne({ resultToken: req.params.resultToken }).lean();
   if (!attempt) return res.status(404).json({ message: "This result link is invalid or has expired." });
-  const test = await TestSeries.findById(attempt.testSeries).select("name marks duration").lean();
+  const test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultsReleased").lean();
 
+  // Not released yet → keep everything hidden.
+  if (!test?.cbtResultsReleased) {
+    return res.json({
+      pending: true,
+      examName: test?.name || "Exam",
+      name: attempt.name,
+      email: attempt.email,
+      endAt: test?.cbtEndAt || null,
+      submittedAt: attempt.createdAt,
+    });
+  }
+
+  // Released → recompute live rank across all candidates.
   let rank = attempt.rankAtSubmit || null, candidates = attempt.candidatesAtSubmit || null;
   try {
     const all = await CbtAttempt.find({ testSeries: attempt.testSeries }).select("email score timeTaken").lean();
@@ -173,6 +220,7 @@ export async function getCbtResult(req, res) {
   } catch { /* fall back to stored snapshot */ }
 
   res.json({
+    pending: false,
     examName: test?.name || "Exam",
     name: attempt.name,
     email: attempt.email,
@@ -194,11 +242,17 @@ export async function getCbtResult(req, res) {
 
 /* ========================= admin endpoints ========================= */
 
-// GET /api/cbt/admin/exams — every test published as a CBT exam, with stats
-// (candidates, attempts, avg %, opens, last activity) for the dashboard.
+// GET /api/cbt/admin/portal-url — the single shareable exam-portal link.
+export async function getCbtPortalUrl(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
+  res.json({ url: portalUrl() });
+}
+
+// GET /api/cbt/admin/exams — every test added to the portal, with live/results
+// state and stats (candidates, attempts, avg %, opens, last activity).
 export async function listCbtExams(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
-  await disableExpiredCbtExams();
+  await releaseEndedCbtExams();
   const tests = await TestSeries.find({ cbtEnabled: true, owner: null })
     .populate("practiceStream", "name")
     .populate("practiceSubject", "name")
@@ -213,17 +267,23 @@ export async function listCbtExams(req, res) {
     if (!byTest.has(k)) byTest.set(k, []);
     byTest.get(k).push(a);
   }
+  const now = Date.now();
   res.json(
     tests.map((t) => {
       const list = byTest.get(String(t._id)) || [];
       const students = new Set(list.map((a) => (a.email || "").toLowerCase()));
       const avg = list.length ? Math.round(list.reduce((s, a) => s + (a.percentage || 0), 0) / list.length) : null;
       const last = list.reduce((m, a) => (a.createdAt > m ? a.createdAt : m), null);
+      const ended = t.cbtResultsReleased || (t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= now);
+      const status = t.cbtResultsReleased ? "released" : ended ? "ended" : t.cbtLive ? "live" : "off";
       return {
         _id: t._id,
         name: t.name,
         cbtToken: t.cbtToken,
-        cbtExpiresAt: t.cbtExpiresAt || null,
+        cbtLive: !!t.cbtLive,
+        cbtEndAt: t.cbtEndAt || null,
+        cbtResultsReleased: !!t.cbtResultsReleased,
+        status,
         questionCount: t.questions?.length || 0,
         duration: t.duration,
         marks: t.marks,
@@ -238,8 +298,8 @@ export async function listCbtExams(req, res) {
   );
 }
 
-// GET /api/cbt/admin/candidates — the admin's "My Tests" that can be pulled into
-// a CBT exam (with how many are already published), for the Pull-test picker.
+// GET /api/cbt/admin/candidates — the admin's "My Tests" that can be added to
+// the portal (with whether each is already added), for the Add-test picker.
 export async function listCbtCandidates(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
   const tests = await TestSeries.find({ owner: null, practice: true, practiceKind: "test" })
@@ -260,51 +320,79 @@ export async function listCbtCandidates(req, res) {
   );
 }
 
-// PATCH /api/cbt/admin/:id/publish — publish a My Test as a CBT exam. Generates
-// the token once (kept stable) and optionally sets an expiry (close time).
-export async function publishCbt(req, res) {
+// PATCH /api/cbt/admin/:id/add — add a My Test to the exam portal. Generates the
+// token once (kept stable). Starts NOT live; the admin flips Live when ready.
+export async function addCbtExam(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
   const test = await TestSeries.findOne({ _id: req.params.id, owner: null });
   if (!test) return res.status(404).json({ message: "Test not found." });
-  if (!test.questions?.length) return res.status(400).json({ message: "Add questions to this test before publishing it as an exam." });
+  if (!test.questions?.length) return res.status(400).json({ message: "Add questions to this test before adding it to the exam page." });
 
   test.cbtEnabled = true;
+  test.cbtResultsReleased = false; // re-adding a released exam resets it
   if (!test.cbtToken) test.cbtToken = crypto.randomBytes(12).toString("hex");
-  if ("expiresAt" in (req.body || {})) {
-    if (!req.body.expiresAt) {
-      test.cbtExpiresAt = null;
+  await test.save();
+  res.json({ cbtEnabled: true, cbtToken: test.cbtToken, cbtLive: test.cbtLive });
+}
+
+// PATCH /api/cbt/admin/:id/update — set the Live toggle and/or the exam end time.
+// Body: { live?, endAt? }. endAt "" / null clears it (manual release only).
+export async function updateCbtExam(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
+  const test = await TestSeries.findOne({ _id: req.params.id, owner: null, cbtEnabled: true });
+  if (!test) return res.status(404).json({ message: "Exam not found on the portal." });
+  if (test.cbtResultsReleased) return res.status(400).json({ message: "Results are already released for this exam." });
+
+  const body = req.body || {};
+  if ("live" in body) test.cbtLive = !!body.live;
+  if ("endAt" in body) {
+    if (!body.endAt) {
+      test.cbtEndAt = null;
     } else {
-      const d = new Date(req.body.expiresAt);
-      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid close date." });
-      test.cbtExpiresAt = d;
+      const d = new Date(body.endAt);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid end date/time." });
+      test.cbtEndAt = d;
     }
   }
   await test.save();
-  res.json({ cbtEnabled: test.cbtEnabled, cbtToken: test.cbtToken, cbtExpiresAt: test.cbtExpiresAt });
+  res.json({ cbtLive: test.cbtLive, cbtEndAt: test.cbtEndAt, cbtResultsReleased: test.cbtResultsReleased });
 }
 
-// PATCH /api/cbt/admin/:id/unpublish — close a CBT exam (link stops working;
-// stored attempts/rankings are kept).
-export async function unpublishCbt(req, res) {
+// PATCH /api/cbt/admin/:id/release — end the exam NOW and release results:
+// finalise ranks and email every candidate their scorecard.
+export async function releaseCbtResults(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
+  const test = await TestSeries.findOne({ _id: req.params.id, owner: null, cbtEnabled: true });
+  if (!test) return res.status(404).json({ message: "Exam not found on the portal." });
+  if (test.cbtResultsReleased) return res.json({ cbtResultsReleased: true, alreadyReleased: true });
+  await releaseOneCbtExam(test);
+  res.json({ cbtResultsReleased: true, emailConfigured: isMailConfigured() });
+}
+
+// PATCH /api/cbt/admin/:id/remove — take an exam off the portal (link stops
+// working; stored attempts/rankings are kept).
+export async function removeCbtExam(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
   const test = await TestSeries.findOne({ _id: req.params.id, owner: null });
   if (!test) return res.status(404).json({ message: "Test not found." });
   test.cbtEnabled = false;
+  test.cbtLive = false;
   await test.save();
   res.json({ cbtEnabled: false });
 }
 
 // GET /api/cbt/admin/:id/leaderboard — all candidates ranked (best attempt per
-// student), for the admin rankings dashboard.
+// student). The admin can view this any time, even before results are released.
 export async function cbtLeaderboard(req, res) {
   if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
-  const test = await TestSeries.findOne({ _id: req.params.id, owner: null }).select("name marks").lean();
+  const test = await TestSeries.findOne({ _id: req.params.id, owner: null }).select("name marks cbtResultsReleased").lean();
   if (!test) return res.status(404).json({ message: "Test not found." });
   const all = await CbtAttempt.find({ testSeries: req.params.id })
     .select("name email score maxScore percentage correct incorrect attempted total timeTaken createdAt").lean();
   const board = rankBestPerStudent(all);
   res.json({
     name: test.name,
+    resultsReleased: !!test.cbtResultsReleased,
     totalAttempts: all.length,
     candidates: board.length,
     rows: board.map((a) => ({
@@ -366,7 +454,7 @@ function buildResultEmailHtml({ attempt, test, rank, candidates, resultToken }) 
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:720px;margin:0 auto;color:#0f172a">
     <h2 style="margin:0 0 4px">${esc(test.name)} — Your Result</h2>
-    <p style="margin:0 0 12px;color:#475569">Hi ${esc(attempt.name)}, here is your full result.</p>
+    <p style="margin:0 0 12px;color:#475569">Hi ${esc(attempt.name)}, the exam is over — here is your full result &amp; rank.</p>
 
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
       <tr>
@@ -401,7 +489,7 @@ function buildResultEmailHtml({ attempt, test, rank, candidates, resultToken }) 
     <h3 style="margin:18px 0 6px">Answers &amp; explanations</h3>
     ${rows}
 
-    <p style="font-size:11px;color:#94a3b8;margin-top:18px">This result was generated automatically when you submitted the exam.</p>
+    <p style="font-size:11px;color:#94a3b8;margin-top:18px">This scorecard was sent because the exam has ended and results were released.</p>
   </div>`;
 }
 

@@ -1,21 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   MonitorCheck, Users, Eye, ExternalLink, Copy, Check, RefreshCw, Trophy, Clock,
-  Loader2, X, Plus, Search, CalendarClock, Ban, FileStack, Mail, Medal,
+  Loader2, X, Plus, Search, CalendarClock, Trash2, Mail, Medal, Send, Link2,
 } from "lucide-react";
 import { cbtService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
-// Public exam URL (hash-router friendly): students sign in with name+email here.
-const examUrl = (token) => `${window.location.origin}${window.location.pathname}#/cbt/exam/${token}`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleString() : "—");
 const fmtTime = (s) => {
   const n = Number(s) || 0;
   return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
 };
-const isExpired = (d) => d && new Date(d).getTime() < Date.now();
+// A Date → the value a <input type="datetime-local"> expects (local time).
+const toLocalInput = (d) => {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+};
 
-// Rank badge colour (gold / silver / bronze for the top three).
+const STATUS_BADGE = {
+  live: { label: "Live", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  off: { label: "Off", cls: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+  ended: { label: "Ended — releasing…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  released: { label: "Results released", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" },
+};
+
 const rankStyle = (r) =>
   r === 1 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
     : r === 2 ? "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
@@ -24,42 +35,89 @@ const rankStyle = (r) =>
 
 export default function AdminCbt() {
   const [rows, setRows] = useState([]);
+  const [portalLink, setPortalLink] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState("");
-  const [pullOpen, setPullOpen] = useState(false);
+  const [drafts, setDrafts] = useState({}); // id -> datetime-local string
+  const [addOpen, setAddOpen] = useState(false);
   const [board, setBoard] = useState(null); // { row, data, loading }
 
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    cbtService
-      .exams()
-      .then((r) => setRows(Array.isArray(r) ? r : []))
+    Promise.all([cbtService.exams(), cbtService.portalUrl().catch(() => ({ url: "" }))])
+      .then(([r, p]) => {
+        const list = Array.isArray(r) ? r : [];
+        setRows(list);
+        setPortalLink(p?.url || `${window.location.origin}${window.location.pathname}#/online-exams`);
+        setDrafts(Object.fromEntries(list.map((x) => [x._id, toLocalInput(x.cbtEndAt)])));
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load]);
 
-  const copy = async (token) => {
+  const copyPortal = async () => {
     try {
-      await navigator.clipboard.writeText(examUrl(token));
-      setCopied(token);
-      setTimeout(() => setCopied(""), 2000);
+      await navigator.clipboard.writeText(portalLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt("Copy this exam link:", examUrl(token));
+      window.prompt("Copy the exam portal link:", portalLink);
     }
   };
 
-  const closeExam = async (r) => {
-    if (!window.confirm(`Close the exam “${r.name}”?\nThe link will stop working immediately. Candidate results & rankings are kept.`)) return;
-    setBusy(r._id);
+  const patch = (id, changes) => setRows((list) => list.map((r) => (r._id === id ? { ...r, ...changes } : r)));
+
+  const toggleLive = async (r) => {
+    const next = !r.cbtLive;
+    patch(r._id, { cbtLive: next, status: next ? "live" : "off" });
     try {
-      await cbtService.unpublish(r._id);
+      await cbtService.update(r._id, { live: next });
+    } catch (e) {
+      patch(r._id, { cbtLive: r.cbtLive, status: r.status }); // revert
+      alert(e.message || "Could not update the live status.");
+    }
+  };
+
+  const saveEnd = async (r) => {
+    const v = drafts[r._id];
+    setBusy(`end-${r._id}`);
+    try {
+      const iso = v ? new Date(v).toISOString() : "";
+      const res = await cbtService.update(r._id, { endAt: iso });
+      patch(r._id, { cbtEndAt: res.cbtEndAt });
+    } catch (e) {
+      alert(e.message || "Could not set the end time.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const releaseNow = async (r) => {
+    if (!window.confirm(`End “${r.name}” now and release results?\nRanks are finalised and every candidate is emailed their scorecard. This can't be undone.`)) return;
+    setBusy(`rel-${r._id}`);
+    try {
+      const res = await cbtService.release(r._id);
+      patch(r._id, { cbtResultsReleased: true, cbtLive: false, status: "released" });
+      if (res && res.emailConfigured === false) alert("Results released, but email isn't configured — candidates can still view results via their result link.");
+    } catch (e) {
+      alert(e.message || "Could not release results.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const removeExam = async (r) => {
+    if (!window.confirm(`Remove “${r.name}” from the exam page?\nThe exam stops being listed and can't be taken. Stored attempts & rankings are kept.`)) return;
+    setBusy(`rm-${r._id}`);
+    try {
+      await cbtService.remove(r._id);
       setRows((list) => list.filter((x) => x._id !== r._id));
     } catch (e) {
-      alert(e.message || "Could not close the exam.");
+      alert(e.message || "Could not remove the exam.");
     } finally {
       setBusy("");
     }
@@ -74,8 +132,7 @@ export default function AdminCbt() {
   };
 
   const totalCandidates = rows.reduce((s, r) => s + (r.candidates || 0), 0);
-  const totalAttempts = rows.reduce((s, r) => s + (r.attempts || 0), 0);
-  const totalOpens = rows.reduce((s, r) => s + (r.opens || 0), 0);
+  const liveCount = rows.filter((r) => r.status === "live").length;
 
   return (
     <div className="space-y-6">
@@ -85,27 +142,40 @@ export default function AdminCbt() {
             <MonitorCheck className="h-6 w-6 text-brand-600" /> Online Exams (CBT)
           </h1>
           <p className="text-slate-500 dark:text-slate-400">
-            Publish a test from “My Tests” as an online exam. Students sign in with just their name &amp; email, take it,
-            and get their result (answers, explanations &amp; rank) emailed automatically.
+            One shareable exam page. Add tests, switch each <b>Live</b> when ready, and set when it ends —
+            results (score &amp; rank) are emailed to every candidate only after the exam is over.
           </p>
         </div>
         <div className="flex gap-2">
           <button onClick={load} disabled={loading} className="btn-outline">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
           </button>
-          <button onClick={() => setPullOpen(true)} className="btn-primary">
-            <Plus className="h-4 w-4" /> Pull test
+          <button onClick={() => setAddOpen(true)} className="btn-primary">
+            <Plus className="h-4 w-4" /> Add test
           </button>
         </div>
+      </div>
+
+      {/* The single shareable portal link */}
+      <div className="card flex flex-wrap items-center gap-3 p-4">
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300"><Link2 className="h-5 w-5" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Share this exam page</p>
+          <p className="truncate text-xs text-slate-500 dark:text-slate-400">{portalLink}</p>
+        </div>
+        <a href={portalLink} target="_blank" rel="noreferrer" className="btn-outline py-1.5 text-xs"><ExternalLink className="h-3.5 w-3.5" /> Open</a>
+        <button onClick={copyPortal} className="btn-primary py-1.5 text-xs">
+          {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy link</>}
+        </button>
       </div>
 
       {/* Summary */}
       {!loading && !error && rows.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="card p-4"><p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{rows.length}</p><p className="text-xs text-slate-500">Live exams</p></div>
-          <div className="card p-4"><p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{totalOpens}</p><p className="text-xs text-slate-500">Total opens</p></div>
-          <div className="card p-4"><p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{totalCandidates}</p><p className="text-xs text-slate-500">Candidates</p></div>
-          <div className="card p-4"><p className="text-2xl font-bold text-accent-600 dark:text-accent-400">{totalAttempts}</p><p className="text-xs text-slate-500">Total attempts</p></div>
+          <div className="card p-4"><p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{rows.length}</p><p className="text-xs text-slate-500">On the page</p></div>
+          <div className="card p-4"><p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{liveCount}</p><p className="text-xs text-slate-500">Live now</p></div>
+          <div className="card p-4"><p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{rows.reduce((s, r) => s + (r.opens || 0), 0)}</p><p className="text-xs text-slate-500">Total opens</p></div>
+          <div className="card p-4"><p className="text-2xl font-bold text-accent-600 dark:text-accent-400">{totalCandidates}</p><p className="text-xs text-slate-500">Candidates</p></div>
         </div>
       )}
 
@@ -114,27 +184,23 @@ export default function AdminCbt() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : rows.length === 0 ? (
-        <EmptyState message='No online exams yet. Tap "Pull test" to publish one of your My Tests as a CBT exam.' />
+        <EmptyState message='No exams on the page yet. Tap "Add test" to put one of your My Tests on the exam page.' />
       ) : (
         <div className="space-y-3">
           {rows.map((r) => {
-            const expired = isExpired(r.cbtExpiresAt);
+            const badge = STATUS_BADGE[r.status] || STATUS_BADGE.off;
+            const locked = r.cbtResultsReleased || r.status === "ended";
             return (
               <div key={r._id} className="card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${badge.cls}`}>{badge.label}</span>
                       <p className="truncate font-bold">{r.name}</p>
-                      {expired ? (
-                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">Closed</span>
-                      ) : (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Live</span>
-                      )}
                     </div>
                     {r.context && <p className="mt-0.5 text-xs text-slate-400">{r.context}</p>}
                     <p className="mt-0.5 text-xs text-slate-400">
                       {r.questionCount} questions · {r.duration} min · {r.marks} marks
-                      {r.cbtExpiresAt && ` · closes ${fmtDate(r.cbtExpiresAt)}`}
                       {r.lastAttemptAt && ` · last attempt ${fmtDate(r.lastAttemptAt)}`}
                     </p>
                   </div>
@@ -148,27 +214,58 @@ export default function AdminCbt() {
                       <p className="flex items-center gap-1 text-2xl font-extrabold text-emerald-600 dark:text-emerald-400"><Users className="h-5 w-5" /> {r.candidates}</p>
                       <p className="text-[11px] text-slate-500">candidates</p>
                     </div>
-                    {r.avgPercentage != null && (
-                      <div className="text-center">
-                        <p className="text-2xl font-extrabold text-brand-600 dark:text-brand-400">{r.avgPercentage}%</p>
-                        <p className="text-[11px] text-slate-500">avg score</p>
-                      </div>
+                  </div>
+                </div>
+
+                {/* Controls: Live toggle + end time */}
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={r.cbtLive}
+                      disabled={locked}
+                      onClick={() => toggleLive(r)}
+                      className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${r.cbtLive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"} ${locked ? "opacity-50" : ""}`}
+                    >
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${r.cbtLive ? "left-[22px]" : "left-0.5"}`} />
+                    </button>
+                    Live
+                  </label>
+
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <CalendarClock className="h-4 w-4 text-slate-400" />
+                    <span className="text-slate-500">Ends:</span>
+                    <input
+                      type="datetime-local"
+                      value={drafts[r._id] || ""}
+                      disabled={locked}
+                      onChange={(e) => setDrafts((d) => ({ ...d, [r._id]: e.target.value }))}
+                      className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                    />
+                    {!locked && toLocalInput(r.cbtEndAt) !== (drafts[r._id] || "") && (
+                      <button onClick={() => saveEnd(r)} disabled={busy === `end-${r._id}`} className="btn-primary py-1 text-xs">
+                        {busy === `end-${r._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                      </button>
                     )}
+                    {!locked && !r.cbtEndAt && <span className="text-xs text-slate-400">(no end set — release manually)</span>}
                   </div>
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <a href={examUrl(r.cbtToken)} target="_blank" rel="noreferrer" className="btn-primary py-1.5 text-xs">
-                    <ExternalLink className="h-3.5 w-3.5" /> Open exam
+                  <a href={`#/cbt/exam/${r.cbtToken}`} target="_blank" rel="noreferrer" className="btn-outline py-1.5 text-xs" title="Preview the exam as a candidate">
+                    <ExternalLink className="h-3.5 w-3.5" /> Preview
                   </a>
-                  <button onClick={() => copy(r.cbtToken)} className="btn-outline py-1.5 text-xs">
-                    {copied === r.cbtToken ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy link</>}
-                  </button>
                   <button onClick={() => openBoard(r)} disabled={!r.candidates} className="btn-outline py-1.5 text-xs disabled:opacity-50">
                     <Trophy className="h-3.5 w-3.5" /> Rankings ({r.candidates})
                   </button>
-                  <button onClick={() => closeExam(r)} disabled={busy === r._id} className="btn-outline py-1.5 text-xs text-rose-600 disabled:opacity-50" title="Close this exam (link stops working)">
-                    {busy === r._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />} Close
+                  {!r.cbtResultsReleased && (
+                    <button onClick={() => releaseNow(r)} disabled={busy === `rel-${r._id}`} className="btn-accent py-1.5 text-xs" title="End the exam now and email everyone their scorecard">
+                      {busy === `rel-${r._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Release results
+                    </button>
+                  )}
+                  <button onClick={() => removeExam(r)} disabled={busy === `rm-${r._id}`} className="btn-outline py-1.5 text-xs text-rose-600 disabled:opacity-50" title="Remove this exam from the page">
+                    {busy === `rm-${r._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Remove
                   </button>
                 </div>
               </div>
@@ -177,21 +274,19 @@ export default function AdminCbt() {
         </div>
       )}
 
-      {pullOpen && <PullTestModal onClose={() => setPullOpen(false)} onPublished={() => { setPullOpen(false); load(); }} />}
-
+      {addOpen && <AddTestModal onClose={() => setAddOpen(false)} onAdded={() => { setAddOpen(false); load(); }} />}
       {board && <LeaderboardModal board={board} onClose={() => setBoard(null)} />}
     </div>
   );
 }
 
-/* ---------------- Pull-test modal: publish a My Test as a CBT exam ---------------- */
-function PullTestModal({ onClose, onPublished }) {
+/* ---------------- Add-test modal: put a My Test on the exam page ---------------- */
+function AddTestModal({ onClose, onAdded }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
-  const [publishing, setPublishing] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
+  const [adding, setAdding] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -202,14 +297,14 @@ function PullTestModal({ onClose, onPublished }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const publish = async (item) => {
-    setPublishing(item._id);
+  const add = async (item) => {
+    setAdding(item._id);
     try {
-      await cbtService.publish(item._id, expiresAt ? new Date(expiresAt).toISOString() : undefined);
-      onPublished();
+      await cbtService.add(item._id);
+      onAdded();
     } catch (e) {
-      alert(e.message || "Could not publish this test.");
-      setPublishing("");
+      alert(e.message || "Could not add this test.");
+      setAdding("");
     }
   };
 
@@ -219,21 +314,15 @@ function PullTestModal({ onClose, onPublished }) {
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="my-10 w-full max-w-2xl animate-scale-in card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-lg font-bold"><FileStack className="h-5 w-5 text-brand-600" /> Pull a test into an online exam</h3>
+          <h3 className="flex items-center gap-2 text-lg font-bold"><Plus className="h-5 w-5 text-brand-600" /> Add a test to the exam page</h3>
           <button onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
 
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700">
-            <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search My Tests…" className="w-full bg-transparent py-2 text-sm outline-none" />
-          </div>
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700">
+          <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search My Tests…" className="w-full bg-transparent py-2 text-sm outline-none" />
         </div>
-        <label className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-          <CalendarClock className="h-4 w-4" /> Auto-close (optional):
-          <input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800" />
-          {expiresAt && <button onClick={() => setExpiresAt("")} className="text-xs text-rose-500">clear</button>}
-        </label>
+        <p className="mb-3 text-xs text-slate-400">After adding, switch it <b>Live</b> and set an end time on the exam list.</p>
 
         {loading ? (
           <div className="flex items-center justify-center py-10 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
@@ -247,15 +336,13 @@ function PullTestModal({ onClose, onPublished }) {
               <div key={i._id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{i.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {i.context && `${i.context} · `}{i.questionCount} questions · {i.duration} min
-                  </p>
+                  <p className="text-xs text-slate-400">{i.context && `${i.context} · `}{i.questionCount} questions · {i.duration} min</p>
                 </div>
                 {i.cbtEnabled ? (
-                  <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Already live</span>
+                  <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">On the page</span>
                 ) : (
-                  <button onClick={() => publish(i)} disabled={publishing === i._id || !i.questionCount} className="btn-primary flex-shrink-0 py-1.5 text-xs disabled:opacity-50" title={!i.questionCount ? "Add questions first" : "Publish as an online exam"}>
-                    {publishing === i._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MonitorCheck className="h-3.5 w-3.5" />} Publish
+                  <button onClick={() => add(i)} disabled={adding === i._id || !i.questionCount} className="btn-primary flex-shrink-0 py-1.5 text-xs disabled:opacity-50" title={!i.questionCount ? "Add questions first" : "Add to the exam page"}>
+                    {adding === i._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
                   </button>
                 )}
               </div>
@@ -286,7 +373,8 @@ function LeaderboardModal({ board, onClose }) {
         ) : (
           <>
             <p className="mb-3 text-sm text-slate-500">
-              {board.data.candidates} candidate{board.data.candidates === 1 ? "" : "s"} · {board.data.totalAttempts} attempt{board.data.totalAttempts === 1 ? "" : "s"} (best attempt per student shown)
+              {board.data.candidates} candidate{board.data.candidates === 1 ? "" : "s"} · {board.data.totalAttempts} attempt{board.data.totalAttempts === 1 ? "" : "s"} (best attempt per student)
+              {!board.data.resultsReleased && <span className="ml-1 text-amber-600 dark:text-amber-400">· not yet released to candidates</span>}
             </p>
             <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
               <table className="w-full min-w-[620px] text-sm">

@@ -155,19 +155,23 @@ export const practiceService = {
   moveItem: (id, target) => api.patch(`/practice/items/${id}/move`, target), // internal practice migration
 };
 
-// ---- CBT online exams (public name+email sign-in; emailed results; rankings) ----
+// ---- CBT online exams (single public portal; name+email sign-in; deferred results) ----
 export const cbtService = {
-  // public (no login) — students take the exam and get results emailed
+  // public (no login)
+  portal: () => api.get("/cbt/portal", { auth: false }), // the one shareable exam page
   getExam: (token) => api.get(`/cbt/exam/${token}`, { auth: false }),
   registerView: (token) => api.post(`/cbt/exam/${token}/view`, {}, { auth: false }),
   submit: (token, payload) => api.post(`/cbt/exam/${token}/submit`, payload, { auth: false }), // { name, email, answers, timeTaken }
-  getResult: (resultToken) => api.get(`/cbt/result/${resultToken}`, { auth: false }),
+  getResult: (resultToken) => api.get(`/cbt/result/${resultToken}`, { auth: false }), // pending until released
   // admin
+  portalUrl: () => api.get("/cbt/admin/portal-url"),
   exams: () => api.get("/cbt/admin/exams"),
-  candidates: () => api.get("/cbt/admin/candidates"), // My Tests available to publish
+  candidates: () => api.get("/cbt/admin/candidates"), // My Tests available to add
   leaderboard: (id) => api.get(`/cbt/admin/${id}/leaderboard`),
-  publish: (id, expiresAt) => api.patch(`/cbt/admin/${id}/publish`, expiresAt !== undefined ? { expiresAt } : {}),
-  unpublish: (id) => api.patch(`/cbt/admin/${id}/unpublish`),
+  add: (id) => api.patch(`/cbt/admin/${id}/add`), // add a My Test to the portal
+  update: (id, data) => api.patch(`/cbt/admin/${id}/update`, data), // { live?, endAt? }
+  release: (id) => api.patch(`/cbt/admin/${id}/release`), // end now + email scorecards
+  remove: (id) => api.patch(`/cbt/admin/${id}/remove`), // take off the portal
 };
 
 // ---- Dashboard / analytics ----

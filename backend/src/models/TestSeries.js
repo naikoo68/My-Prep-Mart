@@ -49,16 +49,20 @@ const testSeriesSchema = new mongoose.Schema(
     // How many people OPENED the public link (counted once per browser). Lets the
     // admin see reach/impressions, not just completions.
     publicViews: { type: Number, default: 0 },
-    // CBT (Computer-Based Test) online exam. When cbtEnabled is on, this test is
-    // published as a proctored-style online exam: anyone with the cbtToken URL
-    // signs in with just their name + email (no OTP), takes the test, and gets
-    // their full result (answers, explanations, rank) emailed to them. Unlike a
-    // casual public share, every attempt is stored WITH the taker's identity so
-    // the admin can rank all candidates. Kept separate from publicToken so an
-    // item can be a CBT exam independently of any casual share link.
-    cbtEnabled: { type: Boolean, default: false },
+    // CBT (Computer-Based Test) online exam. Exams are surfaced on ONE public
+    // exam-portal web page (a single shareable link). cbtEnabled = this test has
+    // been ADDED to that portal; cbtLive = the admin's live on/off switch that
+    // controls whether candidates can currently take it. Candidates sign in with
+    // just their name + email (no OTP). Results are DEFERRED: a candidate's rank
+    // and scorecard are emailed and viewable only AFTER the exam is over — i.e.
+    // after cbtEndAt passes (or the admin releases results manually), so ranks
+    // are final across all candidates. cbtResultsReleased latches that release
+    // (also stops the exam being taken and drops it from the portal).
+    cbtEnabled: { type: Boolean, default: false }, // added to the exam portal
+    cbtLive: { type: Boolean, default: false }, // live on/off toggle
     cbtToken: { type: String, index: true, default: null },
-    cbtExpiresAt: { type: Date, default: null }, // null = never expires
+    cbtEndAt: { type: Date, default: null }, // exam end / results-release time (null = admin releases manually)
+    cbtResultsReleased: { type: Boolean, default: false }, // results emailed + viewable
     cbtViews: { type: Number, default: 0 }, // opens (counted once per browser)
     // Per-user access control. Test series are PRIVATE by default: a new
     // student sees a test only if visibleToAll is turned on, or they have an

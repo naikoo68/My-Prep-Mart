@@ -18,7 +18,6 @@ import {
   Search,
   LogOut,
   Mail,
-  Download,
   User as UserIcon,
   GraduationCap,
 } from "lucide-react";
@@ -102,6 +101,48 @@ function CbtLogin({ test, onStart, onExit }) {
           <button type="button" onClick={onExit} className="btn-ghost w-full text-sm">Cancel</button>
         </form>
         <p className="mt-3 text-center text-[11px] text-slate-400">The timer starts as soon as you tap Start Exam.</p>
+      </div>
+    </div>
+  );
+}
+
+// CBT results are DEFERRED: after submitting, the candidate sees only a
+// confirmation. Their score & rank are emailed and become viewable once the
+// exam is over (its end time / the admin's release).
+function CbtSubmitted({ result, test, candidate, navigate }) {
+  const endText = result?.endAt
+    ? `after the exam ends on ${new Date(result.endAt).toLocaleString()}`
+    : "once the exam is over";
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4 dark:bg-slate-950">
+      <div className="card w-full max-w-lg p-8 text-center">
+        <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
+        <h1 className="mt-4 text-2xl font-extrabold">Response recorded</h1>
+        <p className="mt-1 text-slate-500 dark:text-slate-400">{test?.name}</p>
+
+        <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-left text-sm dark:bg-slate-800/60">
+          <p className="flex items-start gap-2">
+            <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+            <span>Your <b>score and rank</b> will be available <b>{endText}</b> — results are released only after the exam is over so ranks are final.</span>
+          </p>
+          <p className="mt-3 flex items-start gap-2">
+            <Mail className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-500" />
+            <span>
+              {result?.emailConfigured
+                ? <>We'll email your full scorecard to <b>{candidate?.email}</b> when results are released.</>
+                : <>Save the status link below — you can check your result there once it's released.</>}
+            </span>
+          </p>
+        </div>
+
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          {result?.resultToken && (
+            <a href={`#/cbt/result/${result.resultToken}`} target="_blank" rel="noreferrer" className="btn-outline">
+              Check result status
+            </a>
+          )}
+          <button onClick={() => navigate("/online-exams")} className="btn-primary">Back to exams</button>
+        </div>
       </div>
     </div>
   );
@@ -320,11 +361,15 @@ export default function TestAttempt() {
     ? [test.exam?.name, test.post?.name, test.name].filter(Boolean).join(" › ") + " (Test)"
     : "Test";
 
+  // ---- CBT: deferred-result confirmation (no score/rank shown now) ----
+  if (result && isCbt) {
+    return <CbtSubmitted result={result} test={test} candidate={candidate} navigate={navigate} />;
+  }
+
   // ---- Result screen (uses backend-graded data) ----
   if (result) {
     const review = result.review || [];
     const stats = [
-      ...(isCbt && result.rank ? [{ l: "Rank", v: `#${result.rank}${result.candidates ? ` / ${result.candidates}` : ""}`, c: "text-amber-600 dark:text-amber-400" }] : []),
       { l: "Score", v: `${result.score}/${result.maxScore ?? test.marks}`, c: "text-brand-600 dark:text-brand-400" },
       { l: "Percentage", v: `${result.percentage}%`, c: "text-brand-600 dark:text-brand-400" },
       { l: "Total", v: result.total, c: "text-slate-700 dark:text-slate-200" },
@@ -348,18 +393,8 @@ export default function TestAttempt() {
         <div className="container-page">
           <div className="card p-8 text-center">
             <Trophy className="mx-auto h-14 w-14 text-accent-500" />
-            <h1 className="mt-4 text-2xl font-extrabold">{isCbt ? "Exam Submitted" : "Test Submitted"}</h1>
+            <h1 className="mt-4 text-2xl font-extrabold">Test Submitted</h1>
             <p className="mt-1 text-slate-500 dark:text-slate-400">{test.name}</p>
-            {isCbt && result.emailQueued && (
-              <p className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                <Mail className="h-4 w-4" /> Your full result has been emailed to {candidate?.email}
-              </p>
-            )}
-            {isCbt && !result.emailQueued && (
-              <p className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                <Mail className="h-4 w-4" /> Save the result link below — email delivery isn't configured.
-              </p>
-            )}
 
             <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
               {stats.map((s) => (
@@ -378,16 +413,7 @@ export default function TestAttempt() {
               )}
               {review.length > 0 && <PaperExport title={test.name || "Test"} questions={review} />}
               {!anonymous && <FeedbackButton context="test" source={testSource} label="Give Feedback" className="btn-outline" />}
-              {isCbt ? (
-                <>
-                  {result.resultToken && (
-                    <a href={`#/cbt/result/${result.resultToken}`} target="_blank" rel="noreferrer" className="btn-primary">
-                      <Download className="h-4 w-4" /> View / Download full result
-                    </a>
-                  )}
-                  <button onClick={() => navigate("/")} className="btn-outline">Done</button>
-                </>
-              ) : isPublic ? (
+              {isPublic ? (
                 <button onClick={() => navigate("/")} className="btn-primary">Done</button>
               ) : isClient ? (
                 <button onClick={() => navigate("/client")} className="btn-primary">Back to My Practice</button>

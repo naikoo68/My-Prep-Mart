@@ -75,6 +75,7 @@ const AdminNotes = lazy(() => import("./pages/admin/AdminNotes"));
 const AdminPdfBuilder = lazy(() => import("./pages/admin/AdminPdfBuilder"));
 const AdminCbt = lazy(() => import("./pages/admin/AdminCbt"));
 const CbtResult = lazy(() => import("./pages/cbt/CbtResult"));
+const CbtPortal = lazy(() => import("./pages/cbt/CbtPortal"));
 
 // Wraps a lazily-loaded page in a Suspense boundary with a loading fallback.
 const S = (Comp) => (
@@ -142,6 +143,11 @@ const router = createHashRouter([
   {
     path: "/public/quiz/:token",
     element: S(PracticeQuizPlay),
+  },
+  // Public exam PORTAL — the single shareable web page listing all live exams
+  {
+    path: "/online-exams",
+    element: S(CbtPortal),
   },
   // CBT online exam — students sign in with name+email (no OTP) then take it
   {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Trophy, CheckCircle2, XCircle, Printer, Award, User as UserIcon, Mail } from "lucide-react";
+import { Trophy, CheckCircle2, XCircle, Printer, Award, User as UserIcon, Mail, Clock, RefreshCw } from "lucide-react";
 import { cbtService } from "../../services";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 import MathText from "../../components/ui/MathText";
@@ -37,9 +37,34 @@ export default function CbtResult() {
       .finally(() => setLoading(false));
   }, [resultToken]);
 
+  const reload = () => {
+    setLoading(true);
+    cbtService.getResult(resultToken).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  };
+
   if (loading) return <div className="container-page"><Loading label="Loading your result..." /></div>;
   if (error) return <div className="container-page"><ErrorState message={error} /></div>;
   if (!data) return null;
+
+  // Results are DEFERRED — shown only after the exam ends / is released.
+  if (data.pending) {
+    const endText = data.endAt ? new Date(data.endAt).toLocaleString() : null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+        <div className="card w-full max-w-lg p-8 text-center">
+          <Clock className="mx-auto h-14 w-14 text-amber-500" />
+          <h1 className="mt-4 text-2xl font-extrabold">Results not out yet</h1>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">{data.examName}</p>
+          <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+            Hi {data.name}, your response is recorded. Your <b>score and rank</b> will be published{" "}
+            {endText ? <>after the exam ends on <b>{endText}</b></> : <>once the exam is over</>}.
+            {data.email && <> We'll email your full scorecard to <b>{data.email}</b>.</>}
+          </div>
+          <button onClick={reload} className="btn-outline mt-6"><RefreshCw className="h-4 w-4" /> Check again</button>
+        </div>
+      </div>
+    );
+  }
 
   const review = data.review || [];
   const stats = [
