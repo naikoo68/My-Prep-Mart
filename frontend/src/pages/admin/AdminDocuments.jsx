@@ -72,6 +72,66 @@ function contentToHtml(text) {
     .join("\n");
 }
 
+// --- "Copy for Word" helpers: like the PDF export above, but emit MathML for
+// the math instead of KaTeX's visual HTML. Word 365, OneNote and Google Docs
+// convert pasted MathML into their OWN editable equations — so copying a
+// document and pasting there turns "$x^2$" into a real equation (not literal
+// LaTeX text). Plain-text apps (Notes, etc.) receive the raw text instead. ---
+
+// Pull out the bare <math>…</math> (MathML) that KaTeX embeds in its output.
+function latexToMathML(latex, displayMode) {
+  try {
+    const html = katex.renderToString(latex, { throwOnError: false, displayMode });
+    const m = html.match(/<math[\s\S]*?<\/math>/i);
+    return m ? m[0] : escapeHtml(latex);
+  } catch {
+    return escapeHtml(latex);
+  }
+}
+
+// Inline formatter that renders $…$/$$…$$ as MathML (bold/italic/etc. as HTML tags).
+function inlineToMathmlHtml(text) {
+  const regex = /\$\$([^$]+)\$\$|\$([^$]+)\$|<u>([\s\S]*?)<\/u>|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|==([^=\n]+)==|\*([^*\n]+)\*|_([^_\n]+)_/g;
+  let out = "";
+  let last = 0;
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > last) out += escapeHtml(text.slice(last, m.index));
+    if (m[1] != null || m[2] != null) {
+      out += latexToMathML(m[1] ?? m[2], m[1] != null);
+    } else if (m[3] != null) {
+      out += `<u>${escapeHtml(m[3])}</u>`;
+    } else if (m[4] != null || m[5] != null) {
+      out += `<strong>${escapeHtml(m[4] ?? m[5])}</strong>`;
+    } else if (m[6] != null) {
+      out += `<del>${escapeHtml(m[6])}</del>`;
+    } else if (m[7] != null) {
+      out += `<mark>${escapeHtml(m[7])}</mark>`;
+    } else {
+      out += `<em>${escapeHtml(m[8] ?? m[9])}</em>`;
+    }
+    last = regex.lastIndex;
+  }
+  if (last < text.length) out += escapeHtml(text.slice(last));
+  return out;
+}
+
+// Whole document → rich HTML (headings/lists/formatting + MathML) for the clipboard.
+function contentToMathmlHtml(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => {
+      if (/^\s*<!--\s*pagebreak\s*-->\s*$/i.test(line)) return "<br/>";
+      const h = line.match(/^\s*(#{1,6})\s*(.+?)\s*$/);
+      if (h) { const lvl = Math.min(h[1].length, 6); return `<h${lvl}>${inlineToMathmlHtml(h[2])}</h${lvl}>`; }
+      const b = line.match(/^\s*[-*]\s+(.*)$/);
+      if (b) return `<p style="margin:0 0 0 1.2em">&bull; ${inlineToMathmlHtml(b[1])}</p>`;
+      if (line.trim() === "") return "<p>&nbsp;</p>";
+      return `<p>${inlineToMathmlHtml(line)}</p>`;
+    })
+    .join("");
+}
+
 const LETTERS = ["A", "B", "C", "D"];
 const COL_A = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const COL_B = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
@@ -217,6 +277,7 @@ export default function AdminDocuments() {
   const [ocrProgress, setOcrProgress] = useState(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedRich, setCopiedRich] = useState(false);
   const [showMath, setShowMath] = useState(false);
   const [preview, setPreview] = useState(false); // render $…$ math in its actual form (plain-text mode)
   const [docMode, setDocMode] = useState("rich"); // "rich" (Word editor) | "text" (plain text)
@@ -330,6 +391,45 @@ export default function AdminDocuments() {
       await navigator.clipboard.writeText(htmlToText(editor?.content));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError("Couldn't copy — your browser blocked clipboard access.");
+    }
+  };
+
+  // Copy the document as rich HTML with MathML equations. Pasting into Word,
+  // OneNote or Google Docs turns each "$…$" into a real, editable equation;
+  // plain-text apps receive the raw text (LaTeX) via the text/plain flavour.
+  const copyRich = async () => {
+    const raw = htmlToText(editor?.content);
+    if (!raw.trim()) { setError("Add some text first."); return; }
+    const html = `<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.4">${contentToMathmlHtml(raw)}</div>`;
+    try {
+      if (navigator.clipboard && typeof window.ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new window.ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([raw], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        // Fallback for browsers without the async clipboard API: copy rich HTML
+        // by selecting a hidden contentEditable node and running execCommand.
+        const holder = document.createElement("div");
+        holder.setAttribute("contenteditable", "true");
+        holder.style.cssText = "position:fixed;left:-9999px;top:0;white-space:pre-wrap";
+        holder.innerHTML = html;
+        document.body.appendChild(holder);
+        const range = document.createRange();
+        range.selectNodeContents(holder);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand("copy");
+        sel.removeAllRanges();
+        document.body.removeChild(holder);
+      }
+      setCopiedRich(true);
+      setTimeout(() => setCopiedRich(false), 1500);
     } catch {
       setError("Couldn't copy — your browser blocked clipboard access.");
     }
@@ -606,8 +706,11 @@ export default function AdminDocuments() {
                 <button type="button" onClick={cleanText} className="btn-outline !py-1 !text-xs" title="Remove headers, file numbers, stamps & page markers — keep only questions">
                   <Eraser className="h-3.5 w-3.5" /> Clean text
                 </button>
-                <button type="button" onClick={copyText} className="btn-outline !py-1 !text-xs">
+                <button type="button" onClick={copyText} className="btn-outline !py-1 !text-xs" title="Copy the raw text (equations stay as $…$ LaTeX)">
                   {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+                </button>
+                <button type="button" onClick={copyRich} className="btn-outline !py-1 !text-xs" title="Copy with equations — paste into Word, OneNote or Google Docs and each $…$ becomes a real, editable equation">
+                  {copiedRich ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy for Word</>}
                 </button>
                 <button type="button" onClick={downloadTxt} className="btn-outline !py-1 !text-xs"><Download className="h-3.5 w-3.5" /> .txt</button>
                 <button type="button" onClick={downloadPdf} className="btn-outline !py-1 !text-xs" title="Download as PDF (A4)"><FileDown className="h-3.5 w-3.5" /> PDF</button>
