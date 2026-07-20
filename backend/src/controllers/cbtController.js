@@ -207,7 +207,11 @@ export async function getCbtPortal(req, res) {
       entryCloseAt: t.cbtEntryCloseAt || null,
       endAt: t.cbtEndAt || null,
       state: examWindowState(t), // "open" | "scheduled"
-      entryClosed: entryClosed(t), // late-entry cutoff passed
+      // Entry is "closed" for this candidate only if the cutoff passed AND they
+      // were NOT granted late-entry access. Allowlisted emails keep the Start
+      // button so a re-admitted late student can actually enter.
+      entryClosed: entryClosed(t) && !onAllowedList(t, email),
+      lateEntryGranted: entryClosed(t) && onAllowedList(t, email), // show a "granted" badge
       completed: completedSet.has(String(t._id)),
     }))
   );

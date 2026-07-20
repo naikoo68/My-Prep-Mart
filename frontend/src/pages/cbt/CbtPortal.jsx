@@ -414,9 +414,11 @@ export default function CbtPortal() {
                         {scheduled && r.startAt && (
                           <p className="mt-2 inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400"><CalendarClock className="h-3.5 w-3.5" /> Opens {fmtDate(r.startAt)}</p>
                         )}
-                        {r.entryCloseAt && (
+                        {r.lateEntryGranted ? (
+                          <p className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><ShieldCheck className="h-3.5 w-3.5" /> Late entry granted — you can start</p>
+                        ) : r.entryCloseAt ? (
                           <p className="mt-1 inline-flex items-center gap-1 text-xs text-rose-600 dark:text-rose-400"><CalendarClock className="h-3.5 w-3.5" /> Enter by {fmtDate(r.entryCloseAt)}</p>
-                        )}
+                        ) : null}
                         {r.endAt && (
                           <p className="mt-1 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"><CalendarClock className="h-3.5 w-3.5" /> Closes {fmtDate(r.endAt)}</p>
                         )}
