@@ -38,6 +38,19 @@ function frontendOriginFromReq(req) {
 
 // Whether the exam's taking window has ended (fixed end time reached).
 const endReached = (t) => t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= Date.now();
+// Whether results should now be declared AUTOMATICALLY (used by the sweep and
+// on-demand release). Respects the per-exam result mode:
+//  - "manual": declare only once the scheduled cbtResultAt timer is reached
+//    (never purely because the exam ended). No timer set → never auto-declares
+//    (the admin releases with the button).
+//  - "auto" (default): declare as soon as the exam's end time is reached.
+const resultDue = (t) => {
+  if (t.cbtResultsReleased) return false;
+  if (t.cbtResultMode === "manual") {
+    return !!(t.cbtResultAt && new Date(t.cbtResultAt).getTime() <= Date.now());
+  }
+  return endReached(t);
+};
 // Whether the exam hasn't opened yet (scheduled start time not reached).
 const notStartedYet = (t) => t.cbtStartAt && new Date(t.cbtStartAt).getTime() > Date.now();
 // Whether NEW entries are closed: past the admin's manual late-entry cutoff.
@@ -129,16 +142,25 @@ async function releaseOneCbtExam(test) {
   }
 }
 
-// Sweep: release any exam whose fixed end time has passed but whose results
-// haven't been sent yet. Runs on a timer and opportunistically on list loads.
+// Sweep: release any exam whose results are now due but haven't been sent yet.
+// "Due" depends on the result mode: auto exams release at their end time; manual
+// exams release only at their scheduled cbtResultAt timer. Runs on a timer and
+// opportunistically on list loads.
 export async function releaseEndedCbtExams() {
   try {
+    const now = new Date();
     const due = await TestSeries.find({
       cbtEnabled: true,
       cbtResultsReleased: { $ne: true },
-      cbtEndAt: { $ne: null, $lte: new Date() },
+      $or: [
+        // auto (default): declare when the exam end time is reached
+        { cbtResultMode: { $ne: "manual" }, cbtEndAt: { $ne: null, $lte: now } },
+        // manual: declare only when the scheduled result timer is reached
+        { cbtResultMode: "manual", cbtResultAt: { $ne: null, $lte: now } },
+      ],
     });
     for (const t of due) {
+      if (!resultDue(t)) continue; // final guard (mode-aware)
       // eslint-disable-next-line no-await-in-loop
       await releaseOneCbtExam(t);
     }
@@ -474,23 +496,27 @@ export async function submitCbt(req, res) {
 export async function getCbtResult(req, res) {
   const attempt = await CbtAttempt.findOne({ resultToken: req.params.resultToken }).lean();
   if (!attempt) return res.status(404).json({ message: "This result link is invalid or has expired." });
-  let test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultsReleased").lean();
+  let test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultMode cbtResultAt cbtResultsReleased").lean();
 
-  // If the exam's end time has passed but the sweep hasn't run yet, release now
-  // so results declare the moment a candidate checks (and everyone gets emailed).
-  if (test && !test.cbtResultsReleased && endReached(test)) {
+  // If results are now due (auto: end reached · manual: scheduled timer reached)
+  // but the sweep hasn't run yet, release now so results declare the moment a
+  // candidate checks (and everyone gets emailed).
+  if (test && resultDue(test)) {
     await releaseOneCbtExam(test).catch(() => {});
-    test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultsReleased").lean();
+    test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultMode cbtResultAt cbtResultsReleased").lean();
   }
 
-  // Not released yet → keep everything hidden.
+  // Not released yet → keep everything hidden. Tell the candidate WHEN results
+  // are expected: the scheduled result timer (manual) or the exam end (auto).
   if (!test?.cbtResultsReleased) {
+    const declareAt = test?.cbtResultMode === "manual" ? (test?.cbtResultAt || null) : (test?.cbtEndAt || null);
     return res.json({
       pending: true,
       examName: test?.name || "Exam",
       name: attempt.name,
       email: attempt.email,
       endAt: test?.cbtEndAt || null,
+      declareAt, // when results are expected (null = admin declares manually)
       submittedAt: attempt.createdAt,
     });
   }
@@ -659,11 +685,15 @@ export async function listCbtExams(req, res) {
       const students = new Set(list.map((a) => (a.email || "").toLowerCase()));
       const avg = list.length ? Math.round(list.reduce((s, a) => s + (a.percentage || 0), 0) / list.length) : null;
       const last = list.reduce((m, a) => (a.createdAt > m ? a.createdAt : m), null);
-      const ended = t.cbtResultsReleased || (t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= now);
+      const takingEnded = t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= now;
+      const ended = t.cbtResultsReleased || takingEnded;
       const scheduled = !ended && t.cbtStartAt && new Date(t.cbtStartAt).getTime() > now;
+      // Manual-mode exams past their end but not yet released are "awaiting
+      // result" (declared at the timer or by the button), not auto-"releasing".
       const status = t.cbtResultsReleased
         ? "released"
-        : ended ? "ended" : !t.cbtLive ? "off" : scheduled ? "scheduled" : "live";
+        : takingEnded ? (t.cbtResultMode === "manual" ? "awaiting_result" : "ended")
+        : !t.cbtLive ? "off" : scheduled ? "scheduled" : "live";
       return {
         _id: t._id,
         name: t.name,
@@ -672,6 +702,8 @@ export async function listCbtExams(req, res) {
         cbtStartAt: t.cbtStartAt || null,
         cbtEntryCloseAt: t.cbtEntryCloseAt || null,
         cbtEndAt: t.cbtEndAt || null,
+        cbtResultMode: t.cbtResultMode === "manual" ? "manual" : "auto",
+        cbtResultAt: t.cbtResultAt || null,
         cbtRequireOtp: t.cbtRequireOtp !== false,
         cbtRestrictEntry: !!t.cbtRestrictEntry,
         cbtAllowedEmails: t.cbtAllowedEmails || [],
@@ -759,6 +791,8 @@ export async function addCbtExam(req, res) {
   test.cbtLive = false;
   test.cbtStartAt = null;
   test.cbtEndAt = null;
+  test.cbtResultMode = "auto"; // fresh run defaults to automatic declaration at end
+  test.cbtResultAt = null;
   test.cbtStartedEmails = []; // fresh run — clear any "in progress" state from a previous one
   if (!test.cbtToken) test.cbtToken = crypto.randomBytes(12).toString("hex");
   await test.save();
@@ -810,14 +844,30 @@ export async function updateCbtExam(req, res) {
       test.cbtEndAt = d;
     }
   }
+  // Result declaration: mode toggle + optional scheduled "declare results" timer.
+  if ("resultMode" in body) test.cbtResultMode = body.resultMode === "manual" ? "manual" : "auto";
+  if ("resultAt" in body) {
+    if (!body.resultAt) {
+      test.cbtResultAt = null;
+    } else {
+      const d = new Date(body.resultAt);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid result-declaration date/time." });
+      test.cbtResultAt = d;
+    }
+  }
   if (test.cbtStartAt && test.cbtEndAt && test.cbtEndAt.getTime() <= test.cbtStartAt.getTime()) {
     return res.status(400).json({ message: "The end time must be after the start time." });
   }
   if (test.cbtEntryCloseAt && test.cbtEndAt && test.cbtEntryCloseAt.getTime() > test.cbtEndAt.getTime()) {
     return res.status(400).json({ message: "Late-entry cutoff must be at or before the end time." });
   }
+  // A scheduled result time can't be BEFORE the exam ends (you can't declare
+  // results while candidates are still taking the exam).
+  if (test.cbtResultMode === "manual" && test.cbtResultAt && test.cbtEndAt && test.cbtResultAt.getTime() < test.cbtEndAt.getTime()) {
+    return res.status(400).json({ message: "The result-declaration time must be at or after the exam end time." });
+  }
   await test.save();
-  res.json({ cbtLive: test.cbtLive, cbtStartAt: test.cbtStartAt, cbtEntryCloseAt: test.cbtEntryCloseAt, cbtEndAt: test.cbtEndAt, cbtRequireOtp: test.cbtRequireOtp, cbtRestrictEntry: test.cbtRestrictEntry, cbtAllowedEmails: test.cbtAllowedEmails, cbtResultsReleased: test.cbtResultsReleased });
+  res.json({ cbtLive: test.cbtLive, cbtStartAt: test.cbtStartAt, cbtEntryCloseAt: test.cbtEntryCloseAt, cbtEndAt: test.cbtEndAt, cbtResultMode: test.cbtResultMode, cbtResultAt: test.cbtResultAt, cbtRequireOtp: test.cbtRequireOtp, cbtRestrictEntry: test.cbtRestrictEntry, cbtAllowedEmails: test.cbtAllowedEmails, cbtResultsReleased: test.cbtResultsReleased });
 }
 
 // PATCH /api/cbt/admin/:id/release — end the exam NOW and release results:

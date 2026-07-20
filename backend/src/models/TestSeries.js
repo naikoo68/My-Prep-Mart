@@ -77,7 +77,17 @@ const testSeriesSchema = new mongoose.Schema(
     cbtStartedEmails: { type: [String], default: [] },
     cbtStartAt: { type: Date, default: null }, // exam opens at this time (null = as soon as Live)
     cbtEntryCloseAt: { type: Date, default: null }, // LATEST time a student may START (late-entry cutoff; null = until end)
-    cbtEndAt: { type: Date, default: null }, // exam end / results-release time (null = admin releases manually)
+    cbtEndAt: { type: Date, default: null }, // exam end (stops taking / new entry; null = admin ends manually)
+    // Result declaration mode:
+    //  - "auto"   : results are declared automatically when the exam ends
+    //               (at cbtEndAt) — the original behaviour.
+    //  - "manual" : results are NOT declared at the end. They are declared
+    //               either at cbtResultAt (a scheduled "declare results" timer,
+    //               which may be later than the exam end) or when the admin
+    //               clicks "Release results". If cbtResultAt is null, only the
+    //               button declares them.
+    cbtResultMode: { type: String, enum: ["auto", "manual"], default: "auto" },
+    cbtResultAt: { type: Date, default: null }, // manual-mode scheduled result-declaration time
     cbtResultsReleased: { type: Boolean, default: false }, // results emailed + viewable
     cbtViews: { type: Number, default: 0 }, // opens (counted once per browser)
     // Per-user access control. Test series are PRIVATE by default: a new

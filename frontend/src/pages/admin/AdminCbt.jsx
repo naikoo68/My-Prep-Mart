@@ -25,6 +25,7 @@ const STATUS_BADGE = {
   off: { label: "Off", cls: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
   scheduled: { label: "Scheduled", cls: "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300" },
   ended: { label: "Ended — releasing…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  awaiting_result: { label: "Awaiting result", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
   released: { label: "Results released", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" },
 };
 
@@ -59,7 +60,7 @@ export default function AdminCbt() {
       .then((r) => {
         const list = Array.isArray(r) ? r : [];
         setRows(list);
-        setDrafts(Object.fromEntries(list.map((x) => [x._id, { start: toLocalInput(x.cbtStartAt), entry: toLocalInput(x.cbtEntryCloseAt), end: toLocalInput(x.cbtEndAt) }])));
+        setDrafts(Object.fromEntries(list.map((x) => [x._id, { start: toLocalInput(x.cbtStartAt), entry: toLocalInput(x.cbtEntryCloseAt), end: toLocalInput(x.cbtEndAt), resultMode: x.cbtResultMode === "manual" ? "manual" : "auto", result: toLocalInput(x.cbtResultAt) }])));
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -96,8 +97,10 @@ export default function AdminCbt() {
       const startAt = d.start ? new Date(d.start).toISOString() : "";
       const entryCloseAt = d.entry ? new Date(d.entry).toISOString() : "";
       const endAt = d.end ? new Date(d.end).toISOString() : "";
-      const res = await cbtService.update(r._id, { startAt, entryCloseAt, endAt });
-      patch(r._id, { cbtStartAt: res.cbtStartAt, cbtEntryCloseAt: res.cbtEntryCloseAt, cbtEndAt: res.cbtEndAt });
+      const resultMode = d.resultMode === "manual" ? "manual" : "auto";
+      const resultAt = resultMode === "manual" && d.result ? new Date(d.result).toISOString() : "";
+      const res = await cbtService.update(r._id, { startAt, entryCloseAt, endAt, resultMode, resultAt });
+      patch(r._id, { cbtStartAt: res.cbtStartAt, cbtEntryCloseAt: res.cbtEntryCloseAt, cbtEndAt: res.cbtEndAt, cbtResultMode: res.cbtResultMode, cbtResultAt: res.cbtResultAt });
     } catch (e) {
       alert(e.message || "Could not save the schedule.");
     } finally {
@@ -281,7 +284,7 @@ export default function AdminCbt() {
                       />
                     </div>
                     <div>
-                      <label className="mb-0.5 flex items-center gap-1 text-xs text-slate-500"><Clock className="h-3.5 w-3.5" /> Ends (auto-declares results)</label>
+                      <label className="mb-0.5 flex items-center gap-1 text-xs text-slate-500"><Clock className="h-3.5 w-3.5" /> Ends (exam closes)</label>
                       <input
                         type="datetime-local"
                         value={drafts[r._id]?.end || ""}
@@ -290,15 +293,61 @@ export default function AdminCbt() {
                         className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
                       />
                     </div>
-                    {!locked && (toLocalInput(r.cbtStartAt) !== (drafts[r._id]?.start || "") || toLocalInput(r.cbtEntryCloseAt) !== (drafts[r._id]?.entry || "") || toLocalInput(r.cbtEndAt) !== (drafts[r._id]?.end || "")) && (
+                  </div>
+
+                  {/* Result declaration — Automatic (at end) or Manual (scheduled timer / button) */}
+                  <div className="flex flex-wrap items-end gap-3 text-sm">
+                    <div>
+                      <span className="mb-0.5 flex items-center gap-1 text-xs text-slate-500"><Trophy className="h-3.5 w-3.5" /> Result declaration</span>
+                      <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                        {["auto", "manual"].map((m) => {
+                          const active = (drafts[r._id]?.resultMode || "auto") === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              disabled={locked}
+                              onClick={() => setDrafts((d) => ({ ...d, [r._id]: { ...d[r._id], resultMode: m } }))}
+                              className={`px-3 py-1 text-xs font-semibold transition ${active ? "bg-brand-600 text-white" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"} ${locked ? "opacity-50" : ""}`}
+                            >
+                              {m === "auto" ? "Automatic" : "Manual"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {(drafts[r._id]?.resultMode || "auto") === "manual" && (
+                      <div>
+                        <label className="mb-0.5 flex items-center gap-1 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5" /> Declare results at (optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={drafts[r._id]?.result || ""}
+                          disabled={locked}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [r._id]: { ...d[r._id], result: e.target.value } }))}
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                        />
+                      </div>
+                    )}
+                    {!locked && (
+                      toLocalInput(r.cbtStartAt) !== (drafts[r._id]?.start || "") ||
+                      toLocalInput(r.cbtEntryCloseAt) !== (drafts[r._id]?.entry || "") ||
+                      toLocalInput(r.cbtEndAt) !== (drafts[r._id]?.end || "") ||
+                      (r.cbtResultMode || "auto") !== (drafts[r._id]?.resultMode || "auto") ||
+                      toLocalInput(r.cbtResultAt) !== (drafts[r._id]?.result || "")
+                    ) && (
                       <button onClick={() => saveSchedule(r)} disabled={busy === `sch-${r._id}`} className="btn-primary py-1.5 text-xs">
                         {busy === `sch-${r._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save schedule"}
                       </button>
                     )}
                   </div>
+
                   <p className="text-xs text-slate-400">
                     <b>Late entry until</b>: the last time a student may <b>start</b> — after it, new students can't enter (those already in keep going, timer ends at the end time). Leave empty to allow entry until the end.
-                    {!r.cbtEndAt && " No end set — you'll release results manually."}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {(drafts[r._id]?.resultMode || "auto") === "manual"
+                      ? <><b>Manual results</b>: after the exam ends, results stay hidden until the <b>Declare results at</b> time{drafts[r._id]?.result ? "" : " (set one above)"} — or until you click <b>Release results</b> any time.</>
+                      : <><b>Automatic results</b>: results are declared as soon as the exam <b>ends</b>{r.cbtEndAt ? "" : " (set an end time above, or switch to Manual)"}.</>}
                   </p>
                 </div>
 
