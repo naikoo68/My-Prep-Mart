@@ -43,6 +43,7 @@ export default function AdminCbt() {
   const [busy, setBusy] = useState("");
   const [drafts, setDrafts] = useState({}); // id -> datetime-local string
   const [addOpen, setAddOpen] = useState(false);
+  const [regOpen, setRegOpen] = useState(false);
   const [board, setBoard] = useState(null); // { row, data, loading }
 
   const load = useCallback(() => {
@@ -154,6 +155,9 @@ export default function AdminCbt() {
         <div className="flex gap-2">
           <button onClick={load} disabled={loading} className="btn-outline">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Refresh
+          </button>
+          <button onClick={() => setRegOpen(true)} className="btn-outline">
+            <Users className="h-4 w-4" /> Candidates
           </button>
           <button onClick={() => setAddOpen(true)} className="btn-primary">
             <Plus className="h-4 w-4" /> Add test
@@ -297,7 +301,102 @@ export default function AdminCbt() {
       )}
 
       {addOpen && <AddTestModal onClose={() => setAddOpen(false)} onAdded={() => { setAddOpen(false); load(); }} />}
+      {regOpen && <RegistrationsModal onClose={() => setRegOpen(false)} />}
       {board && <LeaderboardModal board={board} onClose={() => setBoard(null)} />}
+    </div>
+  );
+}
+
+/* ---------------- Registered candidates modal ---------------- */
+function RegistrationsModal({ onClose }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+  const [deleting, setDeleting] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    cbtService
+      .registrations()
+      .then((r) => setRows(Array.isArray(r) ? r : []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const del = async (r) => {
+    if (!window.confirm(`Remove candidate "${r.name}" (${r.email})?\nTheir sign-in is removed (they'd have to register again). Their exam results are kept.`)) return;
+    setDeleting(r._id);
+    try {
+      await cbtService.deleteRegistration(r._id);
+      setRows((list) => list.filter((x) => x._id !== r._id));
+    } catch (e) {
+      alert(e.message || "Could not remove the candidate.");
+    } finally {
+      setDeleting("");
+    }
+  };
+
+  const filtered = rows.filter((r) => `${r.name} ${r.email}`.toLowerCase().includes(q.trim().toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="my-10 w-full max-w-3xl animate-scale-in card p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-bold"><Users className="h-5 w-5 text-brand-600" /> Registered candidates ({rows.length})</h3>
+          <button onClick={onClose}><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700">
+          <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or email…" className="w-full bg-transparent py-2 text-sm outline-none" />
+          {q && <button onClick={() => setQ("")} className="flex-shrink-0 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-10 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : error ? (
+          <ErrorState message={error} />
+        ) : filtered.length === 0 ? (
+          <EmptyState message={rows.length === 0 ? "No one has registered yet." : `No candidates match “${q}”.`} />
+        ) : (
+          <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
+                  <th className="px-3 py-2 text-left font-semibold">Name</th>
+                  <th className="px-3 py-2 text-left font-semibold">Email</th>
+                  <th className="px-3 py-2 text-left font-semibold">Verified</th>
+                  <th className="px-3 py-2 text-left font-semibold">Exams</th>
+                  <th className="px-3 py-2 text-left font-semibold">Registered</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => (
+                  <tr key={r._id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
+                    <td className="px-3 py-2 font-semibold">{r.name || "—"}</td>
+                    <td className="px-3 py-2 text-slate-500">{r.email}</td>
+                    <td className="px-3 py-2">
+                      {r.verified
+                        ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Yes</span>
+                        : <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">No</span>}
+                    </td>
+                    <td className="px-3 py-2">{r.examsTaken}</td>
+                    <td className="px-3 py-2 text-slate-500">{fmtDate(r.registeredAt)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button onClick={() => del(r)} disabled={deleting === r._id} className="btn-outline py-1 text-xs text-rose-600 disabled:opacity-50" title="Remove candidate">
+                        {deleting === r._id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-3 text-xs text-slate-400">Removing a candidate clears their portal sign-in only — their submitted exam results and rankings are kept.</p>
+      </div>
     </div>
   );
 }

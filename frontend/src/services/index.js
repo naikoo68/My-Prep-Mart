@@ -163,6 +163,7 @@ export const cbtService = {
   loginPortal: (data) => api.post("/cbt/login", data, { auth: false }), // { email, password } → { sessionToken }
   forgotPortal: (data) => api.post("/cbt/forgot", data, { auth: false }), // { email } → reset code
   resetPortal: (data) => api.post("/cbt/reset", data, { auth: false }), // { email, code, password } → { sessionToken }
+  changePassword: (data) => api.post("/cbt/change-password", data, { auth: false }), // { email, sessionToken, currentPassword, newPassword }
   portal: (email) => api.get(`/cbt/portal${email ? `?email=${encodeURIComponent(email)}` : ""}`, { auth: false }), // list exams (+ completed flags)
   examMeta: (token) => api.get(`/cbt/exam/${token}`, { auth: false }), // exam meta
   start: (token, data) => api.post(`/cbt/exam/${token}/start`, data, { auth: false }), // { email, sessionToken } → questions
@@ -177,6 +178,8 @@ export const cbtService = {
   portalUrl: () => api.get("/cbt/admin/portal-url"),
   exams: () => api.get("/cbt/admin/exams"),
   candidates: () => api.get("/cbt/admin/candidates"), // My Tests available to add
+  registrations: () => api.get("/cbt/admin/registrations"), // registered candidates
+  deleteRegistration: (id) => api.del(`/cbt/admin/registrations/${id}`),
   leaderboard: (id) => api.get(`/cbt/admin/${id}/leaderboard`),
   add: (id) => api.patch(`/cbt/admin/${id}/add`), // add a My Test to the portal
   update: (id, data) => api.patch(`/cbt/admin/${id}/update`, data), // { live?, endAt? }

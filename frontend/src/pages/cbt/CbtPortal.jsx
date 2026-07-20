@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MonitorCheck, Clock, FileText, Award, RefreshCw, CalendarClock, GraduationCap,
-  Mail, User as UserIcon, Loader2, ShieldCheck, LogOut, CheckCircle2, Lock, Trophy,
+  Mail, User as UserIcon, Loader2, ShieldCheck, LogOut, CheckCircle2, Lock, Trophy, X,
 } from "lucide-react";
 import { cbtService } from "../../services";
 import { useSettings } from "../../context/SettingsContext";
@@ -287,6 +287,7 @@ export default function CbtPortal() {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const [session, setSession] = useState(getCbtSession());
+  const [showChangePw, setShowChangePw] = useState(false);
   const [tab, setTab] = useState("exams"); // exams | results | rankings
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -323,11 +324,12 @@ export default function CbtPortal() {
             <p className="text-xs text-slate-500 dark:text-slate-400">Online Examination Portal</p>
           </div>
           {session && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <span className="hidden text-right sm:block">
                 <span className="block text-sm font-semibold leading-none">{session.name}</span>
                 <span className="block text-xs text-slate-400">{session.email}</span>
               </span>
+              <button onClick={() => setShowChangePw(true)} className="btn-outline py-1.5 text-xs" title="Change your password"><Lock className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Password</span></button>
               <button onClick={signOut} className="btn-outline py-1.5 text-xs"><LogOut className="h-3.5 w-3.5" /> Sign out</button>
             </div>
           )}
@@ -445,6 +447,76 @@ export default function CbtPortal() {
             {tab === "results" && <MyResultsTab session={session} />}
             {tab === "rankings" && <RankingsTab session={session} />}
           </>
+        )}
+      </div>
+
+      {showChangePw && session && <ChangePasswordModal session={session} onClose={() => setShowChangePw(false)} />}
+    </div>
+  );
+}
+
+/* -------- Change-password modal (signed-in student) -------- */
+function ChangePasswordModal({ session, onClose }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const inputWrap = "flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700";
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (next.length < 6) return setError("New password must be at least 6 characters.");
+    setBusy(true);
+    try {
+      await cbtService.changePassword({ email: session.email, sessionToken: session.sessionToken, currentPassword: current, newPassword: next });
+      setDone(true);
+      setTimeout(onClose, 1300);
+    } catch (err) {
+      setError(err.message || "Could not change password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="my-16 w-full max-w-sm animate-scale-in card p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-bold"><Lock className="h-5 w-5 text-brand-600" /> Change password</h3>
+          <button onClick={onClose}><X className="h-5 w-5" /></button>
+        </div>
+        {done ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-emerald-600">
+            <CheckCircle2 className="h-10 w-10" />
+            <p className="font-semibold">Password updated.</p>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Current password</label>
+              <div className={inputWrap}>
+                <Lock className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                <input value={current} onChange={(e) => setCurrent(e.target.value)} type="password" placeholder="Current password" className="w-full bg-transparent py-2.5 text-sm outline-none" autoFocus />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">New password</label>
+              <div className={inputWrap}>
+                <Lock className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                <input value={next} onChange={(e) => setNext(e.target.value)} type="password" placeholder="New password (min 6 chars)" className="w-full bg-transparent py-2.5 text-sm outline-none" />
+              </div>
+            </div>
+            {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="btn-outline">Cancel</button>
+              <button type="submit" disabled={busy} className="btn-primary">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                {busy ? "Saving…" : "Update"}
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>

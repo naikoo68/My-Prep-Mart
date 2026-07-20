@@ -322,6 +322,22 @@ export async function resetPasswordPortal(req, res) {
   res.json({ sessionToken: reg.sessionToken, name: reg.name, email: cleanEmail });
 }
 
+// POST /api/cbt/change-password — a signed-in student changes their password.
+// Body { email, sessionToken, currentPassword, newPassword }.
+export async function changePasswordPortal(req, res) {
+  const { email = "", sessionToken = "", currentPassword = "", newPassword = "" } = req.body || {};
+  const cleanEmail = String(email).trim().toLowerCase();
+  const reg = await findPortalSession(cleanEmail, sessionToken);
+  if (!reg) return res.status(401).json({ message: "Please sign in again." });
+  if (String(newPassword).length < 6) return res.status(400).json({ message: "New password must be at least 6 characters." });
+  if (!reg.passwordHash || !(await bcrypt.compare(String(currentPassword), reg.passwordHash))) {
+    return res.status(401).json({ message: "Your current password is incorrect." });
+  }
+  reg.passwordHash = await bcrypt.hash(String(newPassword), 10);
+  await reg.save();
+  res.json({ ok: true });
+}
+
 // POST /api/cbt/exam/:token/start — hand out the questions (answers stripped)
 // for a verified candidate. Body { email, sessionToken }. Also returns the end
 // time + server clock so the client can bind the timer to the exam's end.
@@ -664,6 +680,34 @@ export async function listCbtCandidates(req, res) {
       cbtEnabled: !!t.cbtEnabled,
     }))
   );
+}
+
+// GET /api/cbt/admin/registrations — every candidate who has registered on the
+// portal, with how many exams they've completed. For the admin candidate list.
+export async function listRegistrations(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
+  const regs = await CbtRegistration.find().select("name email verified createdAt updatedAt").sort("-updatedAt").limit(2000).lean();
+  const counts = await CbtAttempt.aggregate([{ $group: { _id: "$email", n: { $sum: 1 } } }]);
+  const byEmail = new Map(counts.map((c) => [String(c._id || "").toLowerCase(), c.n]));
+  res.json(
+    regs.map((r) => ({
+      _id: r._id,
+      name: r.name,
+      email: r.email,
+      verified: !!r.verified,
+      examsTaken: byEmail.get((r.email || "").toLowerCase()) || 0,
+      registeredAt: r.createdAt,
+      lastActiveAt: r.updatedAt,
+    }))
+  );
+}
+
+// DELETE /api/cbt/admin/registrations/:id — remove a candidate's registration.
+// Their exam results (CbtAttempt) are kept; they'd need to register again.
+export async function deleteRegistration(req, res) {
+  if (!isAdmin(req)) return res.status(403).json({ message: "Admins only." });
+  await CbtRegistration.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
 }
 
 // PATCH /api/cbt/admin/:id/add — add a My Test to the exam portal. Generates the
