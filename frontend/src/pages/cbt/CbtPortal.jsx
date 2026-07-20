@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MonitorCheck, Clock, FileText, Award, RefreshCw, CalendarClock, GraduationCap,
-  Mail, User as UserIcon, Loader2, ShieldCheck, LogOut, CheckCircle2,
+  Mail, User as UserIcon, Loader2, ShieldCheck, LogOut, CheckCircle2, Lock,
 } from "lucide-react";
 import { cbtService } from "../../services";
 import { useSettings } from "../../context/SettingsContext";
@@ -12,27 +12,52 @@ import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState"
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const fmtDate = (d) => (d ? new Date(d).toLocaleString() : "");
 
-/* -------- Registration card (name + email + OTP) — shown before sign-in -------- */
-function RegisterCard({ onRegistered }) {
-  const [stage, setStage] = useState("form"); // form | otp
+/* -------- Login / Register card — shown before entering the portal --------
+   Login: returning students sign in with email + password (no OTP).
+   Register: new students set a password and verify their email once (OTP). */
+function AuthCard({ onAuthed }) {
+  const [mode, setMode] = useState("login"); // login | register
+  const [stage, setStage] = useState("form"); // form | otp (register only)
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+
+  const reset = (nextMode) => { setMode(nextMode); setStage("form"); setError(""); setInfo(""); setCode(""); setPassword(""); };
+
+  const login = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!EMAIL_RE.test(email.trim())) return setError("Please enter a valid email address.");
+    if (!password) return setError("Please enter your password.");
+    setBusy(true);
+    try {
+      const v = await cbtService.loginPortal({ email: email.trim().toLowerCase(), password });
+      onAuthed({ name: v.name, email: v.email, sessionToken: v.sessionToken });
+    } catch (err) {
+      if (err?.data?.noAccount) { setError("No account with this email — please register."); setMode("register"); setStage("form"); return; }
+      setError(err.message || "Could not log in.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const sendCode = async (e) => {
     e.preventDefault();
     setError("");
     if (!name.trim()) return setError("Please enter your full name.");
     if (!EMAIL_RE.test(email.trim())) return setError("Please enter a valid email address.");
+    if (password.length < 6) return setError("Password must be at least 6 characters.");
     setBusy(true);
     try {
-      const r = await cbtService.registerPortal({ name: name.trim(), email: email.trim().toLowerCase() });
+      const r = await cbtService.registerPortal({ name: name.trim(), email: email.trim().toLowerCase(), password });
       setInfo(`We emailed a 6-digit code to ${r.email}.`);
       setStage("otp");
     } catch (err) {
+      if (err?.data?.existsVerified) { setError("You already have an account — please log in."); reset("login"); return; }
       setError(err.message || "Could not send the code.");
     } finally {
       setBusy(false);
@@ -46,7 +71,7 @@ function RegisterCard({ onRegistered }) {
     setBusy(true);
     try {
       const v = await cbtService.verifyPortal({ email: email.trim().toLowerCase(), code: code.trim() });
-      onRegistered({ name: v.name || name.trim(), email: v.email, sessionToken: v.sessionToken });
+      onAuthed({ name: v.name || name.trim(), email: v.email, sessionToken: v.sessionToken });
     } catch (err) {
       setError(err.message || "Could not verify the code.");
     } finally {
@@ -57,7 +82,7 @@ function RegisterCard({ onRegistered }) {
   const resend = async () => {
     setError(""); setBusy(true);
     try {
-      const r = await cbtService.registerPortal({ name: name.trim(), email: email.trim().toLowerCase() });
+      const r = await cbtService.registerPortal({ name: name.trim(), email: email.trim().toLowerCase(), password });
       setInfo(`A new code was sent to ${r.email}.`);
       setCode("");
     } catch (err) {
@@ -67,6 +92,8 @@ function RegisterCard({ onRegistered }) {
     }
   };
 
+  const inputWrap = "flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700";
+
   return (
     <div className="mx-auto max-w-md">
       <div className="card p-7">
@@ -74,26 +101,62 @@ function RegisterCard({ onRegistered }) {
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-accent-500 text-white">
             <ShieldCheck className="h-6 w-6" />
           </span>
-          <h2 className="mt-3 text-lg font-extrabold">Register to view &amp; take exams</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Verify your email once — then you can see which exams are live and take them.</p>
+          <h2 className="mt-3 text-lg font-extrabold">Sign in to take exams</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Log in, or register once, to see which exams are live.</p>
         </div>
 
-        {stage === "form" ? (
+        {/* Login / Register tabs */}
+        <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+          <button onClick={() => reset("login")} className={`rounded-lg py-2 text-sm font-semibold transition ${mode === "login" ? "bg-white shadow-sm dark:bg-slate-700" : "text-slate-500"}`}>Log in</button>
+          <button onClick={() => reset("register")} className={`rounded-lg py-2 text-sm font-semibold transition ${mode === "register" ? "bg-white shadow-sm dark:bg-slate-700" : "text-slate-500"}`}>Register</button>
+        </div>
+
+        {mode === "login" ? (
+          <form onSubmit={login} className="space-y-3">
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Email</label>
+              <div className={inputWrap}>
+                <Mail className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" className="w-full bg-transparent py-2.5 text-sm outline-none" autoFocus />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Password</label>
+              <div className={inputWrap}>
+                <Lock className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Your password" className="w-full bg-transparent py-2.5 text-sm outline-none" />
+              </div>
+            </div>
+            {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
+            <button type="submit" disabled={busy} className="btn-primary w-full">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {busy ? "Signing in…" : "Log in"}
+            </button>
+            <p className="text-center text-xs text-slate-400">New here? <button type="button" onClick={() => reset("register")} className="text-brand-600 hover:underline">Register</button></p>
+          </form>
+        ) : stage === "form" ? (
           <form onSubmit={sendCode} className="space-y-3">
             <div>
               <label className="mb-1 block text-sm font-semibold">Full name</label>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700">
+              <div className={inputWrap}>
                 <UserIcon className="h-4 w-4 flex-shrink-0 text-slate-400" />
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="w-full bg-transparent py-2.5 text-sm outline-none" autoFocus />
               </div>
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold">Email</label>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 dark:border-slate-700">
+              <div className={inputWrap}>
                 <Mail className="h-4 w-4 flex-shrink-0 text-slate-400" />
                 <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" className="w-full bg-transparent py-2.5 text-sm outline-none" />
               </div>
-              <p className="mt-1 text-xs text-slate-400">Your results (with rank) are emailed here after each exam ends.</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Password</label>
+              <div className={inputWrap}>
+                <Lock className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Create a password (min 6 chars)" className="w-full bg-transparent py-2.5 text-sm outline-none" />
+              </div>
+              <p className="mt-1 text-xs text-slate-400">You'll verify your email with a code, then use this password to log in next time.</p>
             </div>
             {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
             <button type="submit" disabled={busy} className="btn-primary w-full">
@@ -121,7 +184,7 @@ function RegisterCard({ onRegistered }) {
               {busy ? "Verifying…" : "Verify & Continue"}
             </button>
             <div className="flex items-center justify-between text-xs">
-              <button type="button" onClick={() => { setStage("form"); setError(""); setInfo(""); }} className="text-slate-500 hover:underline">← Change email</button>
+              <button type="button" onClick={() => { setStage("form"); setError(""); setInfo(""); }} className="text-slate-500 hover:underline">← Back</button>
               <button type="button" onClick={resend} disabled={busy} className="text-brand-600 hover:underline disabled:opacity-50">Resend code</button>
             </div>
           </form>
@@ -191,9 +254,9 @@ export default function CbtPortal() {
               <h1 className="flex items-center justify-center gap-2 text-2xl font-extrabold">
                 <MonitorCheck className="h-6 w-6 text-brand-600" /> Exam Portal
               </h1>
-              <p className="text-slate-500 dark:text-slate-400">Register with your email to see and take the available exams.</p>
+              <p className="text-slate-500 dark:text-slate-400">Log in or register to see and take the available exams.</p>
             </div>
-            <RegisterCard onRegistered={onRegistered} />
+            <AuthCard onAuthed={onRegistered} />
           </>
         ) : (
           <>

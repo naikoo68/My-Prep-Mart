@@ -4,6 +4,7 @@ import {
   getCbtExam,
   registerPortal,
   verifyPortal,
+  loginPortal,
   startCbt,
   registerCbtView,
   submitCbt,
@@ -26,8 +27,9 @@ const admin = [protect, authorize("admin")];
 // (deferred) result. Students sign in with just their name + email on the
 // client. Declared before admin routes.
 router.get("/portal", getCbtPortal); // the one shareable exam page (lists exams)
-router.post("/register", registerPortal); // portal sign-in step 1: send OTP to email
-router.post("/verify", verifyPortal); // portal sign-in step 2: verify OTP → sessionToken
+router.post("/register", registerPortal); // register: name+email+password → OTP
+router.post("/verify", verifyPortal); // verify OTP → sessionToken (completes registration)
+router.post("/login", loginPortal); // returning student: email+password → sessionToken
 router.get("/exam/:token", getCbtExam); // exam META
 router.post("/exam/:token/start", startCbt); // hand out questions (verified portal session)
 router.post("/exam/:token/view", registerCbtView); // count an open (impression)

@@ -13,6 +13,7 @@ const cbtRegistrationSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, trim: true, lowercase: true, unique: true },
     name: { type: String, trim: true },
+    passwordHash: { type: String }, // set at registration; lets a student log in later without OTP
     code: { type: String }, // 6-digit OTP
     codeExpiresAt: { type: Date }, // OTP validity (~10 min)
     verified: { type: Boolean, default: false },

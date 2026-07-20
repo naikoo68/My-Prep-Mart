@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import TestSeries from "../models/TestSeries.js";
 import CbtAttempt from "../models/CbtAttempt.js";
 import CbtRegistration from "../models/CbtRegistration.js";
@@ -205,23 +206,31 @@ async function findPortalSession(email, sessionToken) {
   return reg;
 }
 
-// POST /api/cbt/register — PORTAL sign-in step 1. Body { name, email }. Emails a
-// one-time code (OTP). This registers the candidate for the whole portal, not a
-// single exam, so they verify once and can then take any live exam.
+// POST /api/cbt/register — PORTAL registration step 1. Body { name, email,
+// password }. Sets a password (so the student can log in later without OTP) and
+// emails a one-time code to verify the email. Portal-wide (one account/email).
 export async function registerPortal(req, res) {
-  const { name = "", email = "" } = req.body || {};
+  const { name = "", email = "", password = "" } = req.body || {};
   const cleanName = String(name).trim();
   const cleanEmail = String(email).trim().toLowerCase();
   if (!cleanName) return res.status(400).json({ message: "Please enter your name." });
   if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ message: "Please enter a valid email address." });
+  if (String(password).length < 6) return res.status(400).json({ message: "Password must be at least 6 characters." });
   if (!isMailConfigured()) return res.status(503).json({ message: "Email isn't configured on the server, so a code can't be sent. Please contact the organiser." });
 
+  // If a verified account with a password already exists, ask them to log in.
+  const existing = await CbtRegistration.findOne({ email: cleanEmail });
+  if (existing?.verified && existing?.passwordHash) {
+    return res.status(409).json({ existsVerified: true, message: "An account with this email already exists. Please log in instead." });
+  }
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
   const code = genOtp();
   const now = Date.now();
   await CbtRegistration.findOneAndUpdate(
     { email: cleanEmail },
     {
-      email: cleanEmail, name: cleanName,
+      email: cleanEmail, name: cleanName, passwordHash,
       code, codeExpiresAt: new Date(now + 10 * 60 * 1000),
       verified: false, sessionToken: null,
       expiresAt: new Date(now + 24 * 60 * 60 * 1000), // TTL cleanup after 24h
@@ -231,6 +240,25 @@ export async function registerPortal(req, res) {
   const sent = await emailOtp(cleanEmail, code, "the exam portal");
   if (!sent) return res.status(502).json({ message: "Could not send the code email. Please try again shortly." });
   res.json({ sent: true, email: cleanEmail });
+}
+
+// POST /api/cbt/login — returning candidate. Body { email, password }. No OTP:
+// once registered & verified, a student signs back in with their password.
+export async function loginPortal(req, res) {
+  const { email = "", password = "" } = req.body || {};
+  const cleanEmail = String(email).trim().toLowerCase();
+  if (!EMAIL_RE.test(cleanEmail) || !password) return res.status(400).json({ message: "Enter your email and password." });
+
+  const reg = await CbtRegistration.findOne({ email: cleanEmail });
+  if (!reg || !reg.passwordHash) return res.status(404).json({ noAccount: true, message: "No account with this email. Please register first." });
+  if (!reg.verified) return res.status(403).json({ message: "Please finish registering — verify the code sent to your email." });
+  const ok = await bcrypt.compare(String(password), reg.passwordHash);
+  if (!ok) return res.status(401).json({ message: "Incorrect email or password." });
+
+  reg.sessionToken = crypto.randomBytes(24).toString("hex");
+  reg.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // refresh TTL
+  await reg.save();
+  res.json({ sessionToken: reg.sessionToken, name: reg.name, email: cleanEmail });
 }
 
 // POST /api/cbt/verify — PORTAL sign-in step 2. Body { email, code }. On success

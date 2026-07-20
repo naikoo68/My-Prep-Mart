@@ -158,8 +158,9 @@ export const practiceService = {
 // ---- CBT online exams (single public portal; name+email sign-in; deferred results) ----
 export const cbtService = {
   // public (no login) — registration is portal-wide (once per email)
-  registerPortal: (data) => api.post("/cbt/register", data, { auth: false }), // { name, email } → OTP
+  registerPortal: (data) => api.post("/cbt/register", data, { auth: false }), // { name, email, password } → OTP
   verifyPortal: (data) => api.post("/cbt/verify", data, { auth: false }), // { email, code } → { sessionToken }
+  loginPortal: (data) => api.post("/cbt/login", data, { auth: false }), // { email, password } → { sessionToken }
   portal: (email) => api.get(`/cbt/portal${email ? `?email=${encodeURIComponent(email)}` : ""}`, { auth: false }), // list exams (+ completed flags)
   examMeta: (token) => api.get(`/cbt/exam/${token}`, { auth: false }), // exam meta
   start: (token, data) => api.post(`/cbt/exam/${token}/start`, data, { auth: false }), // { email, sessionToken } → questions
