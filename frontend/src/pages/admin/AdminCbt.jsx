@@ -47,11 +47,14 @@ export default function AdminCbt() {
   const load = useCallback(() => {
     setLoading(true);
     setError("");
-    Promise.all([cbtService.exams(), cbtService.portalUrl().catch(() => ({ url: "" }))])
-      .then(([r, p]) => {
+    // Build the portal link from the browser's own URL so it's always correct
+    // (never localhost), regardless of any backend CLIENT_URL config.
+    setPortalLink(`${window.location.origin}${window.location.pathname}#/online-exams`);
+    cbtService
+      .exams()
+      .then((r) => {
         const list = Array.isArray(r) ? r : [];
         setRows(list);
-        setPortalLink(p?.url || `${window.location.origin}${window.location.pathname}#/online-exams`);
         setDrafts(Object.fromEntries(list.map((x) => [x._id, toLocalInput(x.cbtEndAt)])));
       })
       .catch((e) => setError(e.message))

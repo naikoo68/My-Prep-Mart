@@ -17,8 +17,22 @@ const esc = (s) =>
 
 // Base URL of the frontend (hash router), for links emailed to students.
 const clientBase = () => (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
-const resultUrlFor = (token) => `${clientBase()}/#/cbt/result/${token}`;
+// Prefer a per-attempt captured origin (the real site the student used) over
+// CLIENT_URL, so links are correct even when CLIENT_URL isn't set.
+const resultUrlFor = (token, base) => `${(base || clientBase()).replace(/\/$/, "")}/#/cbt/result/${token}`;
 const portalUrl = () => `${clientBase()}/#/online-exams`;
+
+// Work out the frontend's public origin from the request (the student's browser
+// sends Origin/Referer), so emailed links don't fall back to localhost.
+function frontendOriginFromReq(req) {
+  const o = req.headers?.origin;
+  if (o && /^https?:\/\//i.test(o)) return o.replace(/\/$/, "");
+  const ref = req.headers?.referer || req.headers?.referrer;
+  if (ref) {
+    try { const u = new URL(ref); return `${u.protocol}//${u.host}`; } catch { /* ignore */ }
+  }
+  return "";
+}
 
 // Whether the exam's taking window has ended (fixed end time reached).
 const endReached = (t) => t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= Date.now();
@@ -172,6 +186,7 @@ export async function submitCbt(req, res) {
       timeTaken: Number(timeTaken) || 0,
       review: g.review,
       resultToken,
+      resultBase: frontendOriginFromReq(req), // for correct emailed links later
     });
   } catch (e) {
     return res.status(500).json({ message: "Could not save your attempt. Please try again." });
@@ -419,7 +434,7 @@ export async function cbtLeaderboard(req, res) {
 // choice) with explanations, plus a link to the fully-rendered printable page.
 function buildResultEmailHtml({ attempt, test, rank, candidates, resultToken }) {
   const review = attempt.review || [];
-  const link = resultUrlFor(resultToken);
+  const link = resultUrlFor(resultToken, attempt.resultBase);
   const pct = attempt.percentage;
 
   const rows = review
@@ -501,7 +516,7 @@ async function emailCbtResult({ attempt, test, rank, candidates, resultToken }) 
     `Score: ${attempt.score}/${attempt.maxScore ?? test.marks} (${attempt.percentage}%)\n` +
     `Rank: #${rank}${candidates ? ` of ${candidates}` : ""}\n` +
     `Correct ${attempt.correct} · Wrong ${attempt.incorrect} · Skipped ${attempt.skipped}\n\n` +
-    `View & download your full result: ${resultUrlFor(resultToken)}`;
+    `View & download your full result: ${resultUrlFor(resultToken, attempt.resultBase)}`;
   const ok = await sendMail({
     to: attempt.email,
     subject: `Your result — ${test.name} (Rank #${rank}${candidates ? `/${candidates}` : ""})`,
