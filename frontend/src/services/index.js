@@ -159,9 +159,12 @@ export const practiceService = {
 export const cbtService = {
   // public (no login)
   portal: () => api.get("/cbt/portal", { auth: false }), // the one shareable exam page
-  getExam: (token) => api.get(`/cbt/exam/${token}`, { auth: false }),
+  examMeta: (token) => api.get(`/cbt/exam/${token}`, { auth: false }), // meta for the sign-in screen
+  register: (token, data) => api.post(`/cbt/exam/${token}/register`, data, { auth: false }), // { name, email } → OTP
+  verify: (token, data) => api.post(`/cbt/exam/${token}/verify`, data, { auth: false }), // { email, code } → { sessionToken }
+  start: (token, data) => api.post(`/cbt/exam/${token}/start`, data, { auth: false }), // { email, sessionToken } → questions
   registerView: (token) => api.post(`/cbt/exam/${token}/view`, {}, { auth: false }),
-  submit: (token, payload) => api.post(`/cbt/exam/${token}/submit`, payload, { auth: false }), // { name, email, answers, timeTaken }
+  submit: (token, payload) => api.post(`/cbt/exam/${token}/submit`, payload, { auth: false }), // { name, email, sessionToken, answers, timeTaken }
   getResult: (resultToken) => api.get(`/cbt/result/${resultToken}`, { auth: false }), // pending until released
   // admin
   portalUrl: () => api.get("/cbt/admin/portal-url"),

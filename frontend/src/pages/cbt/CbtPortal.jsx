@@ -73,7 +73,11 @@ export default function CbtPortal() {
               <div key={r._id} className="card flex flex-col p-5">
                 <div className="flex-1">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Live</span>
+                    {r.state === "scheduled" ? (
+                      <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">Scheduled</span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Live</span>
+                    )}
                     {r.context && <span className="truncate text-xs text-slate-400">{r.context}</span>}
                   </div>
                   <h2 className="text-lg font-bold leading-snug">{r.name}</h2>
@@ -82,6 +86,11 @@ export default function CbtPortal() {
                     <span className="inline-flex items-center gap-1"><Clock className="h-4 w-4" /> {r.duration} min</span>
                     <span className="inline-flex items-center gap-1"><Award className="h-4 w-4" /> {r.marks} marks</span>
                   </div>
+                  {r.state === "scheduled" && r.startAt && (
+                    <p className="mt-2 inline-flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400">
+                      <CalendarClock className="h-3.5 w-3.5" /> Opens {fmtDate(r.startAt)}
+                    </p>
+                  )}
                   {r.endAt && (
                     <p className="mt-2 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                       <CalendarClock className="h-3.5 w-3.5" /> Closes {fmtDate(r.endAt)}
@@ -89,7 +98,7 @@ export default function CbtPortal() {
                   )}
                 </div>
                 <button onClick={() => navigate(`/cbt/exam/${r.token}`)} className="btn-primary mt-4 w-full">
-                  <MonitorCheck className="h-4 w-4" /> Start Exam
+                  <MonitorCheck className="h-4 w-4" /> {r.state === "scheduled" ? "View / Register" : "Start Exam"}
                 </button>
               </div>
             ))}

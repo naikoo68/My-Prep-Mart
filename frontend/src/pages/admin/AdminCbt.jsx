@@ -23,6 +23,7 @@ const toLocalInput = (d) => {
 const STATUS_BADGE = {
   live: { label: "Live", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
   off: { label: "Off", cls: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
+  scheduled: { label: "Scheduled", cls: "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300" },
   ended: { label: "Ended — releasing…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
   released: { label: "Results released", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" },
 };
@@ -55,7 +56,7 @@ export default function AdminCbt() {
       .then((r) => {
         const list = Array.isArray(r) ? r : [];
         setRows(list);
-        setDrafts(Object.fromEntries(list.map((x) => [x._id, toLocalInput(x.cbtEndAt)])));
+        setDrafts(Object.fromEntries(list.map((x) => [x._id, { start: toLocalInput(x.cbtStartAt), end: toLocalInput(x.cbtEndAt) }])));
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -85,17 +86,29 @@ export default function AdminCbt() {
     }
   };
 
-  const saveEnd = async (r) => {
-    const v = drafts[r._id];
-    setBusy(`end-${r._id}`);
+  const saveSchedule = async (r) => {
+    const d = drafts[r._id] || {};
+    setBusy(`sch-${r._id}`);
     try {
-      const iso = v ? new Date(v).toISOString() : "";
-      const res = await cbtService.update(r._id, { endAt: iso });
-      patch(r._id, { cbtEndAt: res.cbtEndAt });
+      const startAt = d.start ? new Date(d.start).toISOString() : "";
+      const endAt = d.end ? new Date(d.end).toISOString() : "";
+      const res = await cbtService.update(r._id, { startAt, endAt });
+      patch(r._id, { cbtStartAt: res.cbtStartAt, cbtEndAt: res.cbtEndAt });
     } catch (e) {
-      alert(e.message || "Could not set the end time.");
+      alert(e.message || "Could not save the schedule.");
     } finally {
       setBusy("");
+    }
+  };
+
+  const toggleOtp = async (r) => {
+    const next = !r.cbtRequireOtp;
+    patch(r._id, { cbtRequireOtp: next });
+    try {
+      await cbtService.update(r._id, { requireOtp: next });
+    } catch (e) {
+      patch(r._id, { cbtRequireOtp: r.cbtRequireOtp });
+      alert(e.message || "Could not update the OTP setting.");
     }
   };
 
@@ -220,39 +233,69 @@ export default function AdminCbt() {
                   </div>
                 </div>
 
-                {/* Controls: Live toggle + end time */}
-                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={r.cbtLive}
-                      disabled={locked}
-                      onClick={() => toggleLive(r)}
-                      className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${r.cbtLive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"} ${locked ? "opacity-50" : ""}`}
-                    >
-                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${r.cbtLive ? "left-[22px]" : "left-0.5"}`} />
-                    </button>
-                    Live
-                  </label>
+                {/* Controls: Live toggle + OTP toggle + start/end schedule */}
+                <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={r.cbtLive}
+                        disabled={locked}
+                        onClick={() => toggleLive(r)}
+                        className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${r.cbtLive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"} ${locked ? "opacity-50" : ""}`}
+                      >
+                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${r.cbtLive ? "left-[22px]" : "left-0.5"}`} />
+                      </button>
+                      Live
+                    </label>
 
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <CalendarClock className="h-4 w-4 text-slate-400" />
-                    <span className="text-slate-500">Ends:</span>
-                    <input
-                      type="datetime-local"
-                      value={drafts[r._id] || ""}
-                      disabled={locked}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [r._id]: e.target.value }))}
-                      className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
-                    />
-                    {!locked && toLocalInput(r.cbtEndAt) !== (drafts[r._id] || "") && (
-                      <button onClick={() => saveEnd(r)} disabled={busy === `end-${r._id}`} className="btn-primary py-1 text-xs">
-                        {busy === `end-${r._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={r.cbtRequireOtp}
+                        disabled={locked}
+                        onClick={() => toggleOtp(r)}
+                        className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${r.cbtRequireOtp ? "bg-brand-500" : "bg-slate-300 dark:bg-slate-600"} ${locked ? "opacity-50" : ""}`}
+                      >
+                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${r.cbtRequireOtp ? "left-[22px]" : "left-0.5"}`} />
+                      </button>
+                      Email OTP
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-3 text-sm">
+                    <div>
+                      <label className="mb-0.5 flex items-center gap-1 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5" /> Starts (optional)</label>
+                      <input
+                        type="datetime-local"
+                        value={drafts[r._id]?.start || ""}
+                        disabled={locked}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [r._id]: { ...d[r._id], start: e.target.value } }))}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 flex items-center gap-1 text-xs text-slate-500"><Clock className="h-3.5 w-3.5" /> Ends (auto-declares results)</label>
+                      <input
+                        type="datetime-local"
+                        value={drafts[r._id]?.end || ""}
+                        disabled={locked}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [r._id]: { ...d[r._id], end: e.target.value } }))}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+                    {!locked && (toLocalInput(r.cbtStartAt) !== (drafts[r._id]?.start || "") || toLocalInput(r.cbtEndAt) !== (drafts[r._id]?.end || "")) && (
+                      <button onClick={() => saveSchedule(r)} disabled={busy === `sch-${r._id}`} className="btn-primary py-1.5 text-xs">
+                        {busy === `sch-${r._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save schedule"}
                       </button>
                     )}
-                    {!locked && !r.cbtEndAt && <span className="text-xs text-slate-400">(no end set — release manually)</span>}
                   </div>
+                  <p className="text-xs text-slate-400">
+                    Late joiners can still enter until the end time — their timer ends when the exam closes. Results declare automatically at the end time.
+                    {!r.cbtEndAt && " No end set — you'll release results manually."}
+                  </p>
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">

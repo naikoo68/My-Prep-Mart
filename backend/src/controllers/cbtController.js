@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import TestSeries from "../models/TestSeries.js";
 import CbtAttempt from "../models/CbtAttempt.js";
+import CbtRegistration from "../models/CbtRegistration.js";
 import { gradeSubmission } from "./testController.js";
 import { sendMail, isMailConfigured } from "../config/mailer.js";
 
@@ -36,9 +37,41 @@ function frontendOriginFromReq(req) {
 
 // Whether the exam's taking window has ended (fixed end time reached).
 const endReached = (t) => t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= Date.now();
+// Whether the exam hasn't opened yet (scheduled start time not reached).
+const notStartedYet = (t) => t.cbtStartAt && new Date(t.cbtStartAt).getTime() > Date.now();
 // Whether candidates may currently take the exam: on the portal, live, results
-// not yet released, and the end time (if any) not yet reached.
-const openForTaking = (t) => t.cbtEnabled && t.cbtLive && !t.cbtResultsReleased && !endReached(t);
+// not released, started (if scheduled), and the end time (if any) not reached.
+const openForTaking = (t) =>
+  t.cbtEnabled && t.cbtLive && !t.cbtResultsReleased && !notStartedYet(t) && !endReached(t);
+
+// A single word describing where the exam is in its lifecycle (for the client).
+function examWindowState(t) {
+  if (t.cbtResultsReleased) return "released";
+  if (endReached(t)) return "ended";
+  if (!t.cbtLive) return "off";
+  if (notStartedYet(t)) return "scheduled";
+  return "open";
+}
+
+// Has this email already completed (submitted) this exam? Used to enforce the
+// one-attempt-per-student rule.
+async function hasCompleted(testId, email) {
+  return !!(await CbtAttempt.exists({ testSeries: testId, email: String(email).toLowerCase() }));
+}
+
+const genOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+
+// Email a one-time code to the candidate.
+async function emailOtp(email, code, examName) {
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+      <h2 style="margin:0 0 8px">Your exam sign-in code</h2>
+      <p style="color:#475569;margin:0 0 16px">Use this code to start <b>${esc(examName)}</b>:</p>
+      <div style="font-size:34px;font-weight:800;letter-spacing:8px;background:#f1f5f9;border-radius:12px;padding:16px;text-align:center;color:#4f46e5">${esc(code)}</div>
+      <p style="color:#64748b;font-size:13px;margin-top:16px">This code expires in 10 minutes. If you didn't request it, ignore this email.</p>
+    </div>`;
+  return sendMail({ to: email, subject: `Exam code: ${code} — ${examName}`, text: `Your code for ${examName} is ${code} (valid 10 minutes).`, html });
+}
 
 // The canonical leaderboard for a CBT exam: the BEST attempt per student
 // (deduped by email — highest score, then fastest), ranked.
@@ -97,7 +130,7 @@ export async function releaseEndedCbtExams() {
     }
   } catch { /* next sweep retries */ }
 }
-setInterval(releaseEndedCbtExams, 5 * 60 * 1000).unref();
+setInterval(releaseEndedCbtExams, 2 * 60 * 1000).unref();
 
 /* ===================== public (no auth) endpoints ===================== */
 
@@ -111,6 +144,8 @@ export async function getCbtPortal(req, res) {
     .populate("practiceSubject", "name")
     .sort("-updatedAt")
     .lean();
+  // Keep exams whose window hasn't ended. Scheduled (not-yet-started) exams are
+  // still listed so candidates can see what's coming and when.
   const live = tests.filter((t) => !t.cbtEndAt || new Date(t.cbtEndAt).getTime() > now);
   res.json(
     live.map((t) => ({
@@ -121,18 +156,108 @@ export async function getCbtPortal(req, res) {
       marks: t.marks,
       questionCount: t.questions?.length || 0,
       context: [t.practiceStream?.name, t.practiceSubject?.name].filter(Boolean).join(" › "),
+      startAt: t.cbtStartAt || null,
       endAt: t.cbtEndAt || null,
+      state: examWindowState(t), // "open" | "scheduled"
     }))
   );
 }
 
-// GET /api/cbt/exam/:token — fetch a CBT exam to take. No auth. Correct answers
-// are ALWAYS stripped. Blocked if the exam isn't currently open for taking.
+// GET /api/cbt/exam/:token — exam META only (no questions). No auth. Used to
+// render the registration/sign-in screen. Questions are handed out only after
+// OTP verification, via /start.
 export async function getCbtExam(req, res) {
-  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).populate("questions");
+  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true })
+    .select("name duration marks questions cbtLive cbtStartAt cbtEndAt cbtResultsReleased cbtRequireOtp").lean();
+  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
+  res.json({
+    _id: test._id,
+    name: test.name,
+    duration: test.duration,
+    marks: test.marks,
+    questionCount: test.questions?.length || 0,
+    requireOtp: test.cbtRequireOtp !== false,
+    startAt: test.cbtStartAt || null,
+    endAt: test.cbtEndAt || null,
+    serverNow: new Date().toISOString(),
+    state: examWindowState(test), // open | scheduled | ended | released | off
+  });
+}
+
+// POST /api/cbt/exam/:token/register — step 1 of sign-in. Body { name, email }.
+// Emails a one-time code (OTP) to the candidate. Blocked if the student has
+// already completed this exam (one attempt only).
+export async function registerCbt(req, res) {
+  const { name = "", email = "" } = req.body || {};
+  const cleanName = String(name).trim();
+  const cleanEmail = String(email).trim().toLowerCase();
+  if (!cleanName) return res.status(400).json({ message: "Please enter your name." });
+  if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ message: "Please enter a valid email address." });
+
+  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).select("name cbtLive cbtStartAt cbtEndAt cbtResultsReleased").lean();
   if (!test) return res.status(404).json({ message: "This exam link is invalid." });
   if (test.cbtResultsReleased || endReached(test)) return res.status(403).json({ message: "This exam has ended." });
+  if (notStartedYet(test)) return res.status(403).json({ message: `This exam opens at ${new Date(test.cbtStartAt).toLocaleString()}.` });
   if (!test.cbtLive) return res.status(403).json({ message: "This exam is not open right now. Please check back later." });
+  if (await hasCompleted(test._id, cleanEmail)) return res.status(409).json({ alreadyCompleted: true, message: "You have already taken this exam. A second attempt isn't allowed." });
+  if (!isMailConfigured()) return res.status(503).json({ message: "Email isn't configured on the server, so a code can't be sent. Please contact the organiser." });
+
+  const code = genOtp();
+  const now = Date.now();
+  await CbtRegistration.findOneAndUpdate(
+    { testSeries: test._id, email: cleanEmail },
+    {
+      testSeries: test._id, email: cleanEmail, name: cleanName,
+      code, codeExpiresAt: new Date(now + 10 * 60 * 1000),
+      verified: false, sessionToken: null,
+      expiresAt: new Date(now + 24 * 60 * 60 * 1000), // TTL cleanup after 24h
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  const sent = await emailOtp(cleanEmail, code, test.name);
+  if (!sent) return res.status(502).json({ message: "Could not send the code email. Please try again shortly." });
+  res.json({ sent: true, email: cleanEmail });
+}
+
+// POST /api/cbt/exam/:token/verify — step 2. Body { email, code }. On success
+// issues a sessionToken the client presents to start & submit.
+export async function verifyCbt(req, res) {
+  const { email = "", code = "" } = req.body || {};
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanCode = String(code).trim();
+  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).select("_id").lean();
+  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
+
+  const reg = await CbtRegistration.findOne({ testSeries: test._id, email: cleanEmail });
+  if (!reg || !reg.code) return res.status(400).json({ message: "Please request a code first." });
+  if (!reg.codeExpiresAt || reg.codeExpiresAt.getTime() < Date.now()) return res.status(400).json({ message: "This code has expired. Please request a new one." });
+  if (reg.code !== cleanCode) return res.status(400).json({ message: "Incorrect code. Please check and try again." });
+
+  reg.verified = true;
+  if (!reg.sessionToken) reg.sessionToken = crypto.randomBytes(24).toString("hex");
+  // Keep the code valid until it expires so a transient failure right after
+  // verifying (e.g. the /start call) can be retried without a new code.
+  await reg.save();
+  res.json({ sessionToken: reg.sessionToken, name: reg.name, email: cleanEmail });
+}
+
+// POST /api/cbt/exam/:token/start — hand out the questions (answers stripped)
+// for a verified candidate. Body { email, sessionToken }. Also returns the end
+// time + server clock so the client can bind the timer to the exam's end.
+export async function startCbt(req, res) {
+  const { email = "", sessionToken = "" } = req.body || {};
+  const cleanEmail = String(email).trim().toLowerCase();
+  const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).populate("questions");
+  if (!test) return res.status(404).json({ message: "This exam link is invalid." });
+  if (!openForTaking(test)) return res.status(403).json({ message: notStartedYet(test) ? "This exam hasn't started yet." : "This exam has ended or is not open right now." });
+
+  if (test.cbtRequireOtp !== false) {
+    const reg = await CbtRegistration.findOne({ testSeries: test._id, email: cleanEmail });
+    if (!reg || !reg.verified || reg.sessionToken !== sessionToken || !sessionToken) {
+      return res.status(401).json({ message: "Please verify your email to start the exam." });
+    }
+  }
+  if (await hasCompleted(test._id, cleanEmail)) return res.status(409).json({ alreadyCompleted: true, message: "You have already taken this exam." });
 
   const obj = test.toObject();
   const questions = (obj.questions || []).map((q) => {
@@ -147,6 +272,7 @@ export async function getCbtExam(req, res) {
     negativeMarking: obj.negativeMarking,
     questionCount: questions.length,
     endAt: obj.cbtEndAt || null,
+    serverNow: new Date().toISOString(),
     questions,
   });
 }
@@ -164,7 +290,7 @@ export async function registerCbtView(req, res) {
 // identity and a full graded review snapshot, but NOTHING is revealed now: no
 // rank, no score, no email. Results are released only after the exam ends.
 export async function submitCbt(req, res) {
-  const { name = "", email = "", answers = {}, timeTaken = 0 } = req.body || {};
+  const { name = "", email = "", sessionToken = "", answers = {}, timeTaken = 0 } = req.body || {};
   const cleanName = String(name).trim();
   const cleanEmail = String(email).trim().toLowerCase();
   if (!cleanName) return res.status(400).json({ message: "Please enter your name." });
@@ -172,7 +298,22 @@ export async function submitCbt(req, res) {
 
   const test = await TestSeries.findOne({ cbtToken: req.params.token, cbtEnabled: true }).populate("questions");
   if (!test) return res.status(404).json({ message: "This exam link is invalid." });
-  if (!openForTaking(test)) return res.status(403).json({ message: "This exam has ended or is not open right now." });
+  // The exam may have JUST ended while the candidate was finishing — accept a
+  // submit within a short grace period so their work isn't lost, but block if
+  // results are already released.
+  if (test.cbtResultsReleased) return res.status(403).json({ message: "This exam's results are already released." });
+
+  // Verified-session gate (when OTP is required).
+  if (test.cbtRequireOtp !== false) {
+    const reg = await CbtRegistration.findOne({ testSeries: test._id, email: cleanEmail });
+    if (!reg || !reg.verified || reg.sessionToken !== sessionToken || !sessionToken) {
+      return res.status(401).json({ message: "Your exam session is invalid. Please sign in again." });
+    }
+  }
+  // One attempt per student.
+  if (await hasCompleted(test._id, cleanEmail)) {
+    return res.status(409).json({ alreadyCompleted: true, message: "You have already submitted this exam." });
+  }
 
   const g = gradeSubmission(test, answers);
   const resultToken = crypto.randomBytes(16).toString("hex");
@@ -210,7 +351,14 @@ export async function submitCbt(req, res) {
 export async function getCbtResult(req, res) {
   const attempt = await CbtAttempt.findOne({ resultToken: req.params.resultToken }).lean();
   if (!attempt) return res.status(404).json({ message: "This result link is invalid or has expired." });
-  const test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultsReleased").lean();
+  let test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultsReleased").lean();
+
+  // If the exam's end time has passed but the sweep hasn't run yet, release now
+  // so results declare the moment a candidate checks (and everyone gets emailed).
+  if (test && !test.cbtResultsReleased && endReached(test)) {
+    await releaseOneCbtExam(test).catch(() => {});
+    test = await TestSeries.findById(attempt.testSeries).select("name marks cbtEndAt cbtResultsReleased").lean();
+  }
 
   // Not released yet → keep everything hidden.
   if (!test?.cbtResultsReleased) {
@@ -290,13 +438,18 @@ export async function listCbtExams(req, res) {
       const avg = list.length ? Math.round(list.reduce((s, a) => s + (a.percentage || 0), 0) / list.length) : null;
       const last = list.reduce((m, a) => (a.createdAt > m ? a.createdAt : m), null);
       const ended = t.cbtResultsReleased || (t.cbtEndAt && new Date(t.cbtEndAt).getTime() <= now);
-      const status = t.cbtResultsReleased ? "released" : ended ? "ended" : t.cbtLive ? "live" : "off";
+      const scheduled = !ended && t.cbtStartAt && new Date(t.cbtStartAt).getTime() > now;
+      const status = t.cbtResultsReleased
+        ? "released"
+        : ended ? "ended" : !t.cbtLive ? "off" : scheduled ? "scheduled" : "live";
       return {
         _id: t._id,
         name: t.name,
         cbtToken: t.cbtToken,
         cbtLive: !!t.cbtLive,
+        cbtStartAt: t.cbtStartAt || null,
         cbtEndAt: t.cbtEndAt || null,
+        cbtRequireOtp: t.cbtRequireOtp !== false,
         cbtResultsReleased: !!t.cbtResultsReleased,
         status,
         questionCount: t.questions?.length || 0,
@@ -363,6 +516,16 @@ export async function updateCbtExam(req, res) {
 
   const body = req.body || {};
   if ("live" in body) test.cbtLive = !!body.live;
+  if ("requireOtp" in body) test.cbtRequireOtp = !!body.requireOtp;
+  if ("startAt" in body) {
+    if (!body.startAt) {
+      test.cbtStartAt = null;
+    } else {
+      const d = new Date(body.startAt);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: "Invalid start date/time." });
+      test.cbtStartAt = d;
+    }
+  }
   if ("endAt" in body) {
     if (!body.endAt) {
       test.cbtEndAt = null;
@@ -372,8 +535,11 @@ export async function updateCbtExam(req, res) {
       test.cbtEndAt = d;
     }
   }
+  if (test.cbtStartAt && test.cbtEndAt && test.cbtEndAt.getTime() <= test.cbtStartAt.getTime()) {
+    return res.status(400).json({ message: "The end time must be after the start time." });
+  }
   await test.save();
-  res.json({ cbtLive: test.cbtLive, cbtEndAt: test.cbtEndAt, cbtResultsReleased: test.cbtResultsReleased });
+  res.json({ cbtLive: test.cbtLive, cbtStartAt: test.cbtStartAt, cbtEndAt: test.cbtEndAt, cbtRequireOtp: test.cbtRequireOtp, cbtResultsReleased: test.cbtResultsReleased });
 }
 
 // PATCH /api/cbt/admin/:id/release — end the exam NOW and release results:

@@ -61,6 +61,8 @@ const testSeriesSchema = new mongoose.Schema(
     cbtEnabled: { type: Boolean, default: false }, // added to the exam portal
     cbtLive: { type: Boolean, default: false }, // live on/off toggle
     cbtToken: { type: String, index: true, default: null },
+    cbtRequireOtp: { type: Boolean, default: true }, // email OTP verification before taking
+    cbtStartAt: { type: Date, default: null }, // exam opens at this time (null = as soon as Live)
     cbtEndAt: { type: Date, default: null }, // exam end / results-release time (null = admin releases manually)
     cbtResultsReleased: { type: Boolean, default: false }, // results emailed + viewable
     cbtViews: { type: Number, default: 0 }, // opens (counted once per browser)
