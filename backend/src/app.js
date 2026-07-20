@@ -54,6 +54,7 @@ import couponRoutes from "./routes/couponRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import cbtRoutes from "./routes/cbtRoutes.js";
+import { releaseEndedCbtExams } from "./controllers/cbtController.js";
 import { notFound, errorHandler } from "./middleware/error.js";
 import { isMailConfigured, verifyMail } from "./config/mailer.js";
 import { isCloudinaryConfigured } from "./config/cloudinary.js";
@@ -89,19 +90,30 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50 });
 
 // Health check — also reports whether email (SMTP) is configured so you can
 // verify your Render settings by visiting /api/health in a browser.
-app.get("/api/health", (req, res) =>
+// It ALSO opportunistically declares any CBT results that are now due. The
+// keep-alive workflow pings this endpoint regularly, so results release on
+// their own (auto: at exam end · manual: at the scheduled timer) even when the
+// free-tier server had been asleep and the in-process timer wasn't running —
+// no admin refresh required. Throttled + fire-and-forget so health stays fast.
+let lastCbtSweep = 0;
+app.get("/api/health", (req, res) => {
+  const now = Date.now();
+  if (now - lastCbtSweep > 60 * 1000) {
+    lastCbtSweep = now;
+    releaseEndedCbtExams().catch(() => {});
+  }
   res.json({
     status: "ok",
     service: "my-study-guide-api",
     // Bump this whenever backend code changes so we can verify Render actually
     // redeployed: open /api/health and check `version`. If it's older than the
     // latest, the backend did NOT deploy and server-side fixes aren't live.
-    version: "2026-07-18-cbt-entry-allowlist-v44",
-    features: ["ai-scope", "ai-key-owner", "extract-batches", "matching-labels", "documents", "extract-remaining", "notes-gen", "latex-json-repair", "no-currency-dollar", "parallel-small-chunks", "provider-timeout", "addtotest-drilldown", "mytest-subjectplan", "reshuffle-subjects-questions-options", "db-indexes", "extend-verify-numeric", "extend-verify-matching-pairs", "generate-extract-formula-verify", "regenerate-question", "wrap-numeric-options-latex", "regenerate-fixall-render", "regenerate-columns-not-in-stem", "regenerate-table-not-in-stem", "regenerate-strip-list-markers", "youtube-transcript-source", "shared-link-tracker", "shared-link-opens", "youtube-innertube-retry", "cbt-online-exams", "cbt-emailed-results", "cbt-rankings", "cbt-exam-portal", "cbt-live-toggle", "cbt-deferred-results", "cbt-otp-registration", "cbt-scheduled-window", "cbt-one-attempt", "cbt-portal-registration", "cbt-portal-login-password", "cbt-student-dashboard", "cbt-reset-password", "cbt-change-password", "cbt-admin-candidates", "cbt-late-entry-cutoff", "cbt-entry-allowlist"],
+    version: "2026-07-20-cbt-result-autorelease-v45",
+    features: ["ai-scope", "ai-key-owner", "extract-batches", "matching-labels", "documents", "extract-remaining", "notes-gen", "latex-json-repair", "no-currency-dollar", "parallel-small-chunks", "provider-timeout", "addtotest-drilldown", "mytest-subjectplan", "reshuffle-subjects-questions-options", "db-indexes", "extend-verify-numeric", "extend-verify-matching-pairs", "generate-extract-formula-verify", "regenerate-question", "wrap-numeric-options-latex", "regenerate-fixall-render", "regenerate-columns-not-in-stem", "regenerate-table-not-in-stem", "regenerate-strip-list-markers", "youtube-transcript-source", "shared-link-tracker", "shared-link-opens", "youtube-innertube-retry", "cbt-online-exams", "cbt-emailed-results", "cbt-rankings", "cbt-exam-portal", "cbt-live-toggle", "cbt-deferred-results", "cbt-otp-registration", "cbt-scheduled-window", "cbt-one-attempt", "cbt-portal-registration", "cbt-portal-login-password", "cbt-student-dashboard", "cbt-reset-password", "cbt-change-password", "cbt-admin-candidates", "cbt-late-entry-cutoff", "cbt-entry-allowlist", "cbt-student-status", "cbt-late-entry-access", "cbt-manual-result-mode", "cbt-result-autorelease-on-ping"],
     mailConfigured: isMailConfigured(),
     uploadConfigured: isCloudinaryConfigured(),
-  })
-);
+  });
+});
 
 // Diagnostic: tests the SMTP login (does NOT send an email) and returns the
 // real error if it fails. Protected — admin only.
