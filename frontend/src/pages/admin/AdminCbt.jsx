@@ -198,7 +198,10 @@ export default function AdminCbt() {
         <div className="space-y-3">
           {rows.map((r) => {
             const badge = STATUS_BADGE[r.status] || STATUS_BADGE.off;
-            const locked = r.cbtResultsReleased || r.status === "ended";
+            // Only fully lock once results are RELEASED. An "ended" exam (past
+            // its end time but not released) stays editable so the admin can
+            // extend/clear the end time or toggle it live again.
+            const locked = r.cbtResultsReleased;
             return (
               <div key={r._id} className="card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">

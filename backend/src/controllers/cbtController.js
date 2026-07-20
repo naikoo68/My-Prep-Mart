@@ -718,8 +718,13 @@ export async function addCbtExam(req, res) {
   if (!test) return res.status(404).json({ message: "Test not found." });
   if (!test.questions?.length) return res.status(400).json({ message: "Add questions to this test before adding it to the exam page." });
 
+  // (Re)add as a clean slate: clear any stale schedule/state left from a
+  // previous run so the exam isn't instantly "ended" and can be made Live.
   test.cbtEnabled = true;
-  test.cbtResultsReleased = false; // re-adding a released exam resets it
+  test.cbtResultsReleased = false;
+  test.cbtLive = false;
+  test.cbtStartAt = null;
+  test.cbtEndAt = null;
   if (!test.cbtToken) test.cbtToken = crypto.randomBytes(12).toString("hex");
   await test.save();
   res.json({ cbtEnabled: true, cbtToken: test.cbtToken, cbtLive: test.cbtLive });
