@@ -140,6 +140,24 @@ export async function updateTopic(req, res) {
   if (!t) return res.status(404).json({ message: "Topic not found" });
   res.json(t);
 }
+// PATCH /api/practice/topics/:id/move — move a My Quiz topic to another subject
+// (within My Quiz). Its quizzes move with it (their stream/subject are updated
+// to the destination; the topic id stays the same).
+export async function moveTopic(req, res) {
+  const topic = await PracticeTopic.findOne({ _id: req.params.id, ...ownerFilter(req) });
+  if (!topic) return res.status(404).json({ message: "Topic not found" });
+  const destSubject = await PracticeSubject.findOne({ _id: req.body?.subject, ...ownerFilter(req) });
+  if (!destSubject) return res.status(400).json({ message: "Choose a destination subject." });
+  topic.subject = destSubject._id;
+  await topic.save();
+  // Relocate the topic's quizzes to the destination stream/subject.
+  await TestSeries.updateMany(
+    { practice: true, practiceTopic: topic._id, ...ownerFilter(req) },
+    { $set: { practiceSubject: destSubject._id, practiceStream: destSubject.stream } }
+  );
+  res.json({ message: "Topic moved", _id: topic._id });
+}
+
 export async function deleteTopic(req, res) {
   const id = req.params.id;
   const topic = await PracticeTopic.findOne({ _id: id, ...ownerFilter(req) });

@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   listStreams, createStream, updateStream, deleteStream,
   listSubjects, createSubject, updateSubject, deleteSubject,
-  listTopics, createTopic, updateTopic, deleteTopic, listTopicItems,
+  listTopics, createTopic, updateTopic, deleteTopic, moveTopic, listTopicItems,
   listItems, createItem,
   browseStreams, browseSubjects, browseTopics, browseItems, browseTopicItems,
   playQuiz, allSubjects, myItems, moveItem,
@@ -44,6 +44,7 @@ router.get("/subjects/:subjectId/topics", ...admin, listTopics); // My Quiz topi
 // Admin — topics (My Quiz)
 router.post("/topics", ...admin, createTopic);
 router.put("/topics/:id", ...admin, updateTopic);
+router.patch("/topics/:id/move", ...admin, moveTopic); // relocate a topic (+ its quizzes)
 router.delete("/topics/:id", ...admin, deleteTopic);
 router.get("/topics/:topicId/items", ...admin, listTopicItems); // My Quiz quizzes
 

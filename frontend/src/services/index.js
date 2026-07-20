@@ -146,6 +146,7 @@ export const practiceService = {
   adminTopics: (subjectId) => api.get(`/practice/subjects/${subjectId}/topics`),
   createTopic: (data) => api.post("/practice/topics", data),
   updateTopic: (id, data) => api.put(`/practice/topics/${id}`, data),
+  moveTopic: (id, target) => api.patch(`/practice/topics/${id}/move`, target), // { subject } — move topic (+ its quizzes)
   deleteTopic: (id) => api.del(`/practice/topics/${id}`),
   // admin — items (practice test-series)
   adminItems: (subjectId, kind) => api.get(`/practice/subjects/${subjectId}/items${kind ? `?kind=${kind}` : ""}`),
