@@ -240,7 +240,7 @@ CALCULATIONS & SELF-VERIFICATION (do this for EVERY question before you finalise
 - NUMERICAL / QUANTITATIVE questions: pick the correct FORMULA for the concept, substitute the actual values, and COMPUTE the answer step by step. Mark as "correct" ONLY the option that EXACTLY equals your computed result; make the other three plausible but genuinely wrong (each reflecting a specific common mistake). In "explanation" show the full working — formula, then substitution, then each intermediate result, then the final value — each step on its OWN line. NEVER mark an answer your own calculation does not produce, and make sure the explanation's steps end at the marked option.
 - MATCHING / PAIR / STATEMENT questions: verify each pairing/statement individually and make "correct" reflect the TRUE count/combination (and provide an option that matches it).
 - Re-check every calculation and fact; the marked "correct" option and the "optionExplanations" must be mutually consistent.
-MATH RENDERING (so numericals display correctly): wrap EVERY mathematical element in $...$ (inline LaTeX) — in the "text", the "options" AND the "explanation". This includes each numeric ANSWER OPTION that is a number/quantity/expression (e.g. options "$12.5$", "$\\frac{3}{4}$", "$2^{10}$", "$25\\%$", "$\\sqrt{2}$", "$3:4$"), every fraction, power, root, ratio, percentage and equation, and each step of a calculation. A plain number that is only ordinary prose (a year, a page count) need not be wrapped, but any numeric option or math expression MUST be. Use $...$ only (never \\( \\) or \\[ \\]) and never write bare LaTeX commands outside dollar signs.
+MATH RENDERING (so numericals display correctly): wrap EVERY mathematical element in $...$ (inline LaTeX) — in the "text", the "options" AND the "explanation". This includes each numeric ANSWER OPTION that is a number/quantity/expression (e.g. options "$12.5$", "$\\frac{3}{4}$", "$2^{10}$", "$25\\%$", "$\\sqrt{2}$", "$3:4$"), every fraction, power, root, ratio, percentage and equation, and each step of a calculation. A plain number that is only ordinary prose (a year, a page count) need not be wrapped, but any numeric option or math expression MUST be. Use $...$ only (never \\( \\) or \\[ \\]) and never write bare LaTeX commands outside dollar signs. For a simple arrow between items (a route/sequence such as "Lakhanpur → Samba → Udhampur → Banihal"), use the plain Unicode arrow character → directly — do NOT write \\rightarrow or \\to.
 CURRENCY: NEVER use the "$" character for money/amounts anywhere ("text", "options", "explanation", "optionExplanations") — "$" is reserved ONLY for wrapping inline math, and a stray "$" (e.g. "$300") corrupts the rendering of the whole field. Write money as a plain number with the currency word, e.g. "300 dollars" or "900 rupees" or just "300".
 Never include image URLs. Keep questions factually correct and self-contained.`;
 
@@ -381,7 +381,8 @@ function parseQuestions(content) {
         tryParse(repaired, repaired.indexOf("["), repaired.lastIndexOf("]"));
     }
   }
-  if (!obj) return salvageObjects(repairJson(t)); // last resort: recover from truncated JSON
+  if (!obj) return deepReviveLatex(salvageObjects(repairJson(t))); // last resort: recover from truncated JSON
+  obj = deepReviveLatex(obj); // fix \rightarrow/\times/\frac corrupted into control chars
   if (Array.isArray(obj)) return obj;
   if (Array.isArray(obj.questions)) return obj.questions;
   return [];
@@ -1752,6 +1753,41 @@ function escapeLatexBackslashes(t) {
 // Apply both JSON repairs (LaTeX backslashes, then raw control chars).
 const repairJson = (t) => escapeRawControlCharsInStrings(escapeLatexBackslashes(t));
 
+// Even when JSON.parse SUCCEEDS, single-backslash LaTeX (\rightarrow, \times,
+// \frac, \beta, …) is silently turned into a raw control char that ate the
+// backslash + first letter (\rightarrow → CR+"ightarrow", \times → TAB+"imes",
+// \frac → FORMFEED+"rac", \beta → BACKSPACE+"eta"). Those control chars are
+// never legitimate content, so revive them back into the LaTeX command. A real
+// newline (\n) is a genuine line break and is left untouched. Then render arrows
+// as a Unicode "→" so they show even in prose sequences (not only inside $…$).
+function reviveLatex(s) {
+  if (typeof s !== "string") return s;
+  let out = s;
+  if (/[\u0008\f\r\t]/.test(out)) {
+    out = out
+      .replace(/\r/g, "\\r")       // \rho, \rightarrow, \rangle …
+      .replace(/\t/g, "\\t")       // \times, \text, \tau, \theta, \to …
+      .replace(/\f/g, "\\f")       // \frac, \forall, \flat …
+      .replace(/\u0008/g, "\\b");  // \beta, \bar, \binom …
+  }
+  out = out
+    .replace(/\\(?:longrightarrow|Rightarrow|rightarrow|to)(?![a-zA-Z])/g, "→")
+    .replace(/\\(?:longleftarrow|Leftarrow|leftarrow)(?![a-zA-Z])/g, "←")
+    .replace(/\\(?:leftrightarrow|Leftrightarrow)(?![a-zA-Z])/g, "↔");
+  return out;
+}
+// Walk any parsed value and revive LaTeX in every string.
+function deepReviveLatex(v) {
+  if (typeof v === "string") return reviveLatex(v);
+  if (Array.isArray(v)) return v.map(deepReviveLatex);
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = deepReviveLatex(v[k]);
+    return out;
+  }
+  return v;
+}
+
 // Last resort: pull the "explanation" (and optionExplanations) out with regex,
 // even from broken or truncated JSON.
 function salvageExplanation(t) {
@@ -1784,6 +1820,7 @@ function parseExplanationJson(content) {
   for (const candidate of [t, slice, repairJson(t), repairJson(slice)]) {
     try { obj = JSON.parse(candidate); break; } catch { /* try next */ }
   }
+  if (obj) obj = deepReviveLatex(obj); // fix \rightarrow/\times/\frac corrupted into control chars
 
   if (obj && typeof obj === "object") {
     const explanation = typeof obj.explanation === "string" ? obj.explanation.trim() : "";
@@ -1815,7 +1852,8 @@ function parseExplanationJson(content) {
 
   // Couldn't parse as JSON at all — salvage the explanation with regex (from the
   // backslash-repaired text so single-backslash LaTeX survives the salvage too).
-  return salvageExplanation(repairJson(t));
+  const salvaged = salvageExplanation(repairJson(t));
+  return salvaged ? deepReviveLatex(salvaged) : salvaged;
 }
 
 // Build the Mongo $set for an extended question. Always updates the explanation
