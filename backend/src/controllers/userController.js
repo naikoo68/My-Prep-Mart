@@ -128,6 +128,7 @@ export async function updateUser(req, res) {
   if ("aiAccess" in req.body) user.aiAccess = !!req.body.aiAccess;
   if ("aiAllowInbuilt" in req.body) user.aiAllowInbuilt = !!req.body.aiAllowInbuilt;
   if ("aiAllowSelf" in req.body) user.aiAllowSelf = !!req.body.aiAllowSelf;
+  if ("aiPlan" in req.body) user.aiPlan = String(req.body.aiPlan || ""); // AI generation plan (matches a Settings.aiPlans name)
 
   // Temporary-account expiry: an explicit value updates it; null/"" clears it
   // (makes the account permanent). Only touched when the key is present.

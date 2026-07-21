@@ -256,9 +256,12 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     }
   };
 
+  // Effective per-batch cap for THIS account (admin global limit or client plan).
+  const maxPerBatch = status?.maxPerBatch || MAX_TOTAL;
+
   // ---- Generate: type × difficulty matrix (mirrors the AI Generator) ----
   const setCell = (type, diff, val) => {
-    const n = Math.max(0, Math.min(MAX_TOTAL, parseInt(val, 10) || 0));
+    const n = Math.max(0, Math.min(maxPerBatch, parseInt(val, 10) || 0));
     setMatrix((m) => ({ ...m, [type]: { ...(m[type] || {}), [diff]: n } }));
   };
   const rowTotal = (type) => DIFFS.reduce((s, d) => s + (matrix[type]?.[d] || 0), 0);
@@ -278,7 +281,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     }
     const plan = buildPlan();
     if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
-    if (genTotal > MAX_TOTAL) { setMsg(`Please keep the total to ${MAX_TOTAL} questions or fewer per run.`); return; }
+    if (genTotal > maxPerBatch) { setMsg(`Please keep the total to ${maxPerBatch} questions or fewer per run.`); return; }
     setBusy(true);
     setPreview([]);
     setDetected(0);
@@ -564,7 +567,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
                 {/* How many of each type × difficulty. Total = sum of all cells. */}
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold">Questions by type &amp; difficulty</label>
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${genTotal > MAX_TOTAL ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${genTotal > maxPerBatch ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
                     Total: {genTotal}
                   </span>
                 </div>
@@ -599,14 +602,14 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
                     </tbody>
                   </table>
                 </div>
-                <div className={`mt-2 flex items-center justify-between rounded-xl border px-4 py-2.5 ${genTotal > MAX_TOTAL ? "border-rose-300 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-900/20" : "border-brand-200 bg-brand-50 dark:border-brand-900/40 dark:bg-brand-900/20"}`}>
+                <div className={`mt-2 flex items-center justify-between rounded-xl border px-4 py-2.5 ${genTotal > maxPerBatch ? "border-rose-300 bg-rose-50 dark:border-rose-900/50 dark:bg-rose-900/20" : "border-brand-200 bg-brand-50 dark:border-brand-900/40 dark:bg-brand-900/20"}`}>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Total questions</span>
-                  <span className={`text-lg font-extrabold tabular-nums ${genTotal > MAX_TOTAL ? "text-rose-600 dark:text-rose-400" : "text-brand-600 dark:text-brand-300"}`}>
-                    {genTotal} <span className="text-xs font-medium text-slate-400">/ 50</span>
+                  <span className={`text-lg font-extrabold tabular-nums ${genTotal > maxPerBatch ? "text-rose-600 dark:text-rose-400" : "text-brand-600 dark:text-brand-300"}`}>
+                    {genTotal} <span className="text-xs font-medium text-slate-400">/ {maxPerBatch}</span>
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
-                  Set a count in any cell — e.g. 3 Easy MCQs + 2 Medium Matching. Leave cells at 0 to skip. Up to 50 per run.
+                  Set a count in any cell — e.g. 3 Easy MCQs + 2 Medium Matching. Leave cells at 0 to skip. Up to {maxPerBatch} per run.
                 </p>
               </div>
             )}

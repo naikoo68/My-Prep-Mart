@@ -1,6 +1,7 @@
 // AI Question Generator — talks to any OpenAI-compatible provider
 import AiKey from "../models/AiKey.js";
 import Question from "../models/Question.js";
+import Settings from "../models/Settings.js";
 import { ownerFilter } from "../utils/ownership.js";
 
 // Works with any OpenAI-compatible provider (Gemini, TokenLab, OpenAI, Groq,
@@ -186,12 +187,28 @@ export async function aiStatus(req, res) {
   }
   const reg = await modelRegistry(scope);
   const provs = await providers(scope);
+  const limits = await effectiveAiLimits(req.user);
+  const isClient = req.user?.role === "client";
+  let used = 0;
+  let remaining = null; // null = unlimited (admin)
+  if (isClient && limits.perWindow !== Infinity) {
+    used = aiRecentUsage(String(req.user._id), limits.windowMinutes * 60 * 1000);
+    remaining = Math.max(0, limits.perWindow - used);
+  }
   res.json({
     enabled: reg.length > 0,
     mode: scope.mode, // "inbuilt" | "self" — which pool this request used
     model: reg[0]?.model || "", // default / first configured model
     models: reg.map((r) => r.model), // every model across all keys (dropdown)
     keys: provs.length, // how many API keys are active in this scope
+    // AI generation limits for this account — drives the generator's max input
+    // and the quota display.
+    maxPerBatch: limits.maxPerBatch,
+    perWindow: limits.perWindow === Infinity ? null : limits.perWindow,
+    windowMinutes: limits.windowMinutes,
+    planName: limits.planName,
+    used,
+    remaining,
   });
 }
 
@@ -499,8 +516,43 @@ function reorderNoConsecutiveTypes(list) {
   return out;
 }
 
-const MAX_TOTAL = 500; // most questions per generate request (generated in chunks; large batches just take longer)
+const MAX_TOTAL = 500; // absolute hard ceiling / fallback (admin can set a lower/higher per-batch cap in Settings)
 const CHUNK_SIZE = 12; // questions generated per provider call — smaller so the richer, detailed explanations don't truncate the JSON reply
+
+// ---- Per-account AI generation limits (admin global cap + client plans) ----
+// Rolling-window usage kept IN MEMORY (single Render instance): userId → recent
+// { at, count } events, pruned on read. A restart resets windows — acceptable
+// for a soft business quota.
+const aiUsageByUser = new Map();
+function aiRecentUsage(key, windowMs) {
+  const now = Date.now();
+  const arr = (aiUsageByUser.get(key) || []).filter((e) => now - e.at < windowMs);
+  aiUsageByUser.set(key, arr);
+  return arr.reduce((s, e) => s + (e.count || 0), 0);
+}
+function aiRecordUsage(key, count) {
+  const arr = aiUsageByUser.get(key) || [];
+  arr.push({ at: Date.now(), count });
+  aiUsageByUser.set(key, arr);
+}
+
+// Effective limits for a requester. Admins use the global per-batch cap with no
+// rate limit; clients use their assigned plan (capped by the global ceiling),
+// falling back to the first plan when none is assigned.
+async function effectiveAiLimits(user) {
+  let s = null;
+  try { s = await Settings.findOne({ key: "site" }).select("aiMaxPerBatch aiPlans").lean(); } catch { /* ignore */ }
+  const globalMax = Math.max(1, s?.aiMaxPerBatch || MAX_TOTAL);
+  if (!user || user.role !== "client") {
+    return { maxPerBatch: globalMax, perWindow: Infinity, windowMinutes: 5, planName: "Admin" };
+  }
+  const plans = Array.isArray(s?.aiPlans) ? s.aiPlans : [];
+  const plan = plans.find((p) => p.name === user.aiPlan) || plans[0] || null;
+  const maxPerBatch = Math.min(globalMax, Math.max(1, plan?.maxPerBatch || globalMax));
+  const perWindow = Math.max(1, plan?.perWindow || globalMax);
+  const windowMinutes = Math.max(1, plan?.windowMinutes || 5);
+  return { maxPerBatch, perWindow, windowMinutes, planName: plan?.name || "" };
+}
 
 // Pull a suggested retry wait (ms) out of a 429 response — either the
 // Retry-After header or Gemini's RetryInfo "retryDelay":"27s" body field.
@@ -853,8 +905,13 @@ export async function generateQuestions(req, res) {
 
   const notes = String(req.body?.notes || "").trim();
 
-  // Explicit per-bucket plan — sanitized and capped at MAX_TOTAL. Falls back to
-  // the legacy count/difficulty/types path when no plan is provided.
+  // Effective per-batch cap + rate quota for this account (admin global cap, or
+  // the client's assigned plan).
+  const limits = await effectiveAiLimits(req.user);
+  const perBatchCap = limits.maxPerBatch;
+
+  // Explicit per-bucket plan — sanitized and capped at the per-batch cap. Falls
+  // back to the legacy count/difficulty/types path when no plan is provided.
   let plan = null;
   if (Array.isArray(req.body?.plan)) {
     plan = req.body.plan
@@ -864,7 +921,7 @@ export async function generateQuestions(req, res) {
     let running = 0;
     plan = plan
       .map((b) => {
-        const c = Math.min(b.count, Math.max(0, MAX_TOTAL - running));
+        const c = Math.min(b.count, Math.max(0, perBatchCap - running));
         running += c;
         return { ...b, count: c };
       })
@@ -872,13 +929,28 @@ export async function generateQuestions(req, res) {
     if (!plan.length) plan = null;
   }
 
-  const count = Math.min(MAX_TOTAL, Math.max(1, parseInt(req.body?.count, 10) || 5));
+  const count = Math.min(perBatchCap, Math.max(1, parseInt(req.body?.count, 10) || 5));
   const difficulty = req.body?.difficulty;
   const types = Array.isArray(req.body?.types)
     ? req.body.types.filter((t) => TYPES.includes(t))
     : [];
 
   const target = plan ? plan.reduce((s, b) => s + b.count, 0) : count;
+
+  // Per-window rate quota (clients only; admins are unlimited). Blocks a run
+  // that would exceed the plan's questions-per-window allowance.
+  if (req.user?.role === "client" && limits.perWindow !== Infinity) {
+    const windowMs = limits.windowMinutes * 60 * 1000;
+    const used = aiRecentUsage(String(req.user._id), windowMs);
+    if (used + target > limits.perWindow) {
+      const remaining = Math.max(0, limits.perWindow - used);
+      return res.status(429).json({
+        message: `Your plan allows ${limits.perWindow} question(s) every ${limits.windowMinutes} minutes. You have ${remaining} left right now — reduce the batch size or wait a few minutes.`,
+        quota: { perWindow: limits.perWindow, windowMinutes: limits.windowMinutes, used, remaining },
+      });
+    }
+    aiRecordUsage(String(req.user._id), target);
+  }
 
   cleanupJobs();
   const id = newJobId();

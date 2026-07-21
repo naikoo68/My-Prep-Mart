@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Search, Ban, CheckCircle2, KeyRound, UserPlus, Trash2, X, ListChecks, FileStack, HelpCircle, Store, Pencil, Clock, AlarmClock, Gift, Ticket, Sparkles } from "lucide-react";
-import { userService } from "../../services";
+import { userService, settingsService } from "../../services";
 import Badge from "../../components/ui/Badge";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 
@@ -22,6 +22,7 @@ const blank = {
   aiAccess: false,
   aiAllowInbuilt: true,
   aiAllowSelf: true,
+  aiPlan: "", // AI generation plan name ("" = default/first plan)
 };
 
 const fmtDate = (d) =>
@@ -48,6 +49,7 @@ const isExpired = (d) => d && new Date(d).getTime() < Date.now();
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState("");
+  const [aiPlans, setAiPlans] = useState([]); // available AI plans (from settings) for the plan dropdown
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -72,6 +74,11 @@ export default function AdminClients() {
     setTimeout(() => setToast(""), 2800);
   };
 
+  // Load the admin's AI plans so a client can be assigned one.
+  useEffect(() => {
+    settingsService.get().then((s) => setAiPlans(Array.isArray(s?.aiPlans) ? s.aiPlans : [])).catch(() => {});
+  }, []);
+
   const openAdd = () => { setForm(blank); setEditing(null); setError(""); setModal(true); };
   const openEdit = (c) => {
     setForm({
@@ -85,6 +92,7 @@ export default function AdminClients() {
       aiAccess: !!c.aiAccess,
       aiAllowInbuilt: c.aiAllowInbuilt !== false,
       aiAllowSelf: c.aiAllowSelf !== false,
+      aiPlan: c.aiPlan || "",
     });
     setEditing(c);
     setError("");
@@ -138,6 +146,7 @@ export default function AdminClients() {
           aiAccess: form.aiAccess,
           aiAllowInbuilt: form.aiAllowInbuilt,
           aiAllowSelf: form.aiAllowSelf,
+          aiPlan: form.aiPlan,
         };
         if (form.password) payload.password = form.password;
         const updated = await userService.update(editing._id, payload);
@@ -430,6 +439,19 @@ export default function AdminClients() {
                       {!form.aiAllowInbuilt && !form.aiAllowSelf && (
                         <p className="text-xs font-medium text-rose-600 dark:text-rose-400">Enable at least one source, or the client won't be able to use AI.</p>
                       )}
+
+                      <div className="pt-2">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Generation plan (limits)</label>
+                        <select className="input" value={form.aiPlan} onChange={(e) => setForm({ ...form, aiPlan: e.target.value })}>
+                          <option value="">Default{aiPlans[0]?.name ? ` (${aiPlans[0].name})` : ""}</option>
+                          {aiPlans.map((p) => (
+                            <option key={p.name} value={p.name}>
+                              {p.name} — {p.maxPerBatch}/batch · {p.perWindow} per {p.windowMinutes} min
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-slate-400">Caps this client's batch size and questions per window. Manage plans in <b>AI Keys</b>.</p>
+                      </div>
                     </div>
                   )}
                 </div>

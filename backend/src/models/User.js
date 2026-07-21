@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema(
     aiAllowInbuilt: { type: Boolean, default: true },
     aiAllowSelf: { type: Boolean, default: true },
     aiMode: { type: String, enum: ["inbuilt", "self"], default: "inbuilt" },
+    // AI generation plan assigned by the admin. Its name matches one of
+    // Settings.aiPlans; "" = the first/default plan. Drives the per-batch cap
+    // and the per-window (rate) quota for this client's AI generation.
+    aiPlan: { type: String, default: "" },
     emailVerificationToken: String,
     otpHash: { type: String, select: false },
     otpExpires: { type: Date, select: false },

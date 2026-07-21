@@ -25,6 +25,19 @@ const homeSectionSchema = new mongoose.Schema(
   { key: { type: String }, visible: { type: Boolean, default: true } },
   { _id: false }
 );
+
+// An AI-generation plan an admin can assign to client accounts. Each caps a
+// single generation (maxPerBatch) and the number of questions a client may
+// generate within a rolling window (perWindow per windowMinutes).
+const aiPlanSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: "Plan" },
+    maxPerBatch: { type: Number, default: 50 },
+    perWindow: { type: Number, default: 100 },
+    windowMinutes: { type: Number, default: 5 },
+  },
+  { _id: false }
+);
 const DEFAULT_HOME_SECTIONS = ["hero", "stats", "quickAccess", "features", "howItWorks", "cta"].map((key) => ({ key, visible: true }));
 
 // Singleton site-wide settings the admin can customise.
@@ -94,6 +107,18 @@ const settingsSchema = new mongoose.Schema(
     homeSections: {
       type: [homeSectionSchema],
       default: () => DEFAULT_HOME_SECTIONS,
+    },
+    // ---- AI generation limits ----
+    // The admin's own per-batch cap AND the hard ceiling no plan can exceed.
+    aiMaxPerBatch: { type: Number, default: 500 },
+    // Plans assignable to client accounts (admin manages these).
+    aiPlans: {
+      type: [aiPlanSchema],
+      default: () => [
+        { name: "Free", maxPerBatch: 20, perWindow: 20, windowMinutes: 5 },
+        { name: "Standard", maxPerBatch: 50, perWindow: 100, windowMinutes: 5 },
+        { name: "Pro", maxPerBatch: 200, perWindow: 500, windowMinutes: 5 },
+      ],
     },
     aboutStats: {
       type: [aboutStatSchema],
