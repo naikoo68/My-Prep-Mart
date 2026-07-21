@@ -221,6 +221,9 @@ export default function AdminAiStudio() {
         title={`Questions from a source — ${cfg.label}`}
         onClose={() => setImportOpen(false)}
         onUpload={onUpload}
+        allowNewTarget
+        newLeafLabel={cfg.newLabel}
+        currentTargetName={currentName}
       />
     </div>
   );

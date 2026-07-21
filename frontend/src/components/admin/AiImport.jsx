@@ -24,7 +24,7 @@ const DIFFS = ["Easy", "Medium", "Hard"];
 // Import questions from a saved document, a PDF (text or OCR), a web page, or
 // pasted text. The AI extracts the questions present (it doesn't invent them);
 // review, then insert — all at once or batch by batch.
-export default function AiImport({ open, onClose, onUpload, title = "Import Questions (PDF, Web or Text)", sections = [], documents = false, defaultSection = "" }) {
+export default function AiImport({ open, onClose, onUpload, title = "Import Questions (PDF, Web or Text)", sections = [], documents = false, defaultSection = "", allowNewTarget = false, newLeafLabel = "quiz", currentTargetName = "" }) {
   const { user } = useAuth();
   const isClient = user?.role === "client" && user?.aiAccess;
   const canChooseSource = isClient && user?.aiAllowInbuilt !== false && user?.aiAllowSelf !== false;
@@ -34,6 +34,11 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
   // matrix[typeId] = { Easy, Medium, Hard }. Default: 5 medium MCQs.
   const [matrix, setMatrix] = useState({ mcq: { Easy: 0, Medium: 5, Hard: 0 } });
   const [notes, setNotes] = useState(""); // optional strong instructions (both tabs)
+  // Stems already generated this session — sent so a "Generate more" batch never
+  // repeats earlier questions (Generate-new mode, mirrors the AI Generator).
+  const [avoidStems, setAvoidStems] = useState([]);
+  const [destChoice, setDestChoice] = useState("current"); // "current" | "new" — where a batch is inserted
+  const [newName, setNewName] = useState("");
   const [status, setStatus] = useState(null);
   const [model, setModel] = useState("");
   const [section, setSection] = useState(defaultSection || sections[0] || "");
@@ -65,6 +70,9 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     setDocId("");
     setPdfFile(null);
     setScanned(false);
+    setAvoidStems([]);
+    setDestChoice("current");
+    setNewName("");
     setSection(defaultSection || sections[0] || ""); // re-sync target subject on open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultSection]);
@@ -274,7 +282,9 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
 
   // GENERATE mode: make NEW questions FROM the link/paragraph, using the exact
   // per-type × per-difficulty counts. Uses the same background job + polling.
-  const runGenerate = async () => {
+  // `append` = "Generate more": keep the current preview and add a fresh batch
+  // from the same source, avoiding everything already generated (via avoidStems).
+  const runGenerate = async (append = false) => {
     if (!url.trim() && !text.trim()) {
       setMsg("Add a link or paste a paragraph to generate questions from.");
       return;
@@ -283,9 +293,8 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
     if (genTotal > maxPerBatch) { setMsg(`Please keep the total to ${maxPerBatch} questions or fewer per run.`); return; }
     setBusy(true);
-    setPreview([]);
-    setDetected(0);
-    setMsg(`Generating ${genTotal} question(s) from your source…`);
+    if (!append) { setPreview([]); setDetected(0); }
+    setMsg(append ? `Generating ${genTotal} more from your source (no duplicates)…` : `Generating ${genTotal} question(s) from your source…`);
     try {
       const { jobId, requested } = await aiService.generate({
         source: text.trim() || undefined,
@@ -293,10 +302,11 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         plan,
         notes: notes.trim() || undefined,
         model: model || undefined,
+        avoid: avoidStems, // don't repeat anything from earlier batches
         mode: isClient ? source : undefined,
       });
       if (!jobId) throw new Error("Could not start generation.");
-      if (requested) setDetected(requested);
+      if (requested && !append) setDetected(requested);
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       let done = false;
       for (let i = 0; i < 240 && !done; i++) {
@@ -305,9 +315,13 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
         try { s = await aiService.job(jobId); } catch { continue; }
         if (s.status === "done") {
           const qs = s.questions || [];
-          setPreview(qs);
+          setPreview((prev) => (append ? [...prev, ...qs] : qs));
+          // Remember these stems so the NEXT batch avoids repeating them.
+          setAvoidStems((prev) => Array.from(new Set([...prev, ...qs.map((q) => q.text).filter(Boolean)])));
           setMsg(qs.length
-            ? `✓ Generated ${qs.length}${requested ? ` of ${requested}` : ""} question(s). Review below, then insert.`
+            ? (append
+                ? `✓ Added ${qs.length} more question(s) — no duplicates of the earlier ones. Review, then insert.`
+                : `✓ Generated ${qs.length}${requested ? ` of ${requested}` : ""} question(s). Review below, then insert.`)
             : "No questions were generated — try a longer source, a higher count, or different types.");
           done = true;
         } else if (s.status === "error") {
@@ -325,16 +339,25 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     }
   };
 
+  // Build the onUpload options. When "New {leaf}" is chosen we send newTarget so
+  // the parent auto-creates it; after the first insert we flip back to "current"
+  // so the remaining batches go into that just-created quiz/test.
+  const makingNew = allowNewTarget && destChoice === "new";
+  const buildOpts = () => (makingNew ? { section, newTarget: { name: newName.trim() } } : { section });
+  const afterNewInsert = () => { if (makingNew) { setDestChoice("current"); setNewName(""); } };
+
   // Insert one batch of the extracted preview (removes them so they aren't
   // inserted twice), or use "Insert all".
   const insertBatch = async (items, idx) => {
     if (!items.length || insertingIdx !== -1 || inserting) return;
+    if (makingNew && !newName.trim()) { setMsg(`Enter a name for the new ${newLeafLabel}.`); return; }
     setInsertingIdx(idx);
     setMsg("");
     try {
-      const res = await onUpload(items, { section });
+      const res = await onUpload(items, buildOpts());
       setPreview((prev) => prev.filter((q) => !items.includes(q)));
-      setMsg(`✓ Inserted ${res?.inserted ?? items.length} question(s) from this batch.`);
+      setMsg(`✓ Inserted ${res?.inserted ?? items.length} question(s) from this batch${makingNew ? ` into new ${newLeafLabel} “${newName.trim()}”` : ""}.`);
+      afterNewInsert();
     } catch (e) {
       setMsg(e.message || "Insert failed.");
     } finally {
@@ -344,15 +367,17 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
 
   const insert = async () => {
     if (!preview.length) return;
+    if (makingNew && !newName.trim()) { setMsg(`Enter a name for the new ${newLeafLabel}.`); return; }
     setInserting(true);
     setMsg("");
     try {
-      const res = await onUpload(preview, { section });
-      setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s).`);
+      const res = await onUpload(preview, buildOpts());
+      setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s)${makingNew ? ` into new ${newLeafLabel} “${newName.trim()}”` : ""}. Generate/extract the next batch, or click Close when you're done.`);
       setPreview([]);
-      setUrl("");
-      setText("");
-      setTimeout(onClose, 1000);
+      afterNewInsert();
+      // Stay on this screen (keep the source + settings) so you can immediately
+      // do the next batch. The modal never closes by itself after inserting;
+      // use the Close button when you're finished.
     } catch (e) {
       setMsg(e.message || "Insert failed.");
     } finally {
@@ -438,6 +463,11 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
               paste a page link, <b>or</b> paste the questions text, then <b>Extract Questions</b>. Review the results and insert them.
               {typeof status?.keys === "number" && (
                 <span className="ml-1 font-semibold text-emerald-600 dark:text-emerald-400"> {status.keys} API key{status.keys === 1 ? "" : "s"} active.</span>
+              )}
+              {status?.planName && (
+                <span className="ml-1 font-semibold text-brand-600 dark:text-brand-300">
+                  Plan: {status.planName} · up to {maxPerBatch}/batch{status?.remaining != null ? ` · ${status.remaining} left this window` : ""}.
+                </span>
               )}
             </div>
 
@@ -590,7 +620,7 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
                               <input
                                 type="number"
                                 min={0}
-                                max={50}
+                                max={maxPerBatch}
                                 value={matrix[t.id]?.[d] || 0}
                                 onChange={(e) => setCell(t.id, d, e.target.value)}
                                 className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm dark:border-slate-700 dark:bg-slate-900"
@@ -614,13 +644,53 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
               </div>
             )}
 
-            <button type="button" onClick={() => (task === "generate" ? runGenerate() : runExtract(false))} disabled={busy || busyMore} className="btn-primary mt-4 w-full">
+            <button type="button" onClick={() => (task === "generate" ? runGenerate(false) : runExtract(false))} disabled={busy || busyMore} className="btn-primary mt-4 w-full">
               {busy
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> {task === "generate" ? "Generating…" : "Extracting…"}</>
                 : task === "generate"
                   ? <><Sparkles className="h-4 w-4" /> Generate Questions</>
                   : <><Download className="h-4 w-4" /> Extract Questions</>}
             </button>
+
+            {/* Generate-new mode: add another batch from the same source, with no
+                repeats of what's already in the preview (mirrors the AI Generator). */}
+            {task === "generate" && preview.length > 0 && (
+              <button
+                type="button"
+                onClick={() => runGenerate(true)}
+                disabled={busy || busyMore}
+                className="btn-outline mt-2 w-full"
+                title="Generate another batch from the same source — the AI avoids every question already generated above"
+              >
+                {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating more…</> : <><Sparkles className="h-4 w-4" /> Generate more from this source (no duplicates)</>}
+              </button>
+            )}
+
+            {/* Where to save this batch: the current quiz/test, or a brand-new one. */}
+            {allowNewTarget && preview.length > 0 && (
+              <div className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <p className="mb-2 text-sm font-semibold">Where should these {preview.length} question(s) go?</p>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="radio" name="importdest" checked={destChoice === "current"} onChange={() => setDestChoice("current")} />
+                  <span>Current {newLeafLabel}{currentTargetName ? <> — <b>{currentTargetName}</b></> : <span className="text-slate-400"> (the one selected)</span>}</span>
+                </label>
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="radio" name="importdest" checked={destChoice === "new"} onChange={() => setDestChoice("new")} />
+                  <span className="flex-shrink-0">New {newLeafLabel}:</span>
+                  <input
+                    type="text"
+                    value={newName}
+                    onFocus={() => setDestChoice("new")}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder={`New ${newLeafLabel} name`}
+                    className="input !py-1"
+                  />
+                </label>
+                <p className="mt-1 text-xs text-slate-400">
+                  Choose <b>New {newLeafLabel}</b> to auto-create it (under the same parent) and put this batch there — then generate/extract the next batch for the current one.
+                </p>
+              </div>
+            )}
 
             {preview.length > 0 && (
               <div className="mt-4 space-y-3">
