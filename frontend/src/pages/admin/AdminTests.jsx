@@ -831,6 +831,8 @@ export default function AdminTests() {
               onExtendExplanations={() => setExtendTest(qTest)}
               onExtendQuestion={(item) => setExtendOneItem(item)}
               extendingId={extendingQId}
+              onRegenerateQuestion={(item) => regenerateQ(item)}
+              regeneratingId={regenId}
             />
           </div>
         </div>

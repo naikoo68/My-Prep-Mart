@@ -414,6 +414,8 @@ export default function AdminPractice({ clientMode = false }) {
               onExtendExplanations={() => setExtendItem(qItem)}
               onExtendQuestion={(item) => setExtendOneItem(item)}
               extendingId={extendingQId}
+              onRegenerateQuestion={(item) => regenerateQ(item)}
+              regeneratingId={regenId}
             />
           </div>
         </div>

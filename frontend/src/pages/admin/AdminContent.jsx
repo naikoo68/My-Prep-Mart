@@ -14,7 +14,7 @@ import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
-import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList } from "lucide-react";
+import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList, RefreshCw } from "lucide-react";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -467,6 +467,11 @@ export default function AdminContent() {
                 {view === "questions" && (
                   <button onClick={() => extendOneQuestion(item)} disabled={extendingQId === item._id} title="Extend this explanation with AI" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-900/30">
                     {extendingQId === item._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  </button>
+                )}
+                {view === "questions" && (
+                  <button onClick={() => regenerateQ(item)} disabled={regenId === item._id} title="Regenerate options/answer to fit the question (reshuffles pair/matching columns)" className="rounded-lg p-2 text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:hover:bg-violet-900/30">
+                    {regenId === item._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   </button>
                 )}
                 <button onClick={() => openEdit(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">

@@ -2159,6 +2159,7 @@ RULES:
 - Keep the question's MEANING, TYPE and what it asks UNCHANGED. Do NOT invent a different question or change the numbers/facts being asked.
 - FIX MATH RENDERING: if any math anywhere (stem, columns, options, explanation) is written as PLAIN TEXT, wrap it properly in $...$ so it renders — e.g. "3/4" → "$\\frac{3}{4}$", "x^2" → "$x^2$", "N/2" → "$\\frac{N}{2}$", "sqrt(2)" → "$\\sqrt{2}$", "25%" → "$25\\%$", "Sum(P1*Q0)/Sum(P0*Q0)" → "$\\frac{\\sum P_1 Q_0}{\\sum P_0 Q_0}$". Return the SAME meaning with the math wrapped and obvious typos/rendering fixed.
 - COLUMN QUESTIONS (matching / pair / pairselect / statement): "text" must be ONLY the short intro line (e.g. "Identify the correct mapping." or "Consider the following statements:"). NEVER put the Column A / Column B / statement items inside "text". Put the Column A items in "columnA" and the Column B items in "columnB" (the SAME number of items as given), each with any formula/math wrapped in $...$ so the columns themselves render. Do NOT prefix these items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4) and Column B (I,II,III,IV) automatically. The 4 "options" stay as mapping sequences (e.g. "1-II, 2-IV, 3-I, 4-III") / combinations.
+- POSITION RESHUFFLE (matching / pair / pairselect ONLY): Do NOT keep Column A and Column B in the same order they were given — RE-ARRANGE the items into NEW, different positions in BOTH columns (keep the SAME items and the SAME count, just shuffled to a fresh order). Then RE-DERIVE the answer for this NEW layout: recompute the 4 "options" (the mapping sequences for "matching"; the how-many count for "pair"; the which-pairs list for "pairselect"), the 0-based "correct" index, and the "explanation" so ALL of them are consistent with the reshuffled positions. The correct answer MUST reflect the new arrangement, not the old one. Keep the true item↔item relationships intact — only their displayed positions change.
 - TABLE questions: the data table MUST go in "tableRows" (a 2D array; the FIRST inner row is the header), NEVER as a markdown/pipe table inside "text". "text" is ONLY the question sentence (no "| ... |" rows). If the question currently shows a table in the stem AND/OR in tableRows — even with DIFFERENT numbers — CONSOLIDATE into ONE correct table in "tableRows" (choose the data that is consistent with the intended options, wrap any math in each cell in $...$), remove the table from "text", then SOLVE the question from THAT table with the correct formula and set "options"/"correct" to match your computed value. Return the table in "tableRows".
 - Regenerate the 4 "options", the 0-based "correct" index, the "explanation" and the 4 "optionExplanations" so they are correct and fit the question.
 - "options": EXACTLY 4, fitting the question TYPE, with ONE genuinely correct answer and three plausible-but-wrong distractors. SAME-CATEGORY RULE (important): all four options MUST be of the SAME real-world category/type and format as the correct answer — e.g. a question about a TREE → ALL options are tree names; a river → all rivers; a person → all people of that field/era; a date → plausible nearby dates. Never mix in an unrelated kind (a flower/bird/word among tree names), and match their language, form, length and specificity so the wrong ones are closely related and believable. Wrap any numeric option value or expression in $...$ so it renders as math (e.g. "$12.5$", "$\\frac{3}{4}$", "$2^{10}$", "$25\\%$"):
@@ -2185,6 +2186,9 @@ function buildRegenPrompt(q, notes) {
   const opts = Array.isArray(q.options) ? q.options : [];
   if (opts.length) lines.push(`Current options (may be WRONG — replace with correct ones that fit the question):\n${opts.map((o, i) => `${EXT_LETTERS[i] || i}) ${o}`).join("\n")}`);
   if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
+  if (["matching", "pair", "pairselect"].includes(q.type)) {
+    lines.push(`RESHUFFLE: put the Column A items AND the Column B items in a NEW, different order than shown above (same items, same count, just rearranged) — return the reshuffled arrays in "columnA"/"columnB". Then recompute the "options", the "correct" index and the "explanation" to match the NEW positions so the correct answer is right for the reshuffled layout.`);
+  }
   lines.push(`Analyse THIS question and FIX anything wrong: rebuild the 4 "options", the "correct" index, the "explanation" and the 4 "optionExplanations" so they are correct and fit the question, AND wrap any plain-text math so it renders. Return the SAME stem in "text" (and same-count "columnA"/"columnB" for matching/pair/statement) with math wrapped in $...$ — keep the meaning unchanged. Return ONLY one valid JSON object {"text":"...","options":["","","",""],"correct":0,"explanation":"...","optionExplanations":["","","",""]}.`);
   return lines.join("\n");
 }
@@ -2298,6 +2302,8 @@ export async function regenerateQuestion(req, res) {
     explanation: set.explanation ?? q.explanation,
     optionExplanations: set.optionExplanations || q.optionExplanations,
     tableRows: set.tableRows || q.tableRows,
+    columnA: set.columnA || q.columnA, // reflect reshuffled columns in the live preview
+    columnB: set.columnB || q.columnB,
   });
 }
 
