@@ -5,6 +5,7 @@ import generateToken from "../utils/generateToken.js";
 import { razorpayConfigured, verifyPaymentSignature } from "../config/razorpay.js";
 import { sendMail } from "../config/mailer.js";
 import { notifyNewUser } from "../utils/notify.js";
+import { getClientPlans } from "../utils/plans.js";
 
 // Normalise emails so case/whitespace never causes a login mismatch
 // (phone keyboards often auto-capitalise the first letter).
@@ -56,14 +57,8 @@ const sanitize = (u) => ({
   aiMode: u.aiMode === "self" ? "self" : "inbuilt",
 });
 
-// ---- Client subscription plans (single source of truth for pricing) ----
-export const CLIENT_PLANS = [
-  { key: "trial", label: "1-Day Free Trial", months: 0, price: 0, trial: true },
-  { key: "1m", label: "1 Month", months: 1, price: 299 },
-  { key: "2m", label: "2 Months", months: 2, price: 499 },
-  { key: "6m", label: "6 Months", months: 6, price: 699 },
-  { key: "1y", label: "1 Year", months: 12, price: 899 },
-];
+// Client subscription plans now live in Settings (admin-editable, with AI
+// limits). See utils/plans.js — getClientPlans() returns them (or defaults).
 
 // Promo coupons. type "percent" → value = % off; type "flat" → value = ₹ off.
 // Add or edit codes here to run promotions.
@@ -79,7 +74,7 @@ const REFERRAL_DISCOUNT = 50;
 // plan (credited once per referred friend).
 const REFERRAL_BONUS_DAYS = 10;
 
-const findPlan = (key) => CLIENT_PLANS.find((p) => p.key === key) || null;
+
 
 // A short, human-ish unique referral/share code, e.g. "RAHU3F9A".
 function makeReferralCode(name) {
@@ -90,7 +85,8 @@ function makeReferralCode(name) {
 // Compute the payable price for a plan, applying an optional coupon and/or a
 // valid friend's referral code. Returns null if the plan key is invalid.
 export async function computeOffer({ planKey, couponCode, referralCode, selfEmail }) {
-  const plan = findPlan(planKey);
+  const plans = await getClientPlans();
+  const plan = plans.find((p) => p.key === planKey) || null;
   if (!plan) return null;
   const base = plan.price;
   let discount = 0;
@@ -429,8 +425,8 @@ export async function getMe(req, res) {
 }
 
 // GET /api/auth/plans — public list of client subscription plans + pricing.
-export function getPlans(req, res) {
-  res.json({ plans: CLIENT_PLANS });
+export async function getPlans(req, res) {
+  res.json({ plans: await getClientPlans() });
 }
 
 // POST /api/auth/validate-offer — live price preview for a plan with an optional

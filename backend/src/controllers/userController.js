@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import User from "../models/User.js";
+import { getClientPlans } from "../utils/plans.js";
 import TestSeries from "../models/TestSeries.js";
 import Question from "../models/Question.js";
 import PracticeStream from "../models/PracticeStream.js";
@@ -128,7 +129,24 @@ export async function updateUser(req, res) {
   if ("aiAccess" in req.body) user.aiAccess = !!req.body.aiAccess;
   if ("aiAllowInbuilt" in req.body) user.aiAllowInbuilt = !!req.body.aiAllowInbuilt;
   if ("aiAllowSelf" in req.body) user.aiAllowSelf = !!req.body.aiAllowSelf;
-  if ("aiPlan" in req.body) user.aiPlan = String(req.body.aiPlan || ""); // AI generation plan (matches a Settings.aiPlans name)
+  // Assign a subscription plan (admin override). Sets the plan key plus its
+  // months & price, so both the billing display and the client's AI generation
+  // limits follow the chosen plan. Empty clears it.
+  if ("subscriptionPlan" in req.body) {
+    const key = String(req.body.subscriptionPlan || "");
+    if (!key) {
+      user.subscriptionPlan = undefined;
+    } else {
+      user.subscriptionPlan = key;
+      const plans = await getClientPlans();
+      const p = plans.find((x) => x.key === key);
+      if (p) {
+        user.subscriptionMonths = p.months;
+        user.subscriptionPrice = p.price;
+        user.isTrial = !!p.trial;
+      }
+    }
+  }
 
   // Temporary-account expiry: an explicit value updates it; null/"" clears it
   // (makes the account permanent). Only touched when the key is present.

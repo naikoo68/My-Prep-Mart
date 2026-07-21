@@ -22,7 +22,7 @@ const blank = {
   aiAccess: false,
   aiAllowInbuilt: true,
   aiAllowSelf: true,
-  aiPlan: "", // AI generation plan name ("" = default/first plan)
+  subscriptionPlan: "", // the plan this client is on (drives price + AI limits)
 };
 
 const fmtDate = (d) =>
@@ -49,7 +49,7 @@ const isExpired = (d) => d && new Date(d).getTime() < Date.now();
 export default function AdminClients() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState("");
-  const [aiPlans, setAiPlans] = useState([]); // available AI plans (from settings) for the plan dropdown
+  const [plans, setPlans] = useState([]); // client subscription plans (from settings) for the plan dropdown
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -74,9 +74,9 @@ export default function AdminClients() {
     setTimeout(() => setToast(""), 2800);
   };
 
-  // Load the admin's AI plans so a client can be assigned one.
+  // Load the client subscription plans so a client can be assigned one.
   useEffect(() => {
-    settingsService.get().then((s) => setAiPlans(Array.isArray(s?.aiPlans) ? s.aiPlans : [])).catch(() => {});
+    settingsService.get().then((s) => setPlans(Array.isArray(s?.clientPlans) ? s.clientPlans : [])).catch(() => {});
   }, []);
 
   const openAdd = () => { setForm(blank); setEditing(null); setError(""); setModal(true); };
@@ -92,7 +92,7 @@ export default function AdminClients() {
       aiAccess: !!c.aiAccess,
       aiAllowInbuilt: c.aiAllowInbuilt !== false,
       aiAllowSelf: c.aiAllowSelf !== false,
-      aiPlan: c.aiPlan || "",
+      subscriptionPlan: c.subscriptionPlan || "",
     });
     setEditing(c);
     setError("");
@@ -146,7 +146,7 @@ export default function AdminClients() {
           aiAccess: form.aiAccess,
           aiAllowInbuilt: form.aiAllowInbuilt,
           aiAllowSelf: form.aiAllowSelf,
-          aiPlan: form.aiPlan,
+          subscriptionPlan: form.subscriptionPlan,
         };
         if (form.password) payload.password = form.password;
         const updated = await userService.update(editing._id, payload);
@@ -271,7 +271,7 @@ export default function AdminClients() {
                         <td className="px-5 py-3">
                           {c.subscriptionPlan ? (
                             <div className="flex flex-col gap-1">
-                              <Badge variant="brand">{PLAN_LABELS[c.subscriptionPlan] || c.subscriptionPlan}</Badge>
+                              <Badge variant="brand">{plans.find((p) => p.key === c.subscriptionPlan)?.label || PLAN_LABELS[c.subscriptionPlan] || c.subscriptionPlan}</Badge>
                               <span className="flex items-center gap-1 text-xs text-slate-400">
                                 ₹{c.subscriptionPrice ?? "—"}
                                 {c.couponCode && <span className="inline-flex items-center gap-0.5"><Ticket className="h-3 w-3" /> {c.couponCode}</span>}
@@ -412,6 +412,22 @@ export default function AdminClients() {
                 )}
               </div>
 
+              {/* Subscription plan — drives price label + AI generation limits */}
+              {editing && (
+                <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                  <label className="mb-1 block text-sm font-medium">Subscription plan</label>
+                  <select className="input" value={form.subscriptionPlan} onChange={(e) => setForm({ ...form, subscriptionPlan: e.target.value })}>
+                    <option value="">— No plan —</option>
+                    {plans.map((p) => (
+                      <option key={p.key || p.label} value={p.key}>
+                        {p.label}{p.price ? ` — ₹${p.price}` : ""}{p.months ? ` · ${p.months} mo` : ""} · {p.maxPerBatch}/batch, {p.perWindow}/{p.windowMinutes}min
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-400">Sets this client's plan — its price label and AI generation limits. Manage plans in <b>AI Keys</b>.</p>
+                </div>
+              )}
+
               {/* AI access — master switch + which key pools this client may use */}
               {editing && (
                 <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
@@ -439,19 +455,6 @@ export default function AdminClients() {
                       {!form.aiAllowInbuilt && !form.aiAllowSelf && (
                         <p className="text-xs font-medium text-rose-600 dark:text-rose-400">Enable at least one source, or the client won't be able to use AI.</p>
                       )}
-
-                      <div className="pt-2">
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Generation plan (limits)</label>
-                        <select className="input" value={form.aiPlan} onChange={(e) => setForm({ ...form, aiPlan: e.target.value })}>
-                          <option value="">Default{aiPlans[0]?.name ? ` (${aiPlans[0].name})` : ""}</option>
-                          {aiPlans.map((p) => (
-                            <option key={p.name} value={p.name}>
-                              {p.name} — {p.maxPerBatch}/batch · {p.perWindow} per {p.windowMinutes} min
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-slate-400">Caps this client's batch size and questions per window. Manage plans in <b>AI Keys</b>.</p>
-                      </div>
                     </div>
                   )}
                 </div>

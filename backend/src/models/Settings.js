@@ -26,12 +26,16 @@ const homeSectionSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// An AI-generation plan an admin can assign to client accounts. Each caps a
-// single generation (maxPerBatch) and the number of questions a client may
-// generate within a rolling window (perWindow per windowMinutes).
-const aiPlanSchema = new mongoose.Schema(
+// A client subscription plan (admin-managed). Carries BOTH pricing
+// (label/months/price) AND the AI generation limits granted to a client on the
+// plan (maxPerBatch per generation, perWindow questions per windowMinutes).
+const clientPlanSchema = new mongoose.Schema(
   {
-    name: { type: String, default: "Plan" },
+    key: { type: String, default: "" }, // stable id (e.g. "1m"); referenced by user.subscriptionPlan
+    label: { type: String, default: "Plan" },
+    months: { type: Number, default: 1 },
+    price: { type: Number, default: 0 },
+    trial: { type: Boolean, default: false },
     maxPerBatch: { type: Number, default: 50 },
     perWindow: { type: Number, default: 100 },
     windowMinutes: { type: Number, default: 5 },
@@ -111,13 +115,17 @@ const settingsSchema = new mongoose.Schema(
     // ---- AI generation limits ----
     // The admin's own per-batch cap AND the hard ceiling no plan can exceed.
     aiMaxPerBatch: { type: Number, default: 500 },
-    // Plans assignable to client accounts (admin manages these).
-    aiPlans: {
-      type: [aiPlanSchema],
+    // Client subscription plans (pricing + AI limits). A client's AI limits come
+    // from the plan they purchased (user.subscriptionPlan). Registration,
+    // checkout and upgrade all read these. Defaults mirror the original prices.
+    clientPlans: {
+      type: [clientPlanSchema],
       default: () => [
-        { name: "Free", maxPerBatch: 20, perWindow: 20, windowMinutes: 5 },
-        { name: "Standard", maxPerBatch: 50, perWindow: 100, windowMinutes: 5 },
-        { name: "Pro", maxPerBatch: 200, perWindow: 500, windowMinutes: 5 },
+        { key: "trial", label: "1-Day Free Trial", months: 0, price: 0, trial: true, maxPerBatch: 20, perWindow: 20, windowMinutes: 5 },
+        { key: "1m", label: "1 Month", months: 1, price: 299, maxPerBatch: 50, perWindow: 100, windowMinutes: 5 },
+        { key: "2m", label: "2 Months", months: 2, price: 499, maxPerBatch: 100, perWindow: 200, windowMinutes: 5 },
+        { key: "6m", label: "6 Months", months: 6, price: 699, maxPerBatch: 200, perWindow: 400, windowMinutes: 5 },
+        { key: "1y", label: "1 Year", months: 12, price: 899, maxPerBatch: 500, perWindow: 1000, windowMinutes: 5 },
       ],
     },
     aboutStats: {

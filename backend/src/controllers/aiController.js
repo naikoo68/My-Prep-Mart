@@ -3,6 +3,7 @@ import AiKey from "../models/AiKey.js";
 import Question from "../models/Question.js";
 import Settings from "../models/Settings.js";
 import { ownerFilter } from "../utils/ownership.js";
+import { DEFAULT_CLIENT_PLANS } from "../utils/plans.js";
 
 // Works with any OpenAI-compatible provider (Gemini, TokenLab, OpenAI, Groq,
 // DeepSeek, …). Keys come from TWO places, both used together:
@@ -537,21 +538,22 @@ function aiRecordUsage(key, count) {
 }
 
 // Effective limits for a requester. Admins use the global per-batch cap with no
-// rate limit; clients use their assigned plan (capped by the global ceiling),
-// falling back to the first plan when none is assigned.
+// rate limit. A client's limits come from the subscription plan they PURCHASED
+// (user.subscriptionPlan) — capped by the global ceiling — falling back to the
+// cheapest paid plan, then the first plan.
 async function effectiveAiLimits(user) {
   let s = null;
-  try { s = await Settings.findOne({ key: "site" }).select("aiMaxPerBatch aiPlans").lean(); } catch { /* ignore */ }
+  try { s = await Settings.findOne({ key: "site" }).select("aiMaxPerBatch clientPlans").lean(); } catch { /* ignore */ }
   const globalMax = Math.max(1, s?.aiMaxPerBatch || MAX_TOTAL);
   if (!user || user.role !== "client") {
     return { maxPerBatch: globalMax, perWindow: Infinity, windowMinutes: 5, planName: "Admin" };
   }
-  const plans = Array.isArray(s?.aiPlans) ? s.aiPlans : [];
-  const plan = plans.find((p) => p.name === user.aiPlan) || plans[0] || null;
+  const plans = Array.isArray(s?.clientPlans) && s.clientPlans.length ? s.clientPlans : DEFAULT_CLIENT_PLANS;
+  const plan = plans.find((p) => p.key === user.subscriptionPlan) || plans.find((p) => !p.trial) || plans[0] || null;
   const maxPerBatch = Math.min(globalMax, Math.max(1, plan?.maxPerBatch || globalMax));
   const perWindow = Math.max(1, plan?.perWindow || globalMax);
   const windowMinutes = Math.max(1, plan?.windowMinutes || 5);
-  return { maxPerBatch, perWindow, windowMinutes, planName: plan?.name || "" };
+  return { maxPerBatch, perWindow, windowMinutes, planName: plan?.label || plan?.key || "" };
 }
 
 // Pull a suggested retry wait (ms) out of a 429 response — either the
