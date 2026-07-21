@@ -1,6 +1,7 @@
 import FbSchedule from "../models/FbSchedule.js";
 import Question from "../models/Question.js";
 import { runScheduleOnce, getFacebookConfig } from "../config/facebook.js";
+import { renderQuestionImage } from "../config/socialImage.js";
 
 // Common post-format fields from the per-question modal.
 function postOpts(body = {}) {
@@ -104,6 +105,22 @@ export async function postQuestionNow(req, res) {
   const transient = { source: { question: questionId }, order: "random", postedQuestionIds: [], ...postOpts(req.body) };
   const result = await runScheduleOnce(transient, cfg);
   return res.status(result.ok ? 200 : 502).json(result);
+}
+
+// POST /api/facebook/preview-image — render the question card image and return
+// its URL (no posting). Used for the live preview in the post/schedule modal.
+export async function previewQuestionImage(req, res) {
+  const { questionId } = req.body || {};
+  if (!questionId) return res.status(400).json({ message: "Missing questionId." });
+  const q = await Question.findById(questionId).lean();
+  if (!q) return res.status(404).json({ message: "Question not found." });
+  const url = await renderQuestionImage(q, {
+    includeOptions: req.body.includeOptions !== false,
+    includeAnswer: !!req.body.includeAnswer,
+    hashtags: String(req.body.hashtags || "").trim(),
+  });
+  if (!url) return res.status(502).json({ message: "Could not generate the image. Check that Cloudinary keys are set on the server." });
+  res.json({ url });
 }
 
 // POST /api/facebook/schedule-question — schedule ONE specific question at a

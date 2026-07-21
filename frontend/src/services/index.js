@@ -219,6 +219,7 @@ export const facebookService = {
   postNow: (id) => api.post(`/facebook/schedules/${id}/post-now`),
   postQuestion: (data) => api.post("/facebook/post-question", data), // post ONE question now
   scheduleQuestion: (data) => api.post("/facebook/schedule-question", data), // schedule ONE question at a time
+  previewImage: (data) => api.post("/facebook/preview-image", data), // render the question card → { url }
 };
 
 // ---- Contact messages ----

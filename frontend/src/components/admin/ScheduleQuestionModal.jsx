@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Send, Clock, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { X, Send, Clock, Loader2, CheckCircle2, AlertTriangle, Eye } from "lucide-react";
 import { Facebook, Instagram } from "../ui/SocialIcons";
 import { facebookService } from "../../services";
 
@@ -13,17 +13,34 @@ export default function ScheduleQuestionModal({ open, question, onClose }) {
   const [when, setWhen] = useState(""); // datetime-local value; empty = post now
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null); // { ok, text }
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
 
   useEffect(() => {
     if (open) {
       setOpts({ toFacebook: true, toInstagram: false, asImage: false, includeOptions: true, includeAnswer: false, hashtags: "" });
-      setWhen(""); setMsg(null); setBusy(false);
+      setWhen(""); setMsg(null); setBusy(false); setPreviewUrl(null); setPreviewing(false);
     }
   }, [open]);
 
+  const doPreview = async () => {
+    setPreviewing(true); setMsg(null);
+    try {
+      const r = await facebookService.previewImage({ questionId: question._id, includeOptions: opts.includeOptions, includeAnswer: opts.includeAnswer, hashtags: opts.hashtags });
+      setPreviewUrl(r?.url || null);
+    } catch (e) {
+      setMsg({ ok: false, text: e.message || "Could not generate preview." });
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   if (!open || !question) return null;
 
-  const set = (k, v) => setOpts((o) => ({ ...o, [k]: v }));
+  const set = (k, v) => {
+    setOpts((o) => ({ ...o, [k]: v }));
+    if (["includeOptions", "includeAnswer", "hashtags"].includes(k)) setPreviewUrl(null); // preview is now stale
+  };
 
   const run = async (scheduled) => {
     if (!opts.toFacebook && !opts.toInstagram) { setMsg({ ok: false, text: "Choose Facebook and/or Instagram." }); return; }
@@ -80,6 +97,17 @@ export default function ScheduleQuestionModal({ open, question, onClose }) {
 
         <label className="mb-1 mt-4 block text-sm font-semibold">Hashtags (optional)</label>
         <input className="input" value={opts.hashtags} onChange={(e) => set("hashtags", e.target.value)} placeholder="#GK #Quiz" disabled={busy} />
+
+        {/* Live image preview — shows the exact card that will be posted. */}
+        <div className="mt-4">
+          <button type="button" onClick={doPreview} disabled={previewing || busy} className="btn-outline">
+            {previewing ? <><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</> : <><Eye className="h-4 w-4" /> {previewUrl ? "Refresh preview" : "Preview image"}</>}
+          </button>
+          {previewUrl && (
+            <img src={previewUrl} alt="Post preview" className="mt-3 w-full max-w-[360px] rounded-xl border border-slate-200 shadow-sm dark:border-slate-700" />
+          )}
+          <p className="mt-1 text-xs text-slate-400">This is the image posted to Instagram, and to Facebook when “image” is on.</p>
+        </div>
 
         <label className="mb-1 mt-4 flex items-center gap-1.5 text-sm font-semibold"><Clock className="h-4 w-4 text-slate-400" /> Schedule for (optional)</label>
         <input type="datetime-local" className="input" value={when} onChange={(e) => setWhen(e.target.value)} disabled={busy} />
