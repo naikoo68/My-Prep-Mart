@@ -179,6 +179,59 @@ const ANSWER_DEDUP_TYPES = new Set(["mcq", "table"]);
 const stripListMarker = (x) =>
   String(x || "").replace(/^\s*[([]?\s*(?:\d{1,2}|[ivxlcIVXLC]{1,5})\s*[.)\]:\-]\s+/, "").trim();
 
+// Split a combined "Left — Right" pair string into [left, right] on the first
+// dash / arrow / colon separator (e.g. "Dal Lake — Srinagar").
+function splitPairString(s) {
+  const str = String(s || "").trim();
+  const m = str.match(/^(.*?\S)\s*(?:—|–|→|=>|->|::|:|\s-\s|\t)\s*(\S.*)$/);
+  return m ? [m[1].trim(), m[2].trim()] : [str, ""];
+}
+
+// Robustly derive Column A (left) + Column B (right) for matching / pair /
+// pairselect questions from whatever shape the model returned. The prompt asks
+// for "columnA"/"columnB" arrays, but models sometimes put the pairs under a
+// different key ("pairs", "matches", …), as arrays of {left,right} objects,
+// [a,b] tuples, or "A — B" strings. Recover them all so pairs never go missing.
+function derivePairColumns(q) {
+  const asS = (x) => (x == null ? "" : String(x));
+  const has = (arr) => arr.some((x) => x.trim());
+  let a = Array.isArray(q?.columnA) ? q.columnA.map(asS) : [];
+  let b = Array.isArray(q?.columnB) ? q.columnB.map(asS) : [];
+  if (has(a) && has(b)) return splitCombinedIfNeeded(a, b);
+
+  // A combined pair list may live under any of these common alternate keys.
+  const combined = [q?.pairs, q?.matches, q?.matchingPairs, q?.matchedPairs, q?.matching, q?.items, q?.list, q?.rows]
+    .find((v) => Array.isArray(v) && v.length);
+  if (combined) {
+    const la = [], lb = [];
+    for (const it of combined) {
+      if (Array.isArray(it)) { la.push(asS(it[0])); lb.push(asS(it[1])); }
+      else if (it && typeof it === "object") {
+        const left = it.left ?? it.a ?? it.columnA ?? it.term ?? it.first ?? it.key ?? it.name ?? it.item ?? it.question;
+        const right = it.right ?? it.b ?? it.columnB ?? it.definition ?? it.match ?? it.second ?? it.value ?? it.answer ?? it.pair;
+        la.push(asS(left)); lb.push(asS(right));
+      } else {
+        const [l, r] = splitPairString(it);
+        la.push(l); lb.push(r);
+      }
+    }
+    if (has(la) && has(lb)) return { columnA: la, columnB: lb };
+    if (has(la) && !has(a)) a = la;
+  }
+  return splitCombinedIfNeeded(a, b);
+}
+
+// If only ONE column came back but EVERY item looks like a combined
+// "Left — Right" pair, split each into the two columns.
+function splitCombinedIfNeeded(a, b) {
+  if (a.some((x) => x.trim()) && !b.some((x) => x.trim()) && a.every((x) => splitPairString(x)[1])) {
+    const la = [], lb = [];
+    for (const it of a) { const [l, r] = splitPairString(it); la.push(l); lb.push(r); }
+    return { columnA: la, columnB: lb };
+  }
+  return { columnA: a, columnB: b };
+}
+
 // GET /api/ai/status — lets the admin UI show/hide the "Generate with AI"
 // button and populate the model dropdown.
 export async function aiStatus(req, res) {
@@ -229,8 +282,8 @@ Type-specific rules — each type needs specific extra fields AND a specific sty
 - "mcq": a normal question with 4 plausible options; "correct" is the right one. No extra fields.
 - "matching": include "columnA" (array) and "columnB" (array) — the two lists to match. The 4 "options" are FULL MAPPING SEQUENCES like "1-III, 2-I, 3-IV, 4-II" (Column A is auto-numbered 1,2,3,4; Column B is I,II,III,IV). Exactly one option is the correct complete mapping; the others are wrong mappings. In "explanation", justify EVERY correct pairing individually (e.g. "1-III because …; 2-I because …") with the fact/definition behind each match.
 - "statement": put the individual statements in "columnA" (an array of 2-4 statement strings). "text" is the intro line, e.g. "Consider the following statements:". The 4 "options" are COMBINATIONS like "1 only", "2 only", "1 and 2 only", "Neither 1 nor 2".
-- "pair": include "columnA" (left items) and "columnB" (right items); item i is paired with item i. "text" is the intro. The 4 "options" state HOW MANY pairs are correctly matched, e.g. "Only one pair", "Only two pairs", "Only three pairs", "All four pairs". In "explanation", go through EACH pair stating whether it is correctly matched and the fact behind it.
-- "pairselect": include "columnA" and "columnB" (candidate pairs). "text" is the intro. The 4 "options" state WHICH pairs are correct, e.g. "1 and 2 only", "2 and 3 only", "1, 3 and 4 only", "All of the above". In "explanation", go through EACH pair stating whether it is correct or wrong and why.
+- "pair": include "columnA" (left items) and "columnB" (right items); item i is paired with item i. "text" is ONLY the intro line (e.g. "Consider the following pairs:") — the pairs themselves MUST be the arrays "columnA" and "columnB", each with 3-4 items and the SAME length. NEVER put the pair items inside "text", and NEVER use a different key such as "pairs"/"matches". The 4 "options" state HOW MANY pairs are correctly matched, e.g. "Only one pair", "Only two pairs", "Only three pairs", "All four pairs". In "explanation", go through EACH pair stating whether it is correctly matched and the fact behind it.
+- "pairselect": include "columnA" and "columnB" (candidate pairs), each with 3-4 items of the SAME length; put them ONLY in these arrays (NOT inside "text", NOT under any other key). "text" is only the intro line. The 4 "options" state WHICH pairs are correct, e.g. "1 and 2 only", "2 and 3 only", "1, 3 and 4 only", "All of the above". In "explanation", go through EACH pair stating whether it is correct or wrong and why.
 - "assertion": include "assertion" (Assertion A text) and "reason" (Reason R text); "text" may be empty. The 4 "options" MUST be exactly: "Both A and R are true and R is the correct explanation of A", "Both A and R are true but R is NOT the correct explanation of A", "A is true but R is false", "A is false but R is true". In "explanation", separately evaluate Assertion (A) — state true/false and WHY with supporting facts — then separately evaluate Reason (R) — true/false and WHY — and finally explain the RELATIONSHIP: whether R correctly explains A and why.
 - "table": put the data table in "tableRows" (a 2D array; the first inner array is the header row) — NEVER write it as a markdown/pipe ("| a | b |") table inside "text". "text" is ONLY the question sentence. Wrap any math in a cell in $...$. 4 normal options that match a calculation done from the table.
 Do NOT prefix columnA / columnB / statement items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4), Column B (I,II,III,IV) and statements (1,2,3) automatically.
@@ -424,10 +477,13 @@ function normalize(list) {
       };
 
       if (type === "matching" || type === "pair" || type === "pairselect") {
-        // Strip any leading "1.", "2)", "I.", "(iii)" markers — the app numbers
-        // Column A (1,2,3,4) and Column B (I,II,III,IV) automatically.
-        out.columnA = arrStr(q?.columnA).map(stripListMarker);
-        out.columnB = arrStr(q?.columnB).map(stripListMarker);
+        // Recover the two columns from columnA/columnB OR any alternate shape
+        // the model used (pairs/matches arrays, {left,right} objects, "A — B"
+        // strings) so the pair list never renders empty. Then strip any leading
+        // "1.", "2)", "I.", "(iii)" markers — the app auto-numbers the columns.
+        const { columnA, columnB } = derivePairColumns(q);
+        out.columnA = columnA.map(stripListMarker);
+        out.columnB = columnB.map(stripListMarker);
       }
       if (type === "statement") {
         // Statements live in columnA (models may also send them as "statements").
