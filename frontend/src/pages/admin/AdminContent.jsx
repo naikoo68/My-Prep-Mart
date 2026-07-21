@@ -13,6 +13,7 @@ import { questionDateText, searchQuestions } from "../../lib/questions";
 import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
+import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList, RefreshCw } from "lucide-react";
 
 const COLORS = [
@@ -50,6 +51,7 @@ export default function AdminContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false); // AI extend-explanations (whole quiz)
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
+  const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ id: "all", name: "" }); // which subject the duplicate scan targets
@@ -90,15 +92,21 @@ export default function AdminContent() {
     }
   };
 
-  // Extend ONE question's explanation with AI, then refresh the list.
-  const extendOneQuestion = async (item) => {
-    const fixOptions = window.confirm("Also fix this question's options?\n\nOK = rewrite any off-category / wrong options to match the answer's category (the question and correct answer stay the same).\nCancel = only extend the explanation.");
+  // Extend ONE question's explanation with AI — open the confirm modal first.
+  const extendOneQuestion = (item) => setExtendOneItem(item);
+
+  // Run the actual extend once the user confirms in the modal.
+  const runExtendOne = async (fixOptions) => {
+    const item = extendOneItem;
+    if (!item) return;
     setExtendingQId(item._id);
     try {
       await aiService.extendOne({ questionId: item._id, fixOptions });
+      setExtendOneItem(null);
       load("questions");
     } catch (e) {
       setError(e.message);
+      setExtendOneItem(null);
     } finally {
       setExtendingQId(null);
     }
@@ -547,6 +555,13 @@ export default function AdminContent() {
         title={`Extend all explanations${quiz ? ` — ${quiz.title}` : ""}`}
         onClose={() => setExtendOpen(false)}
         onDone={() => load("questions")}
+      />
+
+      <ExtendOneQuestionModal
+        open={!!extendOneItem}
+        busy={!!extendingQId}
+        onCancel={() => setExtendOneItem(null)}
+        onConfirm={runExtendOne}
       />
 
       {/* View single question */}

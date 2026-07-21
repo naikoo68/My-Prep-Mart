@@ -17,6 +17,7 @@ import QuestionView from "../../components/admin/QuestionView";
 import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
+import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -63,6 +64,7 @@ export default function AdminTests() {
   const [shareTest, setShareTest] = useState(null); // public share-link modal target
   const [extendTest, setExtendTest] = useState(null); // AI extend-explanations target
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
+  const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
 
   // Manual subject plan (typed) for the create/edit popup
@@ -95,6 +97,18 @@ export default function AdminTests() {
 
   const reloadTq = async () => {
     try { setTq(await testService.getQuestions(qTest._id)); } catch { /* ignore */ }
+  };
+  // Run the per-question extend once confirmed in the modal.
+  const runExtendOne = async (fixOptions) => {
+    const item = extendOneItem;
+    if (!item) return;
+    setExtendingQId(item._id);
+    try {
+      await aiService.extendOne({ questionId: item._id, fixOptions });
+      setExtendOneItem(null);
+      await reloadTq();
+    } catch (e) { setError(e.message); setExtendOneItem(null); }
+    finally { setExtendingQId(null); }
   };
   // Regenerate ONE question's options/answer to fit its stem, then reload.
   const regenerateQ = async (item) => {
@@ -693,6 +707,13 @@ export default function AdminTests() {
         onDone={() => { if (qTest) reloadTq(); }}
       />
 
+      <ExtendOneQuestionModal
+        open={!!extendOneItem}
+        busy={!!extendingQId}
+        onCancel={() => setExtendOneItem(null)}
+        onConfirm={runExtendOne}
+      />
+
       <BulkUploadQuestions
         open={!!bulkTest}
         title={`Bulk Upload Questions${bulkTest ? ` — ${bulkTest.name}${bulkTest._forceSection ? ` (${bulkTest._forceSection})` : ""}` : ""}`}
@@ -802,15 +823,7 @@ export default function AdminTests() {
               onImportWeb={(subject) => { setImportTest({ ...qTest, _forceSection: subject }); }}
               onPickFromBank={(subject) => { setBankTest({ ...qTest, _forceSection: subject }); }}
               onExtendExplanations={() => setExtendTest(qTest)}
-              onExtendQuestion={async (item) => {
-                const fixOptions = window.confirm("Also fix this question's options?\n\nOK = rewrite any off-category / wrong options to match the answer's category (the question and correct answer stay the same).\nCancel = only extend the explanation.");
-                setExtendingQId(item._id);
-                try {
-                  await aiService.extendOne({ questionId: item._id, fixOptions });
-                  await reloadTq();
-                } catch (e) { setError(e.message); }
-                finally { setExtendingQId(null); }
-              }}
+              onExtendQuestion={(item) => setExtendOneItem(item)}
               extendingId={extendingQId}
             />
           </div>

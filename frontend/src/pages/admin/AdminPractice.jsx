@@ -16,6 +16,7 @@ import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
 import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
+import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 import MigrateQuizModal from "../../components/admin/MigrateQuizModal";
 import MigrateTopicsModal from "../../components/admin/MigrateTopicsModal";
 import { Files } from "lucide-react";
@@ -71,6 +72,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [migrateTopicsOpen, setMigrateTopicsOpen] = useState(false); // bulk-topic migrate modal
   const [extendItem, setExtendItem] = useState(null); // AI extend-explanations target
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
+  const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
   // Which subject a question-adding tool should target (set when opened from a
   // subject inside the manager). "" / "__unassigned__" means no subject.
@@ -147,6 +149,18 @@ export default function AdminPractice({ clientMode = false }) {
     testService.getQuestions(item._id).then(setTq).catch((e) => setError(e.message)).finally(() => setTqLoading(false));
   };
   const reloadTq = () => testService.getQuestions(qItem._id).then(setTq).catch(() => {});
+  // Run the per-question extend once confirmed in the modal.
+  const runExtendOne = async (fixOptions) => {
+    const item = extendOneItem;
+    if (!item) return;
+    setExtendingQId(item._id);
+    try {
+      await aiService.extendOne({ questionId: item._id, fixOptions });
+      setExtendOneItem(null);
+      await reloadTq();
+    } catch (e) { setError(e.message); setExtendOneItem(null); }
+    finally { setExtendingQId(null); }
+  };
   // Regenerate ONE question's options/answer to fit its stem, then reload.
   const regenerateQ = async (item) => {
     setRegenId(item._id);
@@ -392,15 +406,7 @@ export default function AdminPractice({ clientMode = false }) {
               onImportWeb={(subject) => { setForceSection(subject); setImportOpen(true); }}
               onPickFromBank={(subject) => { setForceSection(subject); setBankOpen(true); }}
               onExtendExplanations={() => setExtendItem(qItem)}
-              onExtendQuestion={async (item) => {
-                const fixOptions = window.confirm("Also fix this question's options?\n\nOK = rewrite any off-category / wrong options to match the answer's category (the question and correct answer stay the same).\nCancel = only extend the explanation.");
-                setExtendingQId(item._id);
-                try {
-                  await aiService.extendOne({ questionId: item._id, fixOptions });
-                  await reloadTq();
-                } catch (e) { setError(e.message); }
-                finally { setExtendingQId(null); }
-              }}
+              onExtendQuestion={(item) => setExtendOneItem(item)}
               extendingId={extendingQId}
             />
           </div>
@@ -584,6 +590,13 @@ export default function AdminPractice({ clientMode = false }) {
         title={`Extend all explanations${extendItem ? ` — ${extendItem.name}` : ""}`}
         onClose={() => setExtendItem(null)}
         onDone={() => { if (qItem) reloadTq(); }}
+      />
+
+      <ExtendOneQuestionModal
+        open={!!extendOneItem}
+        busy={!!extendingQId}
+        onCancel={() => setExtendOneItem(null)}
+        onConfirm={runExtendOne}
       />
 
       {/* Visibility modal */}
