@@ -21,6 +21,27 @@ export async function getFacebookConfig() {
 
 export const isFacebookConfigured = (cfg) => !!(cfg?.pageId && cfg?.token);
 
+// Posting to a Page requires a PAGE access token. Admins often paste a USER
+// token by mistake (which triggers the deprecated "publish_actions" error).
+// This resolves the correct Page token from whatever was saved: querying the
+// Page node with a user OR page token returns the Page's own token. Cached
+// briefly to avoid an extra call on every post.
+const _pageTokenCache = new Map();
+export async function resolvePageToken(cfg) {
+  const key = `${cfg.pageId}:${String(cfg.token).slice(0, 16)}`;
+  const hit = _pageTokenCache.get(key);
+  if (hit && Date.now() - hit.ts < 10 * 60 * 1000) return hit.token;
+  try {
+    const res = await fetch(`https://graph.facebook.com/${cfg.version}/${encodeURIComponent(cfg.pageId)}?fields=access_token&access_token=${encodeURIComponent(cfg.token)}`);
+    const data = await res.json().catch(() => ({}));
+    const token = data?.access_token || cfg.token;
+    _pageTokenCache.set(key, { token, ts: Date.now() });
+    return token;
+  } catch {
+    return cfg.token;
+  }
+}
+
 // Post a message (with an optional link) to the configured Facebook Page feed.
 // Returns { ok, id?, error? }. Safe to call fire-and-forget — it never throws.
 export async function postToFacebookPage({ message, link, imageUrl } = {}, cfgOverride) {
@@ -36,10 +57,11 @@ export async function postToFacebookPage({ message, link, imageUrl } = {}, cfgOv
   // normal feed post (optionally with a link).
   const endpoint = img ? "photos" : "feed";
   const url = `https://graph.facebook.com/${cfg.version}/${encodeURIComponent(cfg.pageId)}/${endpoint}`;
+  const pageToken = await resolvePageToken(cfg); // ensure a PAGE token (not a user token)
   const body = new URLSearchParams();
   if (img) { body.set("url", img); if (msg) body.set("caption", msg); }
   else { if (msg) body.set("message", msg); if (lnk) body.set("link", lnk); }
-  body.set("access_token", cfg.token);
+  body.set("access_token", pageToken);
 
   try {
     const res = await fetch(url, {
@@ -49,7 +71,11 @@ export async function postToFacebookPage({ message, link, imageUrl } = {}, cfgOv
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data && (data.id || data.post_id)) return { ok: true, id: data.post_id || data.id };
-    return { ok: false, error: data?.error?.message || `Facebook API error (${res.status}).` };
+    let error = data?.error?.message || `Facebook API error (${res.status}).`;
+    if (/publish_actions|\(#200\)/i.test(error)) {
+      error = "Facebook rejected the token. Use a PAGE access token (not a User token) with the pages_manage_posts permission, then save again. " + error;
+    }
+    return { ok: false, error };
   } catch (err) {
     return { ok: false, error: err.message || "Could not reach Facebook." };
   }
@@ -79,6 +105,7 @@ export async function postToInstagram({ imageUrl, caption } = {}, cfgOverride) {
   if (!img) return { ok: false, error: "Instagram needs an image to post." };
   const igId = await getInstagramUserId(cfg);
   if (!igId) return { ok: false, error: "No Instagram Business account is linked to this Facebook Page." };
+  const pageToken = await resolvePageToken(cfg); // IG publishing uses the Page token
 
   const headers = { "Content-Type": "application/x-www-form-urlencoded" };
   try {
@@ -86,7 +113,7 @@ export async function postToInstagram({ imageUrl, caption } = {}, cfgOverride) {
     const c = new URLSearchParams();
     c.set("image_url", img);
     if (caption) c.set("caption", String(caption).slice(0, 2100));
-    c.set("access_token", cfg.token);
+    c.set("access_token", pageToken);
     const cRes = await fetch(`https://graph.facebook.com/${cfg.version}/${igId}/media`, { method: "POST", headers, body: c });
     const cData = await cRes.json().catch(() => ({}));
     if (!cRes.ok || !cData.id) return { ok: false, error: cData?.error?.message || `Instagram container error (${cRes.status}).` };
@@ -94,7 +121,7 @@ export async function postToInstagram({ imageUrl, caption } = {}, cfgOverride) {
     // 2) Publish the container.
     const p = new URLSearchParams();
     p.set("creation_id", cData.id);
-    p.set("access_token", cfg.token);
+    p.set("access_token", pageToken);
     const pRes = await fetch(`https://graph.facebook.com/${cfg.version}/${igId}/media_publish`, { method: "POST", headers, body: p });
     const pData = await pRes.json().catch(() => ({}));
     if (pRes.ok && pData.id) return { ok: true, id: pData.id };
