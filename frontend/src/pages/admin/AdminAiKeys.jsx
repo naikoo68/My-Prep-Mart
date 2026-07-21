@@ -378,7 +378,7 @@ export default function AdminAiKeys({ clientMode = false }) {
                 </button>
               ) : (
                 <div className="flex flex-shrink-0 items-center gap-1">
-                  <button onClick={() => autoDetectOne(k)} disabled={busy[k._id]} title="Auto-detect & set a working model" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 disabled:opacity-50 dark:hover:bg-accent-900/30">
+                  <button onClick={() => autoDetectOne(k)} disabled={busy[k._id]} title="Auto-detect & set the best (highest) working model" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 disabled:opacity-50 dark:hover:bg-accent-900/30">
                     {busy[k._id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                   </button>
                   <button onClick={() => showModels(k)} disabled={modelsBusy[k._id]} title="Show models this key can use" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800">
@@ -492,7 +492,7 @@ export default function AdminAiKeys({ clientMode = false }) {
               {modal.mode === "add" && (
                 <label className="flex items-start gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm dark:bg-brand-900/20">
                   <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-600" checked={form.autoDetect} onChange={(e) => setForm({ ...form, autoDetect: e.target.checked })} />
-                  <span><b>Auto-detect a working model</b> — after adding, I'll test the key's models and set the first one that works (recommended).</span>
+                  <span><b>Auto-detect the best model</b> — after adding, I'll test the key's models and set the highest one that works, falling back to a lighter one if needed (recommended).</span>
                 </label>
               )}
 

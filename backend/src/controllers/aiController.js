@@ -2417,15 +2417,21 @@ async function runKeyTest(doc) {
   return r.ok;
 }
 
-// Order candidate models best-first: prefer FREE, then light flash/mini/chat
-// models; drop non-chat modalities (embeddings, image, audio, …).
+// Order candidate models best-FIRST for auto-detect, preferring the most
+// CAPABLE ("higher") models the key supports (opus/sonnet/gpt-4o/gpt-4.x/
+// gemini-pro/70b+/large), then lighter flash/mini/free ones only as a fallback.
+// Non-chat modalities (embeddings, image, audio, …) are dropped.
 function rankModels(models) {
   const clean = (models || []).filter((m) => m && !/embed|vision|image|whisper|tts|audio|moderation|rerank|dall|diffusion/i.test(m));
-  const pref = [/:free$/i, /gemini[.\-\d]*flash/i, /flash/i, /gpt-4o-mini/i, /mini/i, /haiku/i, /chat/i];
-  return clean
-    .map((m) => { const i = pref.findIndex((rx) => rx.test(m)); return { m, s: i === -1 ? pref.length : i }; })
-    .sort((a, b) => a.s - b.s)
-    .map((x) => x.m);
+  const strong = [/opus/i, /sonnet/i, /gpt-4o(?!-?mini)/i, /gpt-4\.\d/i, /gpt-4(?!o|-?mini)/i, /gemini[.\-\d]*pro/i, /\b(70|72|405)b\b/i, /large|ultra|max/i];
+  const light = [/flash/i, /mini/i, /haiku/i, /:free$/i, /\b\d{1,2}b\b/i, /small|lite|nano/i, /chat/i];
+  const score = (m) => {
+    const s = strong.findIndex((rx) => rx.test(m));
+    if (s !== -1) return s;                                 // strongest models first
+    const l = light.findIndex((rx) => rx.test(m));
+    return strong.length + (l === -1 ? light.length : l);   // lighter ones after
+  };
+  return clean.map((m) => ({ m, s: score(m) })).sort((a, b) => a.s - b.s).map((x) => x.m);
 }
 
 // Auto-find a WORKING model for a key: list the models it can use, then live-
