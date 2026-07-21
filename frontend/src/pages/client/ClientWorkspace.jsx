@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { GraduationCap, LogOut, Moon, Sun, ZoomIn, ZoomOut, LayoutDashboard, Wrench, ArrowRightLeft, Sparkles, FileText, Feather } from "lucide-react";
+import { GraduationCap, LogOut, Moon, Sun, ZoomIn, ZoomOut, LayoutDashboard, Wrench, ArrowRightLeft, Sparkles, FileText, Feather, BookOpen } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useSettings } from "../../context/SettingsContext";
@@ -8,6 +8,7 @@ import { useZoom } from "../../context/ZoomContext";
 import AdminPractice from "../admin/AdminPractice";
 import AdminMigration from "../admin/AdminMigration";
 import ClientDashboard from "./ClientDashboard";
+import ClientUserManual from "./ClientUserManual";
 import ClientUpgrade from "./ClientUpgrade";
 import ClientAiSettings from "./ClientAiSettings";
 import AdminDocuments from "../admin/AdminDocuments";
@@ -45,6 +46,7 @@ export default function ClientWorkspace() {
       { key: "documents", label: "Documents", Icon: FileText },
       { key: "notes", label: "Notes", Icon: Feather },
     ] : []),
+    { key: "manual", label: "User Manual", Icon: BookOpen },
   ];
 
   // The active tab lives in the URL (?tab=…) so a refresh restores it instead
@@ -120,6 +122,8 @@ export default function ClientWorkspace() {
           <AdminDocuments />
         ) : tab === "notes" ? (
           <AdminNotes />
+        ) : tab === "manual" ? (
+          <ClientUserManual onGoTab={setTab} />
         ) : (
           <AdminPractice clientMode />
         )}
