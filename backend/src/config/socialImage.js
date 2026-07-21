@@ -23,70 +23,110 @@ function wrap(text, maxChars) {
   return lines;
 }
 
-// Build the SVG string. Content is laid out top-down; if it would overflow the
-// card, the least-important trailing lines are dropped.
+const T = (x, y, s, fill, txt, { weight = "400", anchor = "start", ls = "0" } = {}) =>
+  `<text x="${x}" y="${y}" font-size="${s}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}" letter-spacing="${ls}" font-family="Arial, Helvetica, sans-serif">${txt}</text>`;
+const RR = (x, y, w, h, r, fill, stroke = "none", sw = 0) =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"${stroke !== "none" ? ` stroke="${stroke}" stroke-width="${sw}"` : ""}/>`;
+
+// Renders the question to look like the student quiz card: difficulty pill,
+// stem, styled Column A / Column B boxes with numbered & roman badges, then the
+// options in rounded boxes. Height grows with content (clamped for Instagram).
 function buildQuestionSvg(q, opts = {}) {
-  const W = 1080, H = 1080, PAD = 72;
+  const W = 1080, PAD = 56;
   const brand = opts.brandColor || "#4f46e5";
+  const accent = "#ea580c"; // Column B accent (orange, like the app)
   const siteName = esc(opts.siteName || "My Study Guide");
-  const maxChars = 44;
+  const els = [];
+  let y = 150; // start below the header bar
 
-  const body = []; // { text, size, color, gap(before) , weight }
-  const push = (text, size, color, gap = 0, weight = "normal") => body.push({ text, size, color, gap, weight });
+  // Difficulty pill + tag.
+  const diff = q.difficulty || "Medium";
+  const dc = diff === "Hard" ? ["#fee2e2", "#dc2626"] : diff === "Easy" ? ["#dcfce7", "#16a34a"] : ["#fef9c3", "#ca8a04"];
+  els.push(RR(PAD, y, 118, 46, 12, dc[0]));
+  els.push(T(PAD + 59, y + 31, 26, dc[1], esc(diff), { weight: "700", anchor: "middle" }));
+  els.push(T(W - PAD, y + 31, 26, "#94a3b8", "Question of the day", { anchor: "end" }));
+  y += 46 + 34;
 
-  // Question stem.
-  wrap(q.text || "Question", maxChars).forEach((ln, i) => push(esc(ln), 40, "#0f172a", i === 0 ? 0 : 6, "700"));
+  // Stem.
+  wrap(q.text || "Question", 46).forEach((ln, i) => { y += i === 0 ? 44 : 50; els.push(T(PAD, y, 40, "#0f172a", esc(ln), { weight: "800" })); });
+  y += 34;
 
-  // Matching / pair columns.
-  if (Array.isArray(q.columnA) && q.columnA.length) {
-    push("", 10, "#000", 8);
-    q.columnA.forEach((a, i) => wrap(`${i + 1}. ${plain(a)}`, maxChars + 4).forEach((ln, k) => push(esc(ln), 32, "#334155", k === 0 ? 6 : 2)));
-    if (Array.isArray(q.columnB) && q.columnB.length) {
-      push("", 8, "#000", 6);
-      q.columnB.forEach((b, i) => wrap(`${ROMAN[i] || i + 1}. ${plain(b)}`, maxChars + 4).forEach((ln, k) => push(esc(ln), 32, "#334155", k === 0 ? 6 : 2)));
-    }
+  const isColumns = ["matching", "pair", "pairselect"].includes(q.type) && Array.isArray(q.columnA) && q.columnA.length;
+  const isStatements = q.type === "statement" && Array.isArray(q.columnA) && q.columnA.length;
+
+  // Column renderer → returns rendered elements + the box height.
+  const renderColumn = (title, titleColor, items, badgeBg, badgeColor, x, colW, y0) => {
+    const inner = [];
+    let yy = y0 + 46;
+    inner.push(T(x + 24, yy, 24, titleColor, title, { weight: "800", ls: "1.5" }));
+    yy += 20;
+    items.forEach((it) => {
+      const by = yy + 8;
+      inner.push(RR(x + 24, by, 36, 36, 9, badgeBg));
+      inner.push(T(x + 42, by + 25, 20, badgeColor, esc(it.badge), { weight: "700", anchor: "middle" }));
+      it.lines.forEach((ln, k) => inner.push(T(x + 74, by + 26 + k * 34, 28, "#1e293b", esc(ln))));
+      yy += Math.max(46, it.lines.length * 34 + 14);
+    });
+    return { inner, height: yy - y0 + 18 };
+  };
+
+  if (isColumns) {
+    const gap = 28;
+    const colW = (W - 2 * PAD - gap) / 2;
+    const itemChars = Math.max(14, Math.floor((colW - 90) / 15));
+    const colA = (q.columnA || []).map((t, i) => ({ badge: String(i + 1), lines: wrap(plain(t), itemChars) }));
+    const colB = (q.columnB || []).map((t, i) => ({ badge: ROMAN[i] || String(i + 1), lines: wrap(plain(t), itemChars) }));
+    const a = renderColumn("COLUMN A", brand, colA, "#eef2ff", brand, PAD, colW, y);
+    const b = renderColumn("COLUMN B", accent, colB, "#fff7ed", accent, PAD + colW + gap, colW, y);
+    const h = Math.max(a.height, b.height);
+    els.push(RR(PAD, y, colW, h, 16, "#ffffff", "#e2e8f0", 2));
+    els.push(RR(PAD + colW + gap, y, colW, h, 16, "#ffffff", "#e2e8f0", 2));
+    els.push(...a.inner, ...b.inner);
+    y += h + 30;
+  } else if (isStatements) {
+    const items = (q.columnA || []).map((t, i) => ({ badge: String(i + 1), lines: wrap(plain(t), 60) }));
+    const c = renderColumn("STATEMENTS", brand, items, "#eef2ff", brand, PAD, W - 2 * PAD, y);
+    els.push(RR(PAD, y, W - 2 * PAD, c.height, 16, "#ffffff", "#e2e8f0", 2));
+    els.push(...c.inner);
+    y += c.height + 30;
+  } else if (q.type === "assertion" && (q.assertion || q.reason)) {
+    [["Assertion (A)", q.assertion], ["Reason (R)", q.reason]].forEach(([lab, txt]) => {
+      if (!txt) return;
+      els.push(T(PAD, y + 30, 26, brand, lab, { weight: "700" })); y += 40;
+      wrap(plain(txt), 58).forEach((ln) => { els.push(T(PAD, y + 26, 30, "#1e293b", esc(ln))); y += 38; });
+      y += 8;
+    });
+    y += 8;
   }
 
-  // Options.
+  // Prompt label above the options.
+  const prompt = { matching: "Choose the correct matching sequence:", pair: "How many pairs are correctly matched?", pairselect: "Which pairs are correctly matched?", statement: "Which statement(s) is/are correct?" }[q.type] || "Choose the correct option:";
   if (opts.includeOptions !== false && Array.isArray(q.options) && q.options.length) {
-    push("", 10, "#000", 14);
+    els.push(T(PAD, y + 22, 26, "#64748b", esc(prompt))); y += 44;
     q.options.forEach((o, i) => {
+      const lines = wrap(plain(o), 50);
+      const boxH = Math.max(66, lines.length * 40 + 26);
       const correct = opts.includeAnswer && i === q.correct;
-      wrap(`${LETTERS[i]})  ${plain(o)}`, maxChars).forEach((ln, k) =>
-        push(esc(ln), 34, correct ? "#059669" : "#1e293b", k === 0 ? 12 : 2, correct ? "700" : "500"));
+      els.push(RR(PAD, y, W - 2 * PAD, boxH, 16, correct ? "#ecfdf5" : "#ffffff", correct ? "#059669" : "#e2e8f0", 2));
+      els.push(RR(PAD + 18, y + boxH / 2 - 19, 38, 38, 19, correct ? "#059669" : "#f1f5f9"));
+      els.push(T(PAD + 37, y + boxH / 2 + 8, 22, correct ? "#ffffff" : "#475569", `(${String.fromCharCode(97 + i)})`, { weight: "700", anchor: "middle" }));
+      lines.forEach((ln, k) => els.push(T(PAD + 76, y + boxH / 2 + 8 - (lines.length - 1) * 20 + k * 40, 30, correct ? "#065f46" : "#1e293b", esc(ln), { weight: correct ? "700" : "500" })));
+      y += boxH + 14;
     });
   }
+  if (opts.includeAnswer && Number.isInteger(q.correct)) { els.push(T(PAD, y + 30, 30, "#059669", `✓ Answer: ${LETTERS[q.correct] || q.correct + 1}`, { weight: "800" })); y += 46; }
+  else if (opts.includeOptions !== false) { els.push(T(PAD, y + 30, 30, brand, "👉 Comment your answer!", { weight: "700" })); y += 46; }
 
-  if (opts.includeAnswer && Number.isInteger(q.correct)) {
-    push(`✓ Answer: ${LETTERS[q.correct] || q.correct + 1}`, 34, "#059669", 18, "700");
-  } else if (opts.includeOptions !== false) {
-    push("Comment your answer below!", 32, brand, 18, "700");
-  }
+  if (opts.hashtags) { els.push(T(PAD, y + 30, 26, brand, esc(plain(opts.hashtags)))); y += 40; }
 
-  // Lay out with a vertical budget; drop trailing lines that don't fit.
-  const top = 210, bottom = opts.hashtags ? 120 : 90;
-  let y = top;
-  const tspans = [];
-  for (const b of body) {
-    const lineH = Math.round(b.size * 1.28);
-    y += b.gap;
-    if (y + lineH > H - bottom) { tspans.push(`<text x="${PAD}" y="${y}" font-size="30" fill="#94a3b8">…</text>`); break; }
-    y += b.size;
-    if (b.text) tspans.push(`<text x="${PAD}" y="${y}" font-size="${b.size}" font-weight="${b.weight}" fill="${b.color}" font-family="Arial, sans-serif">${b.text}</text>`);
-  }
-
-  const footer = opts.hashtags
-    ? `<text x="${PAD}" y="${H - 48}" font-size="28" fill="${brand}" font-family="Arial, sans-serif">${esc(plain(opts.hashtags))}</text>`
-    : "";
-
+  // Final canvas height (Instagram-friendly: 1080–1350). Content beyond clips.
+  const H = Math.max(1080, Math.min(1350, y + 40));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-    <rect width="${W}" height="${H}" fill="#ffffff"/>
-    <rect x="0" y="0" width="${W}" height="130" fill="${brand}"/>
-    <text x="${PAD}" y="84" font-size="46" font-weight="800" fill="#ffffff" font-family="Arial, sans-serif">${siteName}</text>
-    <text x="${W - PAD}" y="84" text-anchor="end" font-size="30" fill="#e0e7ff" font-family="Arial, sans-serif">Question of the day</text>
-    ${tspans.join("\n    ")}
-    ${footer}
-    <rect x="0" y="${H - 12}" width="${W}" height="12" fill="${brand}"/>
+    <rect width="${W}" height="${H}" fill="#f8fafc"/>
+    <rect x="0" y="0" width="${W}" height="118" fill="${brand}"/>
+    ${T(PAD, 74, 44, "#ffffff", siteName, { weight: "800" })}
+    ${els.join("\n    ")}
+    <rect x="0" y="${H - 10}" width="${W}" height="10" fill="${brand}"/>
   </svg>`;
 }
 
