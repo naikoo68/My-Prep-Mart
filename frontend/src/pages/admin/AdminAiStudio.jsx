@@ -7,6 +7,9 @@ import AiImport from "../../components/admin/AiImport";
 // A standalone home for AI question generation / import. Pick a destination
 // (like the Migration tool), then Generate or Import questions straight into it.
 // Everything reuses the existing AI modals + the /questions/bulk save endpoint.
+// Each destination also knows how to CREATE a new leaf (quiz/test) under the
+// current parent selection, so a batch can be sent to a brand-new quiz/test
+// instead of the currently selected one. createLeaf(sel, name) → new leaf _id.
 const DESTS = {
   myquiz: {
     label: "My Quiz",
@@ -18,7 +21,10 @@ const DESTS = {
       { key: "item", label: "Quiz…", load: (v) => practiceService.adminTopicItems(v) },
     ],
     leafKey: "item",
+    newLabel: "quiz",
     target: (s) => ({ testSeries: s.item }),
+    createLeaf: async (s, name) =>
+      (await practiceService.createItem({ name, practiceStream: s.stream, practiceSubject: s.subject, practiceTopic: s.topic, practiceKind: "quiz" }))?._id,
   },
   mytest: {
     label: "My Test",
@@ -29,7 +35,10 @@ const DESTS = {
       { key: "item", label: "Test…", load: (v) => practiceService.adminItems(v, "test") },
     ],
     leafKey: "item",
+    newLabel: "test",
     target: (s) => ({ testSeries: s.item }),
+    createLeaf: async (s, name) =>
+      (await practiceService.createItem({ name, practiceStream: s.stream, practiceSubject: s.subject, practiceKind: "test" }))?._id,
   },
   content: {
     label: "Content Quiz",
@@ -42,7 +51,10 @@ const DESTS = {
       { key: "quiz", label: "Quiz…", load: (v) => contentService.quizzes(v), labelKey: "title" },
     ],
     leafKey: "quiz",
+    newLabel: "quiz",
     target: (s) => ({ subject: s.subject, session: s.session, quiz: s.quiz }),
+    createLeaf: async (s, name) =>
+      (await contentService.createQuiz({ title: name, subject: s.subject, session: s.session }))?._id,
   },
   testseries: {
     label: "Test Series",
@@ -53,7 +65,10 @@ const DESTS = {
       { key: "test", label: "Test…", load: (v) => testService.adminList(v) },
     ],
     leafKey: "test",
+    newLabel: "test",
     target: (s) => ({ testSeries: s.test }),
+    createLeaf: async (s, name) =>
+      (await testService.create({ name, exam: s.exam, post: s.post, category: "Full-Length", status: "published" }))?._id,
   },
 };
 
@@ -113,15 +128,32 @@ export default function AdminAiStudio() {
   const cfg = DESTS[dest];
   const leafId = sel[cfg.leafKey];
   const ready = Boolean(leafId);
+  // Name of the current destination leaf — shown in the modal as "current
+  // quiz". Updated when a new quiz/test is auto-created for a batch.
+  const [currentName, setCurrentName] = useState("");
 
   // Reset the picker + message whenever the destination type changes.
-  useEffect(() => { setSel({}); setMsg(""); }, [dest]);
+  useEffect(() => { setSel({}); setMsg(""); setCurrentName(""); }, [dest]);
 
   // Save handler shared by both modals — writes to the chosen destination.
-  const onUpload = async (questions) => {
-    const res = await contentService.bulkQuestions(questions, cfg.target(sel));
+  // opts.newTarget = { name } → create a NEW quiz/test under the current parent
+  // and insert this batch there (used by the "new quiz" option on Generate more).
+  const onUpload = async (questions, opts = {}) => {
+    let selNow = sel;
+    let createdName = "";
+    if (opts.newTarget) {
+      const name = String(opts.newTarget.name || "").trim();
+      if (!name) throw new Error(`Enter a name for the new ${cfg.newLabel}.`);
+      const newId = await cfg.createLeaf(sel, name);
+      if (!newId) throw new Error(`Could not create the new ${cfg.newLabel}.`);
+      selNow = { ...sel, [cfg.leafKey]: newId };
+      setSel(selNow);        // subsequent batches now default to the new leaf
+      setCurrentName(name);  // "current" now points at the just-created quiz/test
+      createdName = name;
+    }
+    const res = await contentService.bulkQuestions(questions, cfg.target(selNow));
     const n = res?.inserted ?? res?.count ?? (Array.isArray(questions) ? questions.length : 0);
-    setMsg(`✓ Saved ${n} question${n === 1 ? "" : "s"} to the selected ${cfg.label}.`);
+    setMsg(`✓ Saved ${n} question${n === 1 ? "" : "s"} to ${createdName ? `the new ${cfg.newLabel} “${createdName}”` : `the selected ${cfg.label}`}.`);
     return res;
   };
 
@@ -158,7 +190,7 @@ export default function AdminAiStudio() {
           Destination — {cfg.label} <span className="font-normal normal-case text-slate-400">({cfg.hint})</span>
         </p>
         <div className="max-w-md">
-          <Cascade key={dest} levels={cfg.levels} onChange={setSel} />
+          <Cascade key={dest} levels={cfg.levels} onChange={(s) => { setSel(s); setCurrentName(""); }} />
         </div>
 
         {msg && <p className="mt-4 text-sm font-medium text-emerald-600">{msg}</p>}
@@ -179,6 +211,9 @@ export default function AdminAiStudio() {
         title={`Generate with AI — ${cfg.label}`}
         onClose={() => setAiOpen(false)}
         onUpload={onUpload}
+        allowNewTarget
+        newLeafLabel={cfg.newLabel}
+        currentTargetName={currentName}
       />
       <AiImport
         open={importOpen}

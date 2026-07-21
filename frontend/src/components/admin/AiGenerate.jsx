@@ -22,7 +22,7 @@ const MAX_TOTAL = 500;
 // Reusable "Generate with AI" modal. Mirrors BulkUploadQuestions:
 // `onUpload(questions)` should return a promise (e.g. { inserted }). The AI
 // only PREVIEWS questions here — nothing is saved until the admin clicks Insert.
-export default function AiGenerate({ open, onClose, onUpload, title = "Generate Questions with AI", sections = [], existingQuestions = [], defaultSection = "" }) {
+export default function AiGenerate({ open, onClose, onUpload, title = "Generate Questions with AI", sections = [], existingQuestions = [], defaultSection = "", allowNewTarget = false, newLeafLabel = "quiz", currentTargetName = "" }) {
   const { user } = useAuth();
   // Clients granted BOTH sources may pick which one this generation uses.
   const isClient = user?.role === "client" && user?.aiAccess;
@@ -43,11 +43,15 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
   const [busy, setBusy] = useState(false);
   const [inserting, setInserting] = useState(false);
   const [msg, setMsg] = useState("");
+  const [destChoice, setDestChoice] = useState("current"); // "current" | "new" (where the batch is inserted)
+  const [newName, setNewName] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setMsg("");
     setPreview([]);
+    setDestChoice("current");
+    setNewName("");
     setSection(defaultSection || sections[0] || ""); // re-sync target subject on open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultSection]);
@@ -151,16 +155,28 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
 
   const insert = async () => {
     if (!preview.length) return;
+    const makingNew = allowNewTarget && destChoice === "new";
+    if (makingNew && !newName.trim()) { setMsg(`Enter a name for the new ${newLeafLabel}.`); return; }
     setInserting(true);
     setMsg("");
     try {
-      const res = await onUpload(preview, { section });
-      setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s).`);
+      const opts = { section };
+      if (makingNew) opts.newTarget = { name: newName.trim() };
+      const res = await onUpload(preview, opts);
+      setMsg(`✓ Inserted ${res?.inserted ?? preview.length} question(s)${makingNew ? ` into new ${newLeafLabel} “${newName.trim()}”` : ""}.`);
       setPreview([]);
-      setTopic("");
-      setUrl("");
-      setNotes("");
-      setTimeout(onClose, 1000);
+      setNewName("");
+      setDestChoice("current");
+      if (allowNewTarget) {
+        // Keep the modal open and keep the topic/settings so you can immediately
+        // "Generate" the next batch (no duplicates) and route it to the current
+        // or another new quiz/test.
+      } else {
+        setTopic("");
+        setUrl("");
+        setNotes("");
+        setTimeout(onClose, 1000);
+      }
     } catch (e) {
       setMsg(e.message || "Insert failed.");
     } finally {
@@ -378,6 +394,32 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Where to save this batch: the current quiz/test, or a brand-new one. */}
+            {allowNewTarget && preview.length > 0 && (
+              <div className="mt-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <p className="mb-2 text-sm font-semibold">Where should these {preview.length} question(s) go?</p>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="radio" name="aidest" checked={destChoice === "current"} onChange={() => setDestChoice("current")} />
+                  <span>Current {newLeafLabel}{currentTargetName ? <> — <b>{currentTargetName}</b></> : <span className="text-slate-400"> (the one selected)</span>}</span>
+                </label>
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="radio" name="aidest" checked={destChoice === "new"} onChange={() => setDestChoice("new")} />
+                  <span className="flex-shrink-0">New {newLeafLabel}:</span>
+                  <input
+                    type="text"
+                    value={newName}
+                    onFocus={() => setDestChoice("new")}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder={`New ${newLeafLabel} name`}
+                    className="input !py-1"
+                  />
+                </label>
+                <p className="mt-1 text-xs text-slate-400">
+                  Choose <b>New {newLeafLabel}</b> to auto-create it (under the same parent) and put this batch there — then click <b>Generate</b> again for the next batch.
+                </p>
               </div>
             )}
           </>
