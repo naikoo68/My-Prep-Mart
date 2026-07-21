@@ -179,6 +179,11 @@ function scopeFilter(source = {}) {
 // Pick the next question for a schedule (random or sequential), skipping ones
 // already posted until the pool is exhausted, then cycling. Returns the doc.
 export async function pickQuestionForSchedule(sch) {
+  // A single specific question (scheduled straight from the question view).
+  if (sch.source?.question) {
+    const q = await Question.findById(sch.source.question).lean();
+    return q ? { q, recycled: false } : null;
+  }
   const filter = scopeFilter(sch.source);
   if (!filter) return null;
   const posted = (sch.postedQuestionIds || []).map(String);
@@ -313,11 +318,18 @@ export async function runDueFbSchedules() {
     const now = new Date();
     const schedules = await FbSchedule.find({ enabled: true });
     for (const sch of schedules) {
-      const slot = dueSlot(sch, now);
+      let slot = null;
+      if (sch.mode === "once") {
+        // One-off: fire once when its time has arrived and it hasn't run yet.
+        if (sch.runAt && new Date(sch.runAt).getTime() <= now.getTime() && !sch.lastSlot) slot = "once";
+      } else {
+        slot = dueSlot(sch, now);
+      }
       if (!slot) continue;
       // Claim the slot FIRST (persist) so a concurrent tick won't repost it,
       // then post. If the post fails, lastResult records why.
-      sch.lastSlot = slot;
+      sch.lastSlot = slot === "once" ? "done" : slot;
+      if (sch.mode === "once") sch.enabled = false; // one-off never repeats
       await sch.save();
       try {
         await runScheduleOnce(sch, cfg);

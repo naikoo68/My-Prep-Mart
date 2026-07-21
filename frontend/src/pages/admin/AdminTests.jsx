@@ -19,6 +19,7 @@ import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
+import ScheduleQuestionModal from "../../components/admin/ScheduleQuestionModal";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -68,6 +69,7 @@ export default function AdminTests() {
   const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
   const [regenAllTest, setRegenAllTest] = useState(null); // bulk "regenerate all" modal target
+  const [scheduleQ, setScheduleQ] = useState(null); // question to post/schedule to Facebook
 
   // Manual subject plan (typed) for the create/edit popup
   const [composition, setComposition] = useState([]);
@@ -730,6 +732,8 @@ export default function AdminTests() {
         onDone={() => { if (qTest) reloadTq(); }}
       />
 
+      <ScheduleQuestionModal open={!!scheduleQ} question={scheduleQ} onClose={() => setScheduleQ(null)} />
+
       <BulkUploadQuestions
         open={!!bulkTest}
         title={`Bulk Upload Questions${bulkTest ? ` — ${bulkTest.name}${bulkTest._forceSection ? ` (${bulkTest._forceSection})` : ""}` : ""}`}
@@ -868,7 +872,7 @@ export default function AdminTests() {
               <h3 className="text-lg font-bold">Question</h3>
               <button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button>
             </div>
-            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} />
+            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} onSchedule={() => setScheduleQ(viewQ)} />
           </div>
         </div>
       )}
@@ -907,7 +911,7 @@ export default function AdminTests() {
                       </>
                     )}
                   </div>
-                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} />
+                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} onSchedule={() => setScheduleQ(it)} />
                 </div>
               ))}
             </div>

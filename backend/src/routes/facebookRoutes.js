@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listSchedules, createSchedule, updateSchedule, deleteSchedule, postScheduleNow } from "../controllers/facebookController.js";
+import { listSchedules, createSchedule, updateSchedule, deleteSchedule, postScheduleNow, postQuestionNow, scheduleQuestion } from "../controllers/facebookController.js";
 import { protect, authorize } from "../middleware/auth.js";
 
 const router = Router();
@@ -12,5 +12,9 @@ router.post("/schedules", ...admin, createSchedule);
 router.put("/schedules/:id", ...admin, updateSchedule);
 router.delete("/schedules/:id", ...admin, deleteSchedule);
 router.post("/schedules/:id/post-now", ...admin, postScheduleNow);
+
+// Per-question actions (from the question view): post now / schedule at a time.
+router.post("/post-question", ...admin, postQuestionNow);
+router.post("/schedule-question", ...admin, scheduleQuestion);
 
 export default router;

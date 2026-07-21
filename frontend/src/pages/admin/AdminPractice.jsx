@@ -18,6 +18,7 @@ import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
+import ScheduleQuestionModal from "../../components/admin/ScheduleQuestionModal";
 import MigrateQuizModal from "../../components/admin/MigrateQuizModal";
 import MigrateTopicsModal from "../../components/admin/MigrateTopicsModal";
 import { Files } from "lucide-react";
@@ -76,6 +77,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
   const [regenAllItem, setRegenAllItem] = useState(null); // bulk "regenerate all" modal target
+  const [scheduleQ, setScheduleQ] = useState(null); // question to post/schedule to Facebook
   // Which subject a question-adding tool should target (set when opened from a
   // subject inside the manager). "" / "__unassigned__" means no subject.
   const [forceSection, setForceSection] = useState("");
@@ -440,7 +442,7 @@ export default function AdminPractice({ clientMode = false }) {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewQ(null)}>
           <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-2xl animate-scale-in card p-6">
             <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-bold">Question</h3><button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button></div>
-            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} />
+            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} onSchedule={() => setScheduleQ(viewQ)} />
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setAddToTestQ(viewQ)} className="btn-outline"><ClipboardList className="h-4 w-4" /> Add to test</button>
               <button onClick={() => setViewQ(null)} className="btn-outline">Close</button>
@@ -485,7 +487,7 @@ export default function AdminPractice({ clientMode = false }) {
                       </>
                     )}
                   </div>
-                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} />
+                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} onSchedule={() => setScheduleQ(it)} />
                 </div>
               ))}
             </div>
@@ -616,6 +618,8 @@ export default function AdminPractice({ clientMode = false }) {
         onClose={() => setRegenAllItem(null)}
         onDone={() => { if (qItem) reloadTq(); }}
       />
+
+      <ScheduleQuestionModal open={!!scheduleQ} question={scheduleQ} onClose={() => setScheduleQ(null)} />
 
       {/* Visibility modal */}
       {access && (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Clock, Eye, EyeOff, RefreshCw, Loader2, Wand2 } from "lucide-react";
+import { CheckCircle2, Clock, Eye, EyeOff, RefreshCw, Loader2, Wand2, Send } from "lucide-react";
 import MathText from "../ui/MathText";
 import { questionDateText } from "../../lib/questions";
 import StatementPairView from "../ui/StatementPairView";
@@ -21,7 +21,7 @@ const toRoman = (n) => ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"][n] || 
 // `onExtend` (optional) shows an "Extend explanation" button that AI-enriches
 // this question's explanation (and can fix off-category options via the popup).
 // `extending` toggles its in-progress spinner.
-export default function QuestionView({ q, index, studentView = false, onRegenerate, regenerating = false, onExtend, extending = false }) {
+export default function QuestionView({ q, index, studentView = false, onRegenerate, regenerating = false, onExtend, extending = false, onSchedule }) {
   const [revealed, setRevealed] = useState(false);
   if (!q) return null;
   const showAnswer = !studentView || revealed;
@@ -112,8 +112,18 @@ export default function QuestionView({ q, index, studentView = false, onRegenera
           "View all"). Extend enriches the explanation (with an optional
           fix-options popup); Regenerate rebuilds options/answer to fit the
           stem (fixes wrong-format questions). */}
-      {(onExtend || onRegenerate) && (
+      {(onExtend || onRegenerate || onSchedule) && (
         <div className="mt-3 flex flex-wrap gap-2">
+          {onSchedule && (
+            <button
+              type="button"
+              onClick={onSchedule}
+              title="Post or schedule this question to Facebook / Instagram"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#1877F2]/40 px-3 py-1.5 text-xs font-semibold text-[#1877F2] transition hover:bg-[#1877F2]/10"
+            >
+              <Send className="h-3.5 w-3.5" /> Post / Schedule
+            </button>
+          )}
           {onExtend && (
             <button
               type="button"

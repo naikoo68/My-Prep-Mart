@@ -217,6 +217,8 @@ export const facebookService = {
   update: (id, data) => api.put(`/facebook/schedules/${id}`, data),
   remove: (id) => api.del(`/facebook/schedules/${id}`),
   postNow: (id) => api.post(`/facebook/schedules/${id}/post-now`),
+  postQuestion: (data) => api.post("/facebook/post-question", data), // post ONE question now
+  scheduleQuestion: (data) => api.post("/facebook/schedule-question", data), // schedule ONE question at a time
 };
 
 // ---- Contact messages ----

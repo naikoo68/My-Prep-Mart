@@ -1,5 +1,19 @@
 import FbSchedule from "../models/FbSchedule.js";
+import Question from "../models/Question.js";
 import { runScheduleOnce, getFacebookConfig } from "../config/facebook.js";
+
+// Common post-format fields from the per-question modal.
+function postOpts(body = {}) {
+  return {
+    toFacebook: body.toFacebook !== false,
+    toInstagram: !!body.toInstagram,
+    asImage: !!body.asImage,
+    includeOptions: body.includeOptions !== false,
+    includeAnswer: !!body.includeAnswer,
+    includeLink: !!body.includeLink,
+    hashtags: String(body.hashtags || "").trim(),
+  };
+}
 
 // Only the fields an admin may set on a schedule (whitelist).
 function pickScheduleFields(body = {}) {
@@ -74,4 +88,43 @@ export async function postScheduleNow(req, res) {
   const result = await runScheduleOnce(sch, cfg);
   await sch.save().catch(() => {});
   return res.status(result.ok ? 200 : 502).json(result);
+}
+
+// POST /api/facebook/post-question — post ONE specific question right now (admin)
+// Body: { questionId, toFacebook?, toInstagram?, asImage?, includeOptions?, includeAnswer?, hashtags? }
+export async function postQuestionNow(req, res) {
+  const questionId = req.body?.questionId;
+  if (!questionId) return res.status(400).json({ ok: false, error: "Missing questionId." });
+  const cfg = await getFacebookConfig();
+  if (!cfg.pageId || !cfg.token) return res.status(400).json({ ok: false, error: "Connect Facebook first (Page ID + token) and enable posting." });
+  const exists = await Question.exists({ _id: questionId });
+  if (!exists) return res.status(404).json({ ok: false, error: "Question not found." });
+
+  // A transient (unsaved) schedule-like object drives the same posting logic.
+  const transient = { source: { question: questionId }, order: "random", postedQuestionIds: [], ...postOpts(req.body) };
+  const result = await runScheduleOnce(transient, cfg);
+  return res.status(result.ok ? 200 : 502).json(result);
+}
+
+// POST /api/facebook/schedule-question — schedule ONE specific question at a
+// date/time (admin). Body: { questionId, runAt, label?, ...postOpts }
+export async function scheduleQuestion(req, res) {
+  const { questionId, runAt } = req.body || {};
+  if (!questionId) return res.status(400).json({ message: "Missing questionId." });
+  if (!runAt || isNaN(new Date(runAt).getTime())) return res.status(400).json({ message: "Pick a valid date & time." });
+  const exists = await Question.exists({ _id: questionId });
+  if (!exists) return res.status(404).json({ message: "Question not found." });
+
+  const sch = await FbSchedule.create({
+    title: String(req.body.title || "").trim() || "Scheduled question",
+    enabled: true,
+    mode: "once",
+    runAt: new Date(runAt),
+    source: { question: questionId, label: String(req.body.label || "Single question").slice(0, 120) },
+    times: [], days: [], timezone: String(req.body.timezone || "Asia/Kolkata"),
+    order: "random",
+    ...postOpts(req.body),
+    createdBy: req.user?._id || null,
+  });
+  res.status(201).json(sch);
 }

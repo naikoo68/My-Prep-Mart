@@ -15,6 +15,7 @@ import AiImport from "../../components/admin/AiImport";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
+import ScheduleQuestionModal from "../../components/admin/ScheduleQuestionModal";
 import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList, RefreshCw } from "lucide-react";
 
 const COLORS = [
@@ -52,6 +53,7 @@ export default function AdminContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false); // AI extend-explanations (whole quiz)
   const [regenAllOpen, setRegenAllOpen] = useState(false); // AI regenerate-all (whole quiz)
+  const [scheduleQ, setScheduleQ] = useState(null); // question to post/schedule to Facebook
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
   const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
@@ -579,6 +581,8 @@ export default function AdminContent() {
         onDone={() => load("questions")}
       />
 
+      <ScheduleQuestionModal open={!!scheduleQ} question={scheduleQ} onClose={() => setScheduleQ(null)} />
+
       <ExtendOneQuestionModal
         open={!!extendOneItem}
         busy={!!extendingQId}
@@ -594,7 +598,7 @@ export default function AdminContent() {
               <h3 className="text-lg font-bold">Question</h3>
               <button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button>
             </div>
-            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} />
+            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} onSchedule={() => setScheduleQ(viewQ)} />
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setAddToTestQ(viewQ)} className="btn-outline">
                 <ClipboardList className="h-4 w-4" /> Add to test
@@ -647,7 +651,7 @@ export default function AdminContent() {
                       </>
                     )}
                   </div>
-                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} />
+                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} onSchedule={() => setScheduleQ(it)} />
                 </div>
               ))}
             </div>

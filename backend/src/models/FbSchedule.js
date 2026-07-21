@@ -16,9 +16,16 @@ const fbScheduleSchema = new mongoose.Schema(
       session: { type: mongoose.Schema.Types.ObjectId, ref: "Session", default: null },
       quiz: { type: mongoose.Schema.Types.ObjectId, ref: "Quiz", default: null },
       testSeries: { type: mongoose.Schema.Types.ObjectId, ref: "TestSeries", default: null },
+      // A single specific question (set from the question view). When present it
+      // overrides the scope above — the schedule posts exactly this question.
+      question: { type: mongoose.Schema.Types.ObjectId, ref: "Question", default: null },
     },
 
-    // When to post. `times` are "HH:MM" (24h) interpreted in `timezone`.
+    // "recurring" = post at `times` on `days`; "once" = post a single time at `runAt`.
+    mode: { type: String, enum: ["recurring", "once"], default: "recurring" },
+    runAt: { type: Date, default: null }, // one-off scheduled time (mode "once")
+
+    // When to post (recurring). `times` are "HH:MM" (24h) in `timezone`.
     // `days` = weekdays 0(Sun)–6(Sat); empty means every day.
     times: { type: [String], default: [] },
     days: { type: [Number], default: [] },
