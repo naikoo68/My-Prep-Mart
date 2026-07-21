@@ -18,6 +18,7 @@ import ManageTestQuestions from "../../components/admin/ManageTestQuestions";
 import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
+import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
 
 const blank = { name: "", category: "Full-Length", marks: 100, duration: 60, schedule: "", status: "draft", difficulty: "Medium" };
 const categories = ["Full-Length", "Subject-wise", "Chapter-wise", "Previous Year"];
@@ -66,6 +67,7 @@ export default function AdminTests() {
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
   const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
+  const [regenAllTest, setRegenAllTest] = useState(null); // bulk "regenerate all" modal target
 
   // Manual subject plan (typed) for the create/edit popup
   const [composition, setComposition] = useState([]);
@@ -720,6 +722,14 @@ export default function AdminTests() {
         onConfirm={runExtendOne}
       />
 
+      <RegenerateAllModal
+        open={!!regenAllTest}
+        target={{ testSeries: regenAllTest?._id }}
+        title={`Regenerate all${regenAllTest ? ` — ${regenAllTest.name}` : ""}`}
+        onClose={() => setRegenAllTest(null)}
+        onDone={() => { if (qTest) reloadTq(); }}
+      />
+
       <BulkUploadQuestions
         open={!!bulkTest}
         title={`Bulk Upload Questions${bulkTest ? ` — ${bulkTest.name}${bulkTest._forceSection ? ` (${bulkTest._forceSection})` : ""}` : ""}`}
@@ -833,6 +843,7 @@ export default function AdminTests() {
               extendingId={extendingQId}
               onRegenerateQuestion={(item) => regenerateQ(item)}
               regeneratingId={regenId}
+              onRegenerateAll={() => setRegenAllTest(qTest)}
             />
           </div>
         </div>

@@ -14,6 +14,7 @@ import DuplicatesModal from "../../components/admin/DuplicatesModal";
 import AiImport from "../../components/admin/AiImport";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
+import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
 import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList, RefreshCw } from "lucide-react";
 
 const COLORS = [
@@ -50,6 +51,7 @@ export default function AdminContent() {
   const [aiOpen, setAiOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false); // AI extend-explanations (whole quiz)
+  const [regenAllOpen, setRegenAllOpen] = useState(false); // AI regenerate-all (whole quiz)
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
   const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
@@ -324,6 +326,9 @@ export default function AdminContent() {
               <button onClick={() => setExtendOpen(true)} disabled={!items.length} className="btn-outline text-brand-600" title="AI: make all explanations detailed for this quiz">
                 <Wand2 className="h-4 w-4" /> Extend Explanations
               </button>
+              <button onClick={() => setRegenAllOpen(true)} disabled={!items.length} className="btn-outline text-violet-600" title="AI: regenerate every question's options/answer (reshuffles pair/matching Column B)">
+                <RefreshCw className="h-4 w-4" /> Regenerate All
+              </button>
               <button onClick={() => copyCsv(selected.length ? items.filter((q) => selected.includes(q._id)) : items)} disabled={!items.length} className="btn-outline">
                 <Copy className="h-4 w-4" /> Copy CSV{selected.length ? ` (${selected.length})` : ""}
               </button>
@@ -563,6 +568,14 @@ export default function AdminContent() {
         target={{ quiz: quiz?._id }}
         title={`Extend all explanations${quiz ? ` — ${quiz.title}` : ""}`}
         onClose={() => setExtendOpen(false)}
+        onDone={() => load("questions")}
+      />
+
+      <RegenerateAllModal
+        open={regenAllOpen}
+        target={{ quiz: quiz?._id }}
+        title={`Regenerate all${quiz ? ` — ${quiz.title}` : ""}`}
+        onClose={() => setRegenAllOpen(false)}
         onDone={() => load("questions")}
       />
 

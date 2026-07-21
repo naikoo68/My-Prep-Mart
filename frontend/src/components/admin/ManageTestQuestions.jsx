@@ -36,6 +36,7 @@ export default function ManageTestQuestions({
   extendingId,
   onRegenerateQuestion,
   regeneratingId,
+  onRegenerateAll,
 }) {
   const [activeSubject, setActiveSubject] = useState(null);
   const [selectedTq, setSelectedTq] = useState([]);
@@ -146,6 +147,11 @@ export default function ManageTestQuestions({
                 <Wand2 className="h-3.5 w-3.5" /> Extend Explanations
               </button>
             )}
+            {tq.length > 0 && onRegenerateAll && (
+              <button onClick={onRegenerateAll} className="btn-outline py-1.5 text-xs text-violet-600" title="AI: regenerate every question's options/answer (reshuffles pair/matching Column B)">
+                <RefreshCw className="h-3.5 w-3.5" /> Regenerate All
+              </button>
+            )}
             {tq.length > 0 && (
               <button onClick={onViewAll} className="btn-outline py-1.5 text-xs">
                 <Eye className="h-3.5 w-3.5" /> View All
@@ -209,6 +215,9 @@ export default function ManageTestQuestions({
             <button onClick={onDuplicates} className="btn-outline"><Files className="h-4 w-4" /> Duplicates</button>
             {onExtendExplanations && (
               <button onClick={onExtendExplanations} className="btn-outline text-brand-600" title="AI: make all explanations detailed for this test"><Wand2 className="h-4 w-4" /> Extend Explanations</button>
+            )}
+            {onRegenerateAll && (
+              <button onClick={onRegenerateAll} className="btn-outline text-violet-600" title="AI: regenerate every question's options/answer (reshuffles pair/matching Column B)"><RefreshCw className="h-4 w-4" /> Regenerate All</button>
             )}
           </>
         )}

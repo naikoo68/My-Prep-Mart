@@ -17,6 +17,7 @@ import SubjectPlanEditor from "../../components/admin/SubjectPlanEditor";
 import ShareTestModal from "../../components/admin/ShareTestModal";
 import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsModal";
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
+import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
 import MigrateQuizModal from "../../components/admin/MigrateQuizModal";
 import MigrateTopicsModal from "../../components/admin/MigrateTopicsModal";
 import { Files } from "lucide-react";
@@ -74,6 +75,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [extendingQId, setExtendingQId] = useState(null); // per-question extend in progress
   const [extendOneItem, setExtendOneItem] = useState(null); // per-question extend confirm modal target
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
+  const [regenAllItem, setRegenAllItem] = useState(null); // bulk "regenerate all" modal target
   // Which subject a question-adding tool should target (set when opened from a
   // subject inside the manager). "" / "__unassigned__" means no subject.
   const [forceSection, setForceSection] = useState("");
@@ -416,6 +418,7 @@ export default function AdminPractice({ clientMode = false }) {
               extendingId={extendingQId}
               onRegenerateQuestion={(item) => regenerateQ(item)}
               regeneratingId={regenId}
+              onRegenerateAll={() => setRegenAllItem(qItem)}
             />
           </div>
         </div>
@@ -604,6 +607,14 @@ export default function AdminPractice({ clientMode = false }) {
         busy={!!extendingQId}
         onCancel={() => setExtendOneItem(null)}
         onConfirm={runExtendOne}
+      />
+
+      <RegenerateAllModal
+        open={!!regenAllItem}
+        target={{ testSeries: regenAllItem?._id }}
+        title={`Regenerate all${regenAllItem ? ` — ${regenAllItem.name}` : ""}`}
+        onClose={() => setRegenAllItem(null)}
+        onDone={() => { if (qItem) reloadTq(); }}
       />
 
       {/* Visibility modal */}

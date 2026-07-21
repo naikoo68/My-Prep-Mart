@@ -2159,7 +2159,7 @@ RULES:
 - Keep the question's MEANING, TYPE and what it asks UNCHANGED. Do NOT invent a different question or change the numbers/facts being asked.
 - FIX MATH RENDERING: if any math anywhere (stem, columns, options, explanation) is written as PLAIN TEXT, wrap it properly in $...$ so it renders — e.g. "3/4" → "$\\frac{3}{4}$", "x^2" → "$x^2$", "N/2" → "$\\frac{N}{2}$", "sqrt(2)" → "$\\sqrt{2}$", "25%" → "$25\\%$", "Sum(P1*Q0)/Sum(P0*Q0)" → "$\\frac{\\sum P_1 Q_0}{\\sum P_0 Q_0}$". Return the SAME meaning with the math wrapped and obvious typos/rendering fixed.
 - COLUMN QUESTIONS (matching / pair / pairselect / statement): "text" must be ONLY the short intro line (e.g. "Identify the correct mapping." or "Consider the following statements:"). NEVER put the Column A / Column B / statement items inside "text". Put the Column A items in "columnA" and the Column B items in "columnB" (the SAME number of items as given), each with any formula/math wrapped in $...$ so the columns themselves render. Do NOT prefix these items with numbers or roman numerals (no "1.", "I.") — the app numbers Column A (1,2,3,4) and Column B (I,II,III,IV) automatically. The 4 "options" stay as mapping sequences (e.g. "1-II, 2-IV, 3-I, 4-III") / combinations.
-- POSITION RESHUFFLE (matching / pair / pairselect ONLY): Do NOT keep Column A and Column B in the same order they were given — RE-ARRANGE the items into NEW, different positions in BOTH columns (keep the SAME items and the SAME count, just shuffled to a fresh order). Then RE-DERIVE the answer for this NEW layout: recompute the 4 "options" (the mapping sequences for "matching"; the how-many count for "pair"; the which-pairs list for "pairselect"), the 0-based "correct" index, and the "explanation" so ALL of them are consistent with the reshuffled positions. The correct answer MUST reflect the new arrangement, not the old one. Keep the true item↔item relationships intact — only their displayed positions change.
+- POSITION RESHUFFLE (matching / pair / pairselect ONLY): Do NOT keep the items in the same order — RE-ARRANGE the items of just ONE column (Column B) into a NEW, different order (keep the SAME items and the SAME count, only their positions change); leave the OTHER column (Column A) exactly as it is. Then RE-DERIVE the answer for this NEW layout: recompute the 4 "options" (the mapping sequences for "matching"; the how-many count for "pair"; the which-pairs list for "pairselect"), the 0-based "correct" index, and the "explanation" so ALL of them are consistent with the reshuffled Column B. The correct answer MUST reflect the new arrangement, not the old one. Keep the true item↔item relationships intact — only the displayed order of Column B changes.
 - TABLE questions: the data table MUST go in "tableRows" (a 2D array; the FIRST inner row is the header), NEVER as a markdown/pipe table inside "text". "text" is ONLY the question sentence (no "| ... |" rows). If the question currently shows a table in the stem AND/OR in tableRows — even with DIFFERENT numbers — CONSOLIDATE into ONE correct table in "tableRows" (choose the data that is consistent with the intended options, wrap any math in each cell in $...$), remove the table from "text", then SOLVE the question from THAT table with the correct formula and set "options"/"correct" to match your computed value. Return the table in "tableRows".
 - Regenerate the 4 "options", the 0-based "correct" index, the "explanation" and the 4 "optionExplanations" so they are correct and fit the question.
 - "options": EXACTLY 4, fitting the question TYPE, with ONE genuinely correct answer and three plausible-but-wrong distractors. SAME-CATEGORY RULE (important): all four options MUST be of the SAME real-world category/type and format as the correct answer — e.g. a question about a TREE → ALL options are tree names; a river → all rivers; a person → all people of that field/era; a date → plausible nearby dates. Never mix in an unrelated kind (a flower/bird/word among tree names), and match their language, form, length and specificity so the wrong ones are closely related and believable. Wrap any numeric option value or expression in $...$ so it renders as math (e.g. "$12.5$", "$\\frac{3}{4}$", "$2^{10}$", "$25\\%$"):
@@ -2187,10 +2187,175 @@ function buildRegenPrompt(q, notes) {
   if (opts.length) lines.push(`Current options (may be WRONG — replace with correct ones that fit the question):\n${opts.map((o, i) => `${EXT_LETTERS[i] || i}) ${o}`).join("\n")}`);
   if (notes) lines.push(`MANDATORY user instructions (follow EXACTLY): ${notes}`);
   if (["matching", "pair", "pairselect"].includes(q.type)) {
-    lines.push(`RESHUFFLE: put the Column A items AND the Column B items in a NEW, different order than shown above (same items, same count, just rearranged) — return the reshuffled arrays in "columnA"/"columnB". Then recompute the "options", the "correct" index and the "explanation" to match the NEW positions so the correct answer is right for the reshuffled layout.`);
+    lines.push(`RESHUFFLE: put ONLY the Column B items in a NEW, different order than shown above (same items, same count, just rearranged) and keep Column A exactly as it is — return the reshuffled "columnB" and the unchanged "columnA". Then recompute the "options", the "correct" index and the "explanation" to match the new Column B order so the correct answer is right for the reshuffled layout.`);
   }
   lines.push(`Analyse THIS question and FIX anything wrong: rebuild the 4 "options", the "correct" index, the "explanation" and the 4 "optionExplanations" so they are correct and fit the question, AND wrap any plain-text math so it renders. Return the SAME stem in "text" (and same-count "columnA"/"columnB" for matching/pair/statement) with math wrapped in $...$ — keep the meaning unchanged. Return ONLY one valid JSON object {"text":"...","options":["","","",""],"correct":0,"explanation":"...","optionExplanations":["","","",""]}.`);
   return lines.join("\n");
+}
+
+// Build the Mongo $set from a regenerated/parsed result — shared by the single
+// Regenerate endpoint AND the bulk "Regenerate all" job. Applies the re-wrapped
+// stem/columns (same meaning, math wrapped so it renders), the reshuffled
+// Column B (same item count), fresh options + correct answer, and explanations.
+function buildRegenSet(q, parsed) {
+  const set = {};
+  if (parsed.explanation) set.explanation = parsed.explanation;
+  // Column-based questions keep their items in columnA/columnB — never in the
+  // stem. Strip any "Column A/B …" block the model wrongly merged into "text".
+  const isColumnType = ["matching", "pair", "pairselect", "statement"].includes(q.type);
+  const isTableType = q.type === "table";
+  if (isColumnType) {
+    const introOnly = (s) => String(s || "").split(/\bColumn\s*[AB]\b\s*:?/i)[0].trim();
+    const intro = introOnly(parsed.text) || introOnly(q.text);
+    if (intro) set.text = intro;
+  } else if (isTableType) {
+    const stripTable = (s) => String(s || "").split(/\r?\n/).filter((ln) => (ln.match(/\|/g) || []).length < 2).join("\n").replace(/\n{2,}/g, "\n").trim();
+    const intro = stripTable(parsed.text) || stripTable(q.text);
+    if (intro) set.text = intro;
+    if (Array.isArray(parsed.tableRows) && parsed.tableRows.length && parsed.tableRows.every((r) => Array.isArray(r))) {
+      set.tableRows = parsed.tableRows.map((r) => r.map((c) => (c == null ? "" : String(c))));
+    }
+  } else if (parsed.text) {
+    set.text = parsed.text;
+  }
+  // Strip any leading "1."/"I." marker — the app auto-numbers the columns.
+  if (Array.isArray(parsed.columnA) && Array.isArray(q.columnA) && parsed.columnA.length === q.columnA.length) set.columnA = parsed.columnA.map(stripListMarker);
+  if (Array.isArray(parsed.columnB) && Array.isArray(q.columnB) && parsed.columnB.length === q.columnB.length) set.columnB = parsed.columnB.map(stripListMarker);
+  const newCorrect = Number.isInteger(parsed.correct) && parsed.correct >= 0 && parsed.correct <= 3 ? parsed.correct : null;
+  const newOptions = Array.isArray(parsed.options) && parsed.options.length === 4 && parsed.options.every((s) => String(s).trim() !== "")
+    ? parsed.options.map((x) => String(x)) : null;
+  const canFixOptions = !q.type || ["mcq", "table", "pair", "pairselect", "statement", "matching"].includes(q.type);
+  if (newOptions && newCorrect != null && canFixOptions) set.options = newOptions;
+  if (newCorrect != null) set.correct = newCorrect;
+  const eff = newCorrect != null ? newCorrect : q.correct;
+  if (Array.isArray(parsed.optionExplanations)) {
+    const oe = parsed.optionExplanations.slice(0, 4);
+    while (oe.length < 4) oe.push("");
+    if (typeof eff === "number" && eff >= 0 && eff < 4) oe[eff] = "";
+    set.optionExplanations = oe;
+  }
+  return set;
+}
+
+// Background job: regenerate EVERY question in a quiz/test (mirrors runExtendJob).
+// Multi-pass, one worker per key, so the whole set gets through despite quota.
+async function runRegenAllJob(id, { endpoints, model, questions, owner = null, notes = "" }) {
+  const job = genJobs.get(id);
+  const deadline = Date.now() + 12 * 60 * 1000;
+  const save = (patch) => Object.assign(job, patch, { updatedAt: Date.now() });
+  const total = questions.length;
+  let updated = 0;
+  let lastError = null;
+  let keyDead = false;
+
+  const regenOne = async (q, eps) => {
+    const r = await callWithFallback({
+      endpoints: eps && eps.length ? eps : endpoints,
+      model,
+      systemPrompt: REGEN_SYSTEM_PROMPT,
+      userPrompt: buildRegenPrompt(q, notes),
+      maxTokens: 8000,
+      owner,
+    });
+    if (!r.ok) {
+      lastError = r;
+      if ([401, 403].includes(r.status)) keyDead = true;
+      return false;
+    }
+    const parsed = parseExplanationJson(r.content);
+    if (!parsed || !(parsed.explanation || (Array.isArray(parsed.options) && parsed.options.length === 4) || parsed.text || parsed.tableRows)) return false;
+    const set = buildRegenSet(q, parsed);
+    if (!Object.keys(set).length) return false;
+    await Question.updateOne({ _id: q._id }, { $set: set }).catch(() => {});
+    updated += 1;
+    job.questions.push(1);
+    save({});
+    return true;
+  };
+
+  const MAX_PASSES = 4;
+  let pending = [...questions];
+  try {
+    for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline; pass++) {
+      const failed = [];
+      let idx = 0;
+      const rotate = (arr, k) => arr.slice(k).concat(arr.slice(0, k));
+      const nEps = endpoints?.length || 1;
+      const WORKERS = Math.min(Math.max(nEps, 1), 10);
+      const worker = async (wi) => {
+        const eps = nEps > 1 ? rotate(endpoints, wi % nEps) : endpoints;
+        while (idx < pending.length && !keyDead && Date.now() < deadline) {
+          const q = pending[idx++];
+          let ok = false;
+          try { ok = await regenOne(q, eps); } catch { ok = false; }
+          if (!ok) failed.push(q);
+        }
+      };
+      await Promise.all(Array.from({ length: WORKERS }, (_, wi) => worker(wi)));
+      pending = failed;
+      if (pending.length && pass < MAX_PASSES - 1 && !keyDead && Date.now() < deadline) {
+        const wait = lastError?.status === 429 ? 40000 : 2000;
+        if (Date.now() + wait < deadline) await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+    if (updated === 0) {
+      save({
+        status: "error",
+        error: lastError
+          ? (lastError.status === 429
+            ? "AI quota/rate limit reached before any question was regenerated. Wait a minute and try again."
+            : `AI provider error (${lastError.status || 0}). ${(lastError.detail || "").slice(0, 150)}`)
+          : "No questions could be regenerated. Try again.",
+      });
+    } else {
+      const short = updated < total;
+      save({
+        status: "done",
+        updatedCount: updated,
+        requested: total,
+        error: short ? (lastError?.status === 429 ? "quota" : "partial") : null,
+        remaining: short ? total - updated : 0,
+      });
+    }
+  } catch (err) {
+    save(updated ? { status: "done", updatedCount: updated } : { status: "error", error: err?.message || "Failed to regenerate questions." });
+  }
+}
+
+// POST /api/ai/regenerate-all  (admin or owning client)
+// Body: { quiz? | testSeries?, model?, notes?, mode? } — starts a background job
+// that regenerates EVERY question in that quiz/test (rebuilds options/answer/
+// explanation, reshuffles pair/matching Column B). Poll /api/ai/job/:id.
+export async function regenerateAll(req, res) {
+  const scope = resolveScope(req.user, req.body?.mode);
+  if (scope.denied) {
+    return res.status(403).json({ message: "AI access is not enabled for your account. Please contact the administrator." });
+  }
+  const chosen = await resolveModel(String(req.body?.model || "").trim(), scope);
+  if (!chosen || !chosen.endpoints.length) {
+    return res.status(400).json({
+      message: scope.mode === "self"
+        ? "No API keys added yet. Add at least one key in the AI tab."
+        : "AI is not configured. Add an API key in Admin → AI Keys.",
+    });
+  }
+
+  const own = ownerFilter(req);
+  let filter = null;
+  if (req.body?.testSeries) filter = { testSeries: req.body.testSeries, ...own };
+  else if (req.body?.quiz) filter = { quiz: req.body.quiz, ...own };
+  if (!filter) return res.status(400).json({ message: "Provide a quiz or test to update." });
+
+  // Least-recently-updated first so repeated runs finish the whole set.
+  const questions = await Question.find(filter).sort("updatedAt").select("_id type text options correct columnA columnB tableRows assertion reason explanation optionExplanations").lean();
+  if (!questions.length) return res.status(400).json({ message: "No questions found to update (or not your content)." });
+
+  const notes = String(req.body?.notes || "").trim();
+  cleanupJobs();
+  const id = newJobId();
+  genJobs.set(id, { status: "pending", questions: [], requested: questions.length, error: null, model: chosen.model, updatedAt: Date.now() });
+  runRegenAllJob(id, { endpoints: chosen.endpoints, model: chosen.model, questions, owner: scope.owner, notes });
+  res.json({ jobId: id, requested: questions.length, model: chosen.model });
 }
 
 // POST /api/ai/regenerate-question  (admin or owning client) — analyse ONE
@@ -2245,52 +2410,8 @@ export async function regenerateQuestion(req, res) {
     return res.status(502).json({ message: msg });
   }
 
-  // Apply everything the AI rebuilt: the re-wrapped stem/columns (same meaning,
-  // math wrapped so it RENDERS), fresh options + answer, and explanations.
-  const set = {};
-  if (parsed.explanation) set.explanation = parsed.explanation;
-  // Column-based questions keep their items in columnA/columnB — never in the
-  // stem. So for these, strip any "Column A/B …" block the model wrongly merged
-  // into "text" (this also CLEANS a question already broken that way), and only
-  // replace the column arrays (same item count) with their LaTeX-wrapped form.
-  const isColumnType = ["matching", "pair", "pairselect", "statement"].includes(q.type);
-  const isTableType = q.type === "table";
-  if (isColumnType) {
-    // Take the intro only (before any "Column A/B …"); fall back to cleaning the
-    // stored stem so a question already bloated with columns gets repaired.
-    const introOnly = (s) => String(s || "").split(/\bColumn\s*[AB]\b\s*:?/i)[0].trim();
-    const intro = introOnly(parsed.text) || introOnly(q.text);
-    if (intro) set.text = intro;
-  } else if (isTableType) {
-    // The data table belongs in tableRows — strip any markdown/pipe table (a line
-    // with 2+ "|") that ended up in the stem, keeping only the question sentence.
-    // Falls back to cleaning the stored stem so an already-broken question is fixed.
-    const stripTable = (s) => String(s || "").split(/\r?\n/).filter((ln) => (ln.match(/\|/g) || []).length < 2).join("\n").replace(/\n{2,}/g, "\n").trim();
-    const intro = stripTable(parsed.text) || stripTable(q.text);
-    if (intro) set.text = intro;
-    if (Array.isArray(parsed.tableRows) && parsed.tableRows.length && parsed.tableRows.every((r) => Array.isArray(r))) {
-      set.tableRows = parsed.tableRows.map((r) => r.map((c) => (c == null ? "" : String(c))));
-    }
-  } else if (parsed.text) {
-    set.text = parsed.text;
-  }
-  // Strip any leading "1."/"I." marker — the app auto-numbers Column A (1,2,3,4)
-  // and Column B (I,II,III,IV), so keeping a prefix here double-numbers them.
-  if (Array.isArray(parsed.columnA) && Array.isArray(q.columnA) && parsed.columnA.length === q.columnA.length) set.columnA = parsed.columnA.map(stripListMarker);
-  if (Array.isArray(parsed.columnB) && Array.isArray(q.columnB) && parsed.columnB.length === q.columnB.length) set.columnB = parsed.columnB.map(stripListMarker);
-  const newCorrect = Number.isInteger(parsed.correct) && parsed.correct >= 0 && parsed.correct <= 3 ? parsed.correct : null;
-  const newOptions = Array.isArray(parsed.options) && parsed.options.length === 4 && parsed.options.every((s) => String(s).trim() !== "")
-    ? parsed.options.map((x) => String(x)) : null;
-  const canFixOptions = !q.type || ["mcq", "table", "pair", "pairselect", "statement", "matching"].includes(q.type);
-  if (newOptions && newCorrect != null && canFixOptions) set.options = newOptions;
-  if (newCorrect != null) set.correct = newCorrect;
-  const eff = newCorrect != null ? newCorrect : q.correct;
-  if (Array.isArray(parsed.optionExplanations)) {
-    const oe = parsed.optionExplanations.slice(0, 4);
-    while (oe.length < 4) oe.push("");
-    if (typeof eff === "number" && eff >= 0 && eff < 4) oe[eff] = "";
-    set.optionExplanations = oe;
-  }
+  // Apply everything the AI rebuilt (shared with the bulk "Regenerate all" job).
+  const set = buildRegenSet(q, parsed);
   if (!Object.keys(set).length) return res.status(502).json({ message: "The AI did not return any usable changes. Try again." });
 
   await Question.updateOne({ _id: q._id }, { $set: set });
