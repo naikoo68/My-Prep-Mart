@@ -65,6 +65,8 @@ export default function ClientRegister() {
   }, [planKey, coupon, referral, form.email]);
 
   const selectedPlan = plans.find((p) => p.key === planKey) || plans[0];
+  // The free trial has no price, so coupon/referral don't apply — hide them.
+  const isFreePlan = !!selectedPlan?.trial || (selectedPlan?.price ?? 0) <= 0;
   const basePrice = offer?.basePrice ?? selectedPlan?.price ?? 0;
   const discount = offer?.discount ?? 0;
   const total = offer?.finalPrice ?? selectedPlan?.price ?? 0;
@@ -235,7 +237,7 @@ export default function ClientRegister() {
                 <button
                   type="button"
                   key={p.key}
-                  onClick={() => setPlanKey(p.key)}
+                  onClick={() => { setPlanKey(p.key); if (p.trial || (p.price ?? 0) <= 0) { setCoupon(""); setReferral(""); } }}
                   className={`relative rounded-xl border p-3 text-left transition ${
                     active
                       ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500 dark:bg-brand-900/20"
@@ -266,7 +268,8 @@ export default function ClientRegister() {
           ) : null}
         </div>
 
-        {/* Coupon + referral */}
+        {/* Coupon + referral — hidden for the free trial (nothing to discount) */}
+        {!isFreePlan && (
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium">
@@ -305,6 +308,7 @@ export default function ClientRegister() {
             )}
           </div>
         </div>
+        )}
 
         {/* Price summary */}
         <div className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
