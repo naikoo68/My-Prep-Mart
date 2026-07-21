@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { KeyRound, Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Loader2, RefreshCw, Power, Download, List, Layers } from "lucide-react";
+import { KeyRound, Plus, Trash2, Pencil, X, CheckCircle2, XCircle, Loader2, RefreshCw, Power, Download, List, Layers, Wand2 } from "lucide-react";
 import { aiService } from "../../services";
 import { Loading, ErrorState, EmptyState } from "../../components/ui/AsyncState";
 import AiPlansManager from "../../components/admin/AiPlansManager";
@@ -19,7 +19,7 @@ const PRESETS = [
   { label: "Kiro", baseUrl: "https://your-kiro-gateway/v1", models: "claude-sonnet-4" },
 ];
 
-const blank = { label: "", baseUrl: GEMINI_BASE, models: "gemini-2.5-flash", key: "", creditLimit: "" };
+const blank = { label: "", baseUrl: GEMINI_BASE, models: "gemini-2.5-flash", key: "", creditLimit: "", autoDetect: true };
 // Bulk-add defaults: one shared preset applied to every pasted key.
 const blankBulk = { label: "", baseUrl: GEMINI_BASE, models: "gemini-2.5-flash", creditLimit: "", keysText: "" };
 
@@ -45,6 +45,7 @@ export default function AdminAiKeys({ clientMode = false }) {
   const [modal, setModal] = useState(null); // { mode:"add"|"edit", data }
   const [form, setForm] = useState(blank);
   const [saving, setSaving] = useState(false);
+  const [detecting, setDetecting] = useState(false); // auto-detecting a working model after add
   const [bulkModal, setBulkModal] = useState(false);
   const [bulkForm, setBulkForm] = useState(blankBulk);
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -82,10 +83,17 @@ export default function AdminAiKeys({ clientMode = false }) {
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
+    setError("");
     try {
       if (modal.mode === "add") {
         if (!form.key.trim()) throw new Error("Paste the API key.");
-        await aiService.keys.create(form);
+        const created = await aiService.keys.create(form);
+        // Auto-find a working model for the pasted key before closing.
+        if (form.autoDetect && created?._id) {
+          setDetecting(true);
+          try { await aiService.keys.autoModel(created._id); } catch { /* keep the key even if detection fails */ }
+          setDetecting(false);
+        }
       } else {
         await aiService.keys.update(modal.data._id, form); // blank key keeps the old one
       }
@@ -95,6 +103,22 @@ export default function AdminAiKeys({ clientMode = false }) {
       setError(err.message);
     } finally {
       setSaving(false);
+      setDetecting(false);
+    }
+  };
+
+  // Auto-detect + set a working model for an existing key (magic-wand button).
+  const autoDetectOne = async (k) => {
+    setBusy((b) => ({ ...b, [k._id]: true }));
+    setError("");
+    try {
+      const res = await aiService.keys.autoModel(k._id);
+      load();
+      if (res && res.ok === false) setError(res.error || "No working model found for this key.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy((b) => ({ ...b, [k._id]: false }));
     }
   };
 
@@ -354,6 +378,9 @@ export default function AdminAiKeys({ clientMode = false }) {
                 </button>
               ) : (
                 <div className="flex flex-shrink-0 items-center gap-1">
+                  <button onClick={() => autoDetectOne(k)} disabled={busy[k._id]} title="Auto-detect & set a working model" className="rounded-lg p-2 text-accent-600 hover:bg-accent-50 disabled:opacity-50 dark:hover:bg-accent-900/30">
+                    {busy[k._id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  </button>
                   <button onClick={() => showModels(k)} disabled={modelsBusy[k._id]} title="Show models this key can use" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800">
                     {modelsBusy[k._id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <List className="h-4 w-4" />}
                   </button>
@@ -457,10 +484,17 @@ export default function AdminAiKeys({ clientMode = false }) {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-semibold">Model(s)</label>
+                <label className="mb-1 block text-sm font-semibold">Model(s) {modal.mode === "add" && form.autoDetect && <span className="font-normal text-slate-400">(auto-detected — optional)</span>}</label>
                 <input className="input" value={form.models} onChange={(e) => setForm({ ...form, models: e.target.value })} placeholder="gemini-2.5-flash" />
                 <p className="mt-1 text-xs text-slate-400">Comma-separate multiple models. Use the <b>same</b> model on several keys to make them quota fallbacks.</p>
               </div>
+
+              {modal.mode === "add" && (
+                <label className="flex items-start gap-2 rounded-lg bg-brand-50 px-3 py-2 text-sm dark:bg-brand-900/20">
+                  <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-600" checked={form.autoDetect} onChange={(e) => setForm({ ...form, autoDetect: e.target.checked })} />
+                  <span><b>Auto-detect a working model</b> — after adding, I'll test the key's models and set the first one that works (recommended).</span>
+                </label>
+              )}
 
               <div>
                 <label className="mb-1 block text-sm font-semibold">Credit limit <span className="font-normal text-slate-400">(tokens, optional)</span></label>
@@ -478,7 +512,7 @@ export default function AdminAiKeys({ clientMode = false }) {
 
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" onClick={() => setModal(null)} className="btn-outline">Cancel</button>
-              <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : modal.mode === "add" ? "Add Key" : "Save Changes"}</button>
+              <button type="submit" disabled={saving} className="btn-primary">{detecting ? <><Loader2 className="h-4 w-4 animate-spin" /> Finding a working model…</> : saving ? "Saving..." : modal.mode === "add" ? "Add Key" : "Save Changes"}</button>
             </div>
           </form>
         </div>

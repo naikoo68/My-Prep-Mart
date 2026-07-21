@@ -297,6 +297,7 @@ export const aiService = {
     remove: (id) => api.del(`/ai/keys/${id}`),
     test: (id) => api.post(`/ai/keys/${id}/test`),
     models: (id) => api.post(`/ai/keys/${id}/models`), // which models this key can use
+    autoModel: (id) => api.post(`/ai/keys/${id}/auto-model`), // auto-detect + set a working model
     importEnv: () => api.post("/ai/keys/import"),
     testAll: () => api.post("/ai/keys/test-all"),
   },

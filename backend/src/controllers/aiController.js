@@ -2417,6 +2417,69 @@ async function runKeyTest(doc) {
   return r.ok;
 }
 
+// Order candidate models best-first: prefer FREE, then light flash/mini/chat
+// models; drop non-chat modalities (embeddings, image, audio, …).
+function rankModels(models) {
+  const clean = (models || []).filter((m) => m && !/embed|vision|image|whisper|tts|audio|moderation|rerank|dall|diffusion/i.test(m));
+  const pref = [/:free$/i, /gemini[.\-\d]*flash/i, /flash/i, /gpt-4o-mini/i, /mini/i, /haiku/i, /chat/i];
+  return clean
+    .map((m) => { const i = pref.findIndex((rx) => rx.test(m)); return { m, s: i === -1 ? pref.length : i }; })
+    .sort((a, b) => a.s - b.s)
+    .map((x) => x.m);
+}
+
+// Auto-find a WORKING model for a key: list the models it can use, then live-
+// test them best-first until one replies ok, and store that model on the key.
+// A model that only hits a rate limit (429/quota) is still valid, so it's kept
+// as a fallback if nothing replies ok. Returns { ok, model, tried, limited }.
+async function autoDetectModel(doc) {
+  const baseUrl = (doc.baseUrl || DEFAULT_BASE).replace(/\/$/, "");
+  let candidates = await fetchModels(doc.key, baseUrl);
+  if (!candidates.length) {
+    // Provider didn't list models → try the configured one(s), then common ids.
+    candidates = (doc.models || "").split(",").map((m) => m.trim()).filter(Boolean);
+    if (!candidates.length) candidates = ["gpt-4o-mini", "gemini-2.5-flash", "llama-3.3-70b-versatile", "deepseek-chat"];
+  }
+  const ranked = rankModels(candidates);
+  let limited = "";
+  let tried = 0;
+  for (const model of ranked.slice(0, 18)) { // cap attempts so the request stays bounded
+    tried += 1;
+    // eslint-disable-next-line no-await-in-loop
+    const r = await callProvider({ key: doc.key, baseUrl, model, userPrompt: "Reply with the word ok.", maxTokens: 5 });
+    if (r.ok) {
+      doc.models = model;
+      doc.lastStatus = "ok";
+      doc.lastError = "";
+      doc.lastCheckedAt = new Date();
+      await doc.save();
+      return { ok: true, model, tried };
+    }
+    if (!limited && (r.status === 429 || /quota|rate.?limit|exhausted/i.test(r.detail || ""))) limited = model;
+  }
+  if (limited) {
+    doc.models = limited;
+    doc.lastStatus = "ok";
+    doc.lastError = "Model is valid but was rate-limited during the test.";
+    doc.lastCheckedAt = new Date();
+    await doc.save();
+    return { ok: true, model: limited, tried, limited: true };
+  }
+  doc.lastStatus = "error";
+  doc.lastError = "No working model found for this key.";
+  doc.lastCheckedAt = new Date();
+  await doc.save();
+  return { ok: false, model: "", tried };
+}
+
+// POST /api/ai/keys/:id/auto-model — auto-detect + set a working model on a key.
+export async function autoDetectKeyModel(req, res) {
+  const doc = await AiKey.findOne({ _id: req.params.id, owner: keyOwner(req) ?? null });
+  if (!doc) return res.status(404).json({ message: "Key not found" });
+  const result = await autoDetectModel(doc);
+  res.json({ ...result, models: doc.models, status: doc.lastStatus, error: doc.lastError });
+}
+
 // POST /api/ai/keys/import (admin) — copy Render env-var keys into the DB so they
 // become fully manageable (test/edit/delete). Skips keys already imported.
 export async function importEnvKeys(req, res) {

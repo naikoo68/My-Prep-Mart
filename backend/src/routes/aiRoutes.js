@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   aiStatus, generateQuestions, jobStatus, extractQuestions, generateNotes, extendExplanations, extendOneExplanation, regenerateQuestion,
-  listKeys, createKey, bulkCreateKeys, updateKey, deleteKey, testKey, importEnvKeys, testAllKeys, listKeyModels,
+  listKeys, createKey, bulkCreateKeys, updateKey, deleteKey, testKey, importEnvKeys, testAllKeys, listKeyModels, autoDetectKeyModel,
   getAiAccess, setAiMode,
 } from "../controllers/aiController.js";
 import { protect, authorize } from "../middleware/auth.js";
@@ -37,5 +37,6 @@ router.put("/keys/:id", ...manage, updateKey);
 router.delete("/keys/:id", ...manage, deleteKey);
 router.post("/keys/:id/test", ...manage, testKey);
 router.post("/keys/:id/models", ...manage, listKeyModels); // list models this key can use
+router.post("/keys/:id/auto-model", ...manage, autoDetectKeyModel); // auto-find + set a working model
 
 export default router;
