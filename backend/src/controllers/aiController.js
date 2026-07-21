@@ -1636,6 +1636,27 @@ MATCHING / PAIR / STATEMENT questions ("match the columns", "how many pairs are 
 - If NO option matches the true answer (e.g. ZERO pairs are correctly matched but there is no "None" option), return a corrected "options" array of EXACTLY 4 that INCLUDES the right choice (e.g. "None of the pairs are correctly matched") and set "correct" to its index.
 STRICT: Do NOT change the question's wording or meaning, and do NOT invent a different question. You MAY fix the "correct" index and option VALUES ONLY when your explicit verification (step-by-step calculation, or a pair-by-pair / statement-by-statement check) proves the stored answer is wrong — otherwise omit "correct"/"options" and leave them unchanged. Return ONLY the JSON object.`;
 
+// Dedicated, FORCEFUL prompt for "extend + fix options". Unlike the conservative
+// EXTEND prompt, this one is explicitly told to REWRITE off-category distractors
+// so all four options match the correct answer's category — while keeping the
+// stem and the correct answer unchanged.
+const EXTEND_FIXOPTS_SYSTEM_PROMPT = `You are an expert exam editor. You are given ONE multiple-choice question: its stem, its four current options, and WHICH option is the CORRECT answer. You have TWO jobs and you MUST do both:
+
+1) FIX THE OPTIONS so all four belong to the SAME real-world category/type as the correct answer — WITHOUT changing the stem or which answer is correct.
+2) Write a rich, correct EXPLANATION and per-option notes.
+
+Respond with ONE valid JSON object and NOTHING else (no markdown, no code fences):
+{"options":["A","B","C","D"],"correct":<0-3>,"explanation":"...","optionExplanations":["","","",""]}
+
+OPTIONS — MANDATORY, this is the main task:
+- First identify the CATEGORY of the correct answer (e.g. is it a BIRD? a tree? a person? a river? a disease? a language name?).
+- Keep the CORRECT option's text EXACTLY as given. Do NOT change it and do NOT change which answer is correct.
+- Look at the OTHER three options. REPLACE every option that is NOT the same category as the correct answer with a REAL, well-known member of that SAME category that a student could genuinely confuse with the correct answer. Example: for "the Dogri name of the Kalij PHEASANT (a bird)", every option MUST be a BIRD name — replace a deer (Hangul), a tree (Booune) or a flower (Pamposh) with real bird names. Match the same language/naming style (e.g. local Dogri/Kashmiri/Hindi names), length and form.
+- After your fix, ALL FOUR options must be plausible members of the one category. NEVER leave an off-category, unrelated or joke option, and never make a distractor an obvious give-away.
+- "correct": the 0-based index (0-3) of the correct option in the "options" array you return (it must still point to the original correct answer's text).
+
+EXPLANATION — "explanation": thorough and self-contained; put each point on its OWN line; add local/alternative names in brackets. "optionExplanations": EXACTLY 4 short notes saying why each option is right/wrong; leave the correct option's entry "". MATH: wrap any math/number in $...$ (never \\( \\) or \\[ \\]); NEVER use "$" for money. No markdown, no trailing commas. Return ONLY the JSON object.`;
+
 const EXT_LETTERS = ["A", "B", "C", "D"];
 const toRomanLite = (n) => { const m = [["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]]; let r = ""; for (const [s, v] of m) while (n >= v) { r += s; n -= v; } return r; };
 
@@ -1843,7 +1864,7 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
     const r = await callWithFallback({
       endpoints: eps && eps.length ? eps : endpoints,
       model,
-      systemPrompt: EXTEND_SYSTEM_PROMPT,
+      systemPrompt: fixOptions ? EXTEND_FIXOPTS_SYSTEM_PROMPT : EXTEND_SYSTEM_PROMPT,
       userPrompt: buildExtendPrompt(q, notes, fixOptions),
       maxTokens: 8000, // the verified/step-by-step replies are long — avoid truncation
       owner,
@@ -1996,7 +2017,7 @@ export async function extendOneExplanation(req, res) {
     const r = await callWithFallback({
       endpoints: chosen.endpoints,
       model: chosen.model,
-      systemPrompt: EXTEND_SYSTEM_PROMPT,
+      systemPrompt: req.body?.fixOptions ? EXTEND_FIXOPTS_SYSTEM_PROMPT : EXTEND_SYSTEM_PROMPT,
       userPrompt: buildExtendPrompt(q, notes, !!req.body?.fixOptions),
       maxTokens: 8000,
       owner: scope.owner,
