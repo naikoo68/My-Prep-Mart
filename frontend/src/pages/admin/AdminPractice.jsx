@@ -542,7 +542,7 @@ export default function AdminPractice({ clientMode = false }) {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setViewQ(null)}>
           <div onClick={(e) => e.stopPropagation()} className="my-8 w-full max-w-2xl animate-scale-in card p-6">
             <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-bold">Question</h3><button onClick={() => setViewQ(null)}><X className="h-5 w-5" /></button></div>
-            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} onSchedule={() => setScheduleQ(viewQ)} />
+            <QuestionView q={viewQ} onRegenerate={() => regenerateQ(viewQ)} regenerating={regenId === viewQ._id} onExtend={() => setExtendOneItem(viewQ)} extending={extendingQId === viewQ._id} onSchedule={clientMode ? undefined : () => setScheduleQ(viewQ)} />
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setAddToTestQ(viewQ)} className="btn-outline"><ClipboardList className="h-4 w-4" /> Add to test</button>
               <button onClick={() => setViewQ(null)} className="btn-outline">Close</button>
@@ -587,7 +587,7 @@ export default function AdminPractice({ clientMode = false }) {
                       </>
                     )}
                   </div>
-                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} onSchedule={() => setScheduleQ(it)} />
+                  <QuestionView q={it} index={i + 1} studentView={studentView} onRegenerate={() => regenerateQ(it)} regenerating={regenId === it._id} onExtend={() => setExtendOneItem(it)} extending={extendingQId === it._id} onSchedule={clientMode ? undefined : () => setScheduleQ(it)} />
                 </div>
               ))}
             </div>
@@ -761,7 +761,7 @@ export default function AdminPractice({ clientMode = false }) {
         onDone={() => { if (qItem) reloadTq(); }}
       />
 
-      <ScheduleQuestionModal open={!!scheduleQ} question={scheduleQ} onClose={() => setScheduleQ(null)} />
+      {!clientMode && <ScheduleQuestionModal open={!!scheduleQ} question={scheduleQ} onClose={() => setScheduleQ(null)} />}
 
       {/* Visibility modal */}
       {access && (
