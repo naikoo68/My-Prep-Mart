@@ -624,6 +624,30 @@ function retryWaitMs(headers, body) {
   return 0;
 }
 
+// Turn a provider 429 body into ACTIONABLE guidance. Free tiers enforce two
+// separate limits: a per-MINUTE rate (clears in seconds) and a per-DAY quota
+// (only resets the next day). Crucially, several keys from the SAME Google/
+// provider account or project usually SHARE one quota — so adding more keys
+// from the same account adds NO capacity. This is the most common reason
+// "I added another key but it still says quota" happens.
+function quota429Message(detail = "") {
+  const d = String(detail || "");
+  const perDay = /per[\s_-]*day|dailylimit|daily limit|GenerateRequests?PerDay|quota.*(exceeded|exhausted).*(day|daily)|FreeTier|free[\s_-]*tier.*(day|daily)/i.test(d);
+  const shared =
+    " Note: multiple keys from the SAME Google/provider account share ONE quota, so adding more keys from that account won't help — add a key from a DIFFERENT account/project (or enable billing).";
+  if (perDay) {
+    return (
+      "Every API key is out of its DAILY free quota (429). This resets tomorrow — waiting a few minutes won't help." +
+      shared +
+      " You can also import questions from a web page instead, which uses far fewer requests."
+    );
+  }
+  return (
+    "All API keys hit their per-minute rate limit (429). This usually clears within a minute — wait a moment, use a smaller batch, then try again." +
+    shared
+  );
+}
+
 // One provider call with transient-error retries. Returns { ok, status, content, detail }.
 async function callProvider({ key, baseUrl, model, userPrompt, maxTokens, systemPrompt = SYSTEM_PROMPT, temperature = 0.6 }) {
   const payload = {
@@ -891,8 +915,7 @@ async function runGenerationJob(id, ctx) {
     if (!collected.length) {
       let msg;
       if (lastError?.status === 429) {
-        msg =
-          "All configured API keys hit their quota/rate limit (429). Free tiers allow only limited requests per minute/day. Add another API key (Admin → AI Keys), wait a minute (or until tomorrow), use a smaller batch, or enable billing on your key.";
+        msg = quota429Message(lastError.detail);
       } else if (lastError?.status === 404) {
         msg =
           "The selected AI model isn't available for your key (404). Go to Admin → AI Keys, click 'Show models' on the key to see valid model ids, click one to set it, then pick that model in the generator.";
