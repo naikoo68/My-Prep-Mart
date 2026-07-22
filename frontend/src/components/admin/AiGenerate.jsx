@@ -46,6 +46,7 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
   const [msg, setMsg] = useState("");
   const [destChoice, setDestChoice] = useState("current"); // "current" | "new" (where the batch is inserted)
   const [newName, setNewName] = useState("");
+  const [inferring, setInferring] = useState(false); // detecting the topic from a quiz's existing questions
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +64,18 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
     // fresh batch continues from the uncovered subtopics instead of repeating
     // what was generated in an earlier session (true batch-to-batch continuation).
     setAvoidStems((existingQuestions || []).map((q) => (typeof q === "string" ? q : q?.text)).filter(Boolean));
+    // If this quiz already has questions but NO remembered topic (it was built
+    // before topics were saved), infer the topic from the questions so the field
+    // isn't blank. Fills only if the user hasn't typed anything.
+    const stems = (existingQuestions || []).slice(0, 40);
+    if (!(defaultTopic || "").trim() && stems.length) {
+      setInferring(true);
+      aiService
+        .inferTopic({ questions: stems, mode: isClient ? source : undefined })
+        .then((r) => { if (r?.topic) setTopic((t) => (t.trim() ? t : r.topic)); })
+        .catch(() => {})
+        .finally(() => setInferring(false));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultSection, defaultTopic, defaultSubtopics]);
 
@@ -282,7 +295,10 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
               </div>
             )}
 
-            <label className="mb-1 block text-sm font-semibold">Topic / syllabus</label>
+            <label className="mb-1 block text-sm font-semibold">
+              Topic / syllabus
+              {inferring && <span className="ml-2 text-xs font-normal text-slate-400">detecting from existing questions…</span>}
+            </label>
             <textarea
               rows={2}
               className="input resize-y"

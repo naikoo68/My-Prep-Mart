@@ -1831,6 +1831,37 @@ function buildNotesPrompt({ topic, notes }) {
   return lines.join("\n");
 }
 
+// POST /api/ai/infer-topic — given a few existing question stems, name the ONE
+// specific topic/syllabus they belong to. Lets the generator pre-fill the topic
+// for quizzes built BEFORE the topic was remembered. Returns { topic }.
+export async function inferTopic(req, res) {
+  const scope = resolveScope(req.user, req.body?.mode);
+  if (scope.denied) return res.json({ topic: "" });
+  const chosen = await resolveModel(String(req.body?.model || "").trim(), scope);
+  if (!chosen || !chosen.endpoints.length) return res.json({ topic: "" });
+  const stems = (Array.isArray(req.body?.questions) ? req.body.questions : [])
+    .map((s) => String(s?.text || s || "").trim())
+    .filter(Boolean)
+    .slice(0, 40);
+  if (!stems.length) return res.json({ topic: "" });
+  const userPrompt = [
+    "Below are exam question stems that all come from ONE quiz. In 3-8 words, name the SINGLE specific topic/syllabus they belong to, as a student would title it (e.g. \"Physiography of Jammu and Kashmir\", \"Indian Constitution — Fundamental Rights\"). Return ONLY the topic text — no quotes, no explanation, no trailing punctuation.",
+    ...stems.map((s, i) => `${i + 1}. ${s.slice(0, 160)}`),
+  ].join("\n");
+  const r = await callWithFallback({
+    endpoints: chosen.endpoints,
+    model: chosen.model,
+    userPrompt,
+    maxTokens: 40,
+    owner: scope.owner,
+    systemPrompt: "You output ONLY a short topic name, nothing else.",
+  });
+  const topic = r.ok
+    ? String(r.content || "").split("\n")[0].replace(/^["'\s]+|["'\s.]+$/g, "").slice(0, 120)
+    : "";
+  res.json({ topic });
+}
+
 // POST /api/ai/notes — generate study notes (Markdown text) on a topic.
 export async function generateNotes(req, res) {
   const scope = resolveScope(req.user, req.body?.mode);
