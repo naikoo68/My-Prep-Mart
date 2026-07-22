@@ -21,7 +21,7 @@ import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
 import ScheduleQuestionModal from "../../components/admin/ScheduleQuestionModal";
 import MigrateQuizModal from "../../components/admin/MigrateQuizModal";
 import MigrateTopicsModal from "../../components/admin/MigrateTopicsModal";
-import { Files } from "lucide-react";
+import { Files, ScanSearch, Loader2, Sparkles } from "lucide-react";
 
 // Subject names from a practice item's typed plan (for "add to subject" tools).
 const sectionsOf = (item) => (item?.subjectPlan || []).map((p) => p.subject).filter(Boolean);
@@ -62,6 +62,14 @@ export default function AdminPractice({ clientMode = false }) {
   const [aiOpen, setAiOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [aiTarget, setAiTarget] = useState(null); // {id,name} — after AI creates a new quiz/test, later batches target it
+  // "Scan missing areas": analyse all quizzes in this topic for uncovered syllabus.
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanErr, setScanErr] = useState("");
+  const [scanMissing, setScanMissing] = useState([]);
+  const [scanTopic, setScanTopic] = useState("");
+  const [scanStems, setScanStems] = useState([]);
+  const [gapPrefill, setGapPrefill] = useState(null); // {topic, subtopics, avoid} when generating from the scan gaps
   const [bankOpen, setBankOpen] = useState(false); // hand-pick questions from the bank
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ params: null, name: "" }); // duplicate-scan target
@@ -155,6 +163,34 @@ export default function AdminPractice({ clientMode = false }) {
   };
   const reloadTq = () => testService.getQuestions(qItem._id).then(setTq).catch(() => {});
 
+  // Scan every quiz/test in the current topic for syllabus areas not yet covered.
+  const scanMissingAreas = async () => {
+    const topicName = (kind === "quiz" ? topic : subject)?.name || "";
+    setScanOpen(true); setScanning(true); setScanErr(""); setScanMissing([]); setScanTopic(topicName); setScanStems([]);
+    try {
+      const lists = await Promise.all((items || []).map((it) => testService.getQuestions(it._id).catch(() => [])));
+      const stems = lists.flat().map((q) => q?.text).filter(Boolean);
+      setScanStems(stems);
+      const r = await aiService.coverageGaps({ topic: topicName, questions: stems });
+      setScanMissing(Array.isArray(r?.missing) ? r.missing : []);
+    } catch (e) {
+      setScanErr(e.message || "Scan failed.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  // Open the generator pre-filled to build a NEW quiz covering the missing areas,
+  // avoiding every question already made in this topic.
+  const generateFromGaps = () => {
+    setGapPrefill({ topic: scanTopic, subtopics: scanMissing.join(", "), avoid: scanStems });
+    setQItem(null);
+    setAiTarget(null);
+    setForceSection("");
+    setScanOpen(false);
+    setAiOpen(true);
+  };
+
   // Save an AI-generated / imported batch. When opts.newTarget = { name } is set
   // (the "New quiz/test" option in the modal) we CREATE a new practice item under
   // the current parent and insert the batch there; later batches then target it.
@@ -176,6 +212,7 @@ export default function AdminPractice({ clientMode = false }) {
       itemId = created._id;
       setAiTarget({ id: itemId, name }); // subsequent batches target the new item
     }
+    if (!itemId) throw new Error(`Choose “New ${kind}” and enter a name to save these questions.`);
     const res = await contentService.bulkQuestions(questions, { testSeries: itemId, section });
     // Remember the topic/subtopics on this item so reopening the generator
     // pre-fills them and coverage can continue from where it left off.
@@ -329,11 +366,22 @@ export default function AdminPractice({ clientMode = false }) {
         </nav>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-lg font-bold"><H.icon className="h-5 w-5 text-brand-600" /> {H.title}</h2>
-        <button onClick={() => setModal({ type: addType, mode: "add", data: {} })} className="btn-primary">
-          <Plus className="h-4 w-4" /> {H.add}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {view === "items" && (kind === "quiz" ? topic : subject) && items.length > 0 && (
+            <button
+              onClick={scanMissingAreas}
+              className="btn-outline text-brand-600"
+              title={`Scan all ${kind === "quiz" ? "quizzes" : "tests"} here for syllabus areas not yet covered`}
+            >
+              <ScanSearch className="h-4 w-4" /> Scan Missing Areas
+            </button>
+          )}
+          <button onClick={() => setModal({ type: addType, mode: "add", data: {} })} className="btn-primary">
+            <Plus className="h-4 w-4" /> {H.add}
+          </button>
+        </div>
       </div>
 
       {/* Bulk-migrate topics: tick topics, then move them all to another subject */}
@@ -451,7 +499,7 @@ export default function AdminPractice({ clientMode = false }) {
               onCopyCsv={copyCsv}
               onDownloadCsv={downloadCsv}
               onBulkUpload={(subject) => { setForceSection(subject); setBulkOpen(true); }}
-              onAiGenerate={(subject) => { setForceSection(subject); setAiTarget(null); setAiOpen(true); }}
+              onAiGenerate={(subject) => { setForceSection(subject); setAiTarget(null); setGapPrefill(null); setAiOpen(true); }}
               onImportWeb={(subject) => { setForceSection(subject); setAiTarget(null); setImportOpen(true); }}
               onPickFromBank={(subject) => { setForceSection(subject); setBankOpen(true); }}
               onExtendExplanations={() => setExtendItem(qItem)}
@@ -569,14 +617,15 @@ export default function AdminPractice({ clientMode = false }) {
         open={aiOpen}
         sections={sectionsOf(qItem)}
         defaultSection={normSection(forceSection)}
-        title={`Generate with AI — ${qItem?.name || ""}${normSection(forceSection) ? ` (${normSection(forceSection)})` : ""}`}
-        onClose={() => { setAiOpen(false); setForceSection(""); }}
+        title={`Generate with AI — ${qItem?.name || (gapPrefill ? `new ${kind} (missing areas)` : "")}${normSection(forceSection) ? ` (${normSection(forceSection)})` : ""}`}
+        onClose={() => { setAiOpen(false); setForceSection(""); setGapPrefill(null); }}
         allowNewTarget
         newLeafLabel={kind}
         currentTargetName={aiTarget?.name || qItem?.name || ""}
-        existingQuestions={tq}
-        defaultTopic={qItem?.aiTopic || ""}
-        defaultSubtopics={qItem?.aiSubtopics || ""}
+        existingQuestions={gapPrefill ? gapPrefill.avoid : tq}
+        defaultTopic={gapPrefill ? gapPrefill.topic : (qItem?.aiTopic || "")}
+        defaultSubtopics={gapPrefill ? gapPrefill.subtopics : (qItem?.aiSubtopics || "")}
+        defaultDest={gapPrefill ? "new" : "current"}
         onUpload={(questions, opts = {}) => saveAiBatch(questions, opts)}
       />
 
@@ -591,6 +640,49 @@ export default function AdminPractice({ clientMode = false }) {
         currentTargetName={aiTarget?.name || qItem?.name || ""}
         onUpload={(questions, opts = {}) => saveAiBatch(questions, opts)}
       />
+
+      {/* Scan missing areas — coverage report across all quizzes/tests in this topic */}
+      {scanOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={() => setScanOpen(false)}>
+          <div className="my-8 w-full max-w-lg card p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-lg font-bold">
+                <ScanSearch className="h-5 w-5 text-brand-600" /> Missing areas{scanTopic ? ` — ${scanTopic}` : ""}
+              </h3>
+              <button onClick={() => setScanOpen(false)}><X className="h-5 w-5" /></button>
+            </div>
+
+            {scanning ? (
+              <p className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" /> Scanning {items.length} {kind === "quiz" ? "quiz(zes)" : "test(s)"} for uncovered subtopics…
+              </p>
+            ) : scanErr ? (
+              <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{scanErr}</div>
+            ) : scanMissing.length === 0 ? (
+              <p className="text-sm text-slate-500">No obvious gaps found — the {scanStems.length} question(s) here already cover the topic broadly.</p>
+            ) : (
+              <>
+                <p className="mb-2 text-sm text-slate-500">
+                  These syllabus areas are <b>not yet covered</b> by the {scanStems.length} question(s) across your {kind === "quiz" ? "quizzes" : "tests"}:
+                </p>
+                <ul className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+                  {scanMissing.map((m, i) => (
+                    <li key={i} className="flex gap-2"><span className="text-brand-500">•</span><span>{m}</span></li>
+                  ))}
+                </ul>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button onClick={() => { try { navigator.clipboard?.writeText(scanMissing.join(", ")); } catch { /* ignore */ } }} className="btn-outline">
+                    Copy list
+                  </button>
+                  <button onClick={generateFromGaps} className="btn-primary">
+                    <Sparkles className="h-4 w-4" /> Generate these into a new {kind}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <DuplicatesModal
         open={dupOpen}

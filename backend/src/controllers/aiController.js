@@ -1862,6 +1862,50 @@ export async function inferTopic(req, res) {
   res.json({ topic });
 }
 
+// POST /api/ai/coverage-gaps — given a topic and the stems of questions ALREADY
+// made across a set of quizzes, list the syllabus subtopics/areas NOT yet
+// covered so the user can generate questions to fill the gaps. Returns
+// { topic, coveredCount, missing:[...] }.
+export async function coverageGaps(req, res) {
+  const scope = resolveScope(req.user, req.body?.mode);
+  if (scope.denied) return res.status(403).json({ message: "AI access is not enabled for your account." });
+  const chosen = await resolveModel(String(req.body?.model || "").trim(), scope);
+  if (!chosen || !chosen.endpoints.length) {
+    return res.status(400).json({
+      message: scope.mode === "self" ? "No API keys added yet." : "AI is not configured. Add an API key in Admin → AI Keys.",
+    });
+  }
+  const topic = String(req.body?.topic || "").trim();
+  if (!topic) return res.status(400).json({ message: "A topic is required to scan coverage." });
+  const stems = (Array.isArray(req.body?.questions) ? req.body.questions : [])
+    .map((s) => String(s?.text || s || "").trim())
+    .filter(Boolean)
+    .slice(0, 300);
+  const covered = stems.length ? stems.map((s, i) => `${i + 1}. ${s.slice(0, 140)}`).join("\n") : "(none yet)";
+  const userPrompt = [
+    "You are a syllabus coverage analyst. Build the COMPLETE syllabus map for the topic below exactly as covered in NCERT, standard university textbooks and competitive exams — all major concepts, subtopics and micro-topics across definitions, terminology, causes, processes, mechanisms, types, classification, distribution, factors, effects, importance, examples, exceptions, comparisons, current affairs and (where relevant) maps/numericals.",
+    `Topic: ${topic}.`,
+    "",
+    `These are the stems of questions ALREADY created (${stems.length}) — treat their concepts as COVERED:`,
+    covered,
+    "",
+    "List the important subtopics/areas of the syllabus that are NOT yet covered by the questions above (the gaps still to be tested). Each item a short phrase (3-10 words), specific and non-overlapping. Do NOT list an area that is already covered above.",
+    "Return ONLY a JSON array of strings, e.g. [\"subtopic one\",\"subtopic two\"]. No commentary, no markdown.",
+  ].join("\n");
+  const r = await callWithFallback({
+    endpoints: chosen.endpoints,
+    model: chosen.model,
+    userPrompt,
+    maxTokens: 1200,
+    owner: scope.owner,
+    systemPrompt: "You output ONLY a JSON array of short strings — no markdown, no commentary.",
+  });
+  if (!r.ok) {
+    return res.status(502).json({ message: r.status === 429 ? quota429Message(r.detail) : `AI provider error (${r.status}). ${(r.detail || "").slice(0, 160)}` });
+  }
+  res.json({ topic, coveredCount: stems.length, missing: parseStringArray(r.content) });
+}
+
 // POST /api/ai/notes — generate study notes (Markdown text) on a topic.
 export async function generateNotes(req, res) {
   const scope = resolveScope(req.user, req.body?.mode);

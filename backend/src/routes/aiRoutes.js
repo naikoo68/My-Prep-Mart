@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   aiStatus, generateQuestions, jobStatus, extractQuestions, generateNotes, extendExplanations, extendOneExplanation, regenerateQuestion, regenerateAll,
   listKeys, createKey, bulkCreateKeys, updateKey, deleteKey, testKey, importEnvKeys, testAllKeys, listKeyModels, autoDetectKeyModel,
-  getAiAccess, setAiMode, inferTopic,
+  getAiAccess, setAiMode, inferTopic, coverageGaps,
 } from "../controllers/aiController.js";
 import { protect, authorize } from "../middleware/auth.js";
 
@@ -19,6 +19,7 @@ router.get("/job/:id", ...manage, jobStatus);
 router.post("/extract", ...manage, extractQuestions);
 router.post("/notes", ...manage, generateNotes); // generate study notes (Markdown) on a topic
 router.post("/infer-topic", ...manage, inferTopic); // name the topic a quiz's existing questions belong to
+router.post("/coverage-gaps", ...manage, coverageGaps); // list uncovered syllabus areas for a topic
 router.post("/extend-explanations", ...manage, extendExplanations); // AI-enrich all explanations in a quiz/test
 router.post("/extend-explanation", ...manage, extendOneExplanation); // AI-enrich ONE question's explanation
 router.post("/regenerate-question", ...manage, regenerateQuestion); // analyse ONE question and rebuild its options/answer
