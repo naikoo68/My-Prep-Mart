@@ -266,6 +266,11 @@ export async function aiStatus(req, res) {
   });
 }
 
+// Keep every AI path (generate / outline / coverage) STRICTLY inside the named
+// topic and out of sibling topics that are studied as their own chapters.
+const TOPIC_SCOPE_RULE =
+  "TOPIC SCOPE DISCIPLINE (critical): treat the given topic as a SPECIFIC, self-contained syllabus chapter and cover ONLY what genuinely belongs to it. Do NOT drift into ADJACENT / sibling topics that are studied as their OWN separate chapters. For example, if the topic is Physiography (relief, landforms, mountains, plateaus, plains, passes, glaciers, geology, tectonics) then EXCLUDE Drainage / River systems, Climate, Soils, Natural vegetation, Wildlife, Population and Economy — each of those is its own separate topic. Likewise Climate excludes physiography and rivers; Rivers / Drainage excludes climate and relief; and so on for any topic. If a concept overlaps two topics, treat it ONLY from the named topic's angle and never as the sibling topic's own content.";
+
 const SYSTEM_PROMPT = `You are an exam-preparation question writer. You output ONLY valid JSON, no markdown, no commentary.
 Return an object of the exact shape: {"questions": [ ... ]}.
 Each question object uses these fields:
@@ -295,6 +300,7 @@ CALCULATIONS & SELF-VERIFICATION (do this for EVERY question before you finalise
 - Re-check every calculation and fact; the marked "correct" option and the "optionExplanations" must be mutually consistent.
 MATH RENDERING (so numericals display correctly): wrap EVERY mathematical element in $...$ (inline LaTeX) — in the "text", the "options" AND the "explanation". This includes each numeric ANSWER OPTION that is a number/quantity/expression (e.g. options "$12.5$", "$\\frac{3}{4}$", "$2^{10}$", "$25\\%$", "$\\sqrt{2}$", "$3:4$"), every fraction, power, root, ratio, percentage and equation, and each step of a calculation. A plain number that is only ordinary prose (a year, a page count) need not be wrapped, but any numeric option or math expression MUST be. Use $...$ only (never \\( \\) or \\[ \\]) and never write bare LaTeX commands outside dollar signs. For a simple arrow between items (a route/sequence such as "Lakhanpur → Samba → Udhampur → Banihal"), use the plain Unicode arrow character → directly — do NOT write \\rightarrow or \\to.
 CURRENCY: NEVER use the "$" character for money/amounts anywhere ("text", "options", "explanation", "optionExplanations") — "$" is reserved ONLY for wrapping inline math, and a stray "$" (e.g. "$300") corrupts the rendering of the whole field. Write money as a plain number with the currency word, e.g. "300 dollars" or "900 rupees" or just "300".
+${TOPIC_SCOPE_RULE}
 COMPLETE SYLLABUS COVERAGE (top priority for CHOOSING what to ask):
 You are an expert educational assessment designer and subject specialist. Before writing, mentally build a SYLLABUS MAP of the topic exactly as covered in NCERT, standard university textbooks and competitive examinations (and current affairs where relevant), listing its major concepts, subtopics and micro-topics across EVERY applicable category: introduction, definitions, terminology, components, classification, principles, causes, processes, mechanisms, types, characteristics, distribution, factors, effects, importance, advantages, disadvantages, applications, examples, exceptions, comparisons, frequently-confused concepts, numericals/formulas and maps/diagrams (where applicable), plus current affairs, recent research and government policies. Also cover, wherever they apply, the historical, geographical, scientific, economic, environmental, political, technological and current dimensions, and the regional, national and international aspects.
 Then DISTRIBUTE the questions PROPORTIONALLY across ALL those sections so the batch MAXIMISES breadth — never exhaust one chapter or cluster on the few most obvious facts. Ensure every important concept, definition and term is tested at least ONCE before any concept is repeated. Cover BOTH the static and the dynamic portions of the syllabus, include all important terminology, and keep strict factual accuracy to the above standards.
@@ -340,6 +346,7 @@ async function outlineSubtopics({ endpoints, model, topic, notes, source, want }
   parts.push(
     `Deliberately include the less-obvious areas, not just the few headline facts. Each item must be a short phrase (3-10 words), specific enough to write several unique questions about, and must NOT overlap in meaning with another item.`
   );
+  parts.push(TOPIC_SCOPE_RULE);
   parts.push(`Return ONLY a JSON array of strings, e.g. ["subtopic one","subtopic two"]. No commentary, no markdown.`);
   const userPrompt = parts.join("\n");
   for (const ep of endpoints || []) {
@@ -374,6 +381,7 @@ function buildUserPrompt({ topic, count, difficulty, types, notes, plan, avoid, 
     lines.push(`Create the questions BASED ON the source material given at the end. Draw the facts and content from that material (you may use closely-related general knowledge to complete a question, but stay on the material's topics).`);
   }
   lines.push(`Topic / syllabus: ${topic}.`);
+  lines.push(TOPIC_SCOPE_RULE);
 
   if (Array.isArray(focus) && focus.length) {
     // Each chunk is assigned DIFFERENT subtopics so the overall batch spans the
@@ -1907,6 +1915,7 @@ export async function coverageGaps(req, res) {
     : [
         "You are a syllabus coverage analyst. Build a FIXED checklist of the 30 most important, broad, non-overlapping subtopics for the topic below (NCERT / standard university / competitive-exam scope). Keep them at a consistent, medium granularity — NOT hyper-specific niche facts.",
         `Topic: ${topic}.`,
+        TOPIC_SCOPE_RULE,
         "",
         `Question stems already created (${stems.length}) — treat their concepts as covered:`,
         coveredStr,

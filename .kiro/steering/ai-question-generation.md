@@ -55,3 +55,20 @@ from uncovered concepts; do not revise covered concepts unless explicitly asked.
 An optional **"Subtopics to cover"** input (frontend `AiGenerate.jsx`, backend
 `subtopics` body field) lets the user list exact subtopics; when provided they
 are used directly (skipping auto-detection). Leave empty → auto-detect.
+
+
+## Topic scope discipline
+
+Every AI path must stay STRICTLY inside the named topic and out of sibling
+topics that are studied as their own chapters. This is enforced by the
+`TOPIC_SCOPE_RULE` constant in `aiController.js`, injected into `SYSTEM_PROMPT`,
+`buildUserPrompt`, `outlineSubtopics` and `coverageGaps`.
+
+Example: for **Physiography** (relief, landforms, mountains, plateaus, plains,
+passes, glaciers, geology, tectonics) the AI must EXCLUDE Drainage/River
+systems, Climate, Soils, Natural vegetation, Wildlife, Population and Economy —
+each is its own topic. Likewise Climate excludes physiography and rivers;
+Rivers/Drainage excludes climate and relief; etc. Overlapping concepts are
+treated only from the named topic's angle, never as the sibling topic's content.
+
+Keep `TOPIC_SCOPE_RULE` applied to any new AI generation/analysis path.
