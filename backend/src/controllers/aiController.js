@@ -1881,29 +1881,49 @@ export async function coverageGaps(req, res) {
     .map((s) => String(s?.text || s || "").trim())
     .filter(Boolean)
     .slice(0, 300);
-  const covered = stems.length ? stems.map((s, i) => `${i + 1}. ${s.slice(0, 140)}`).join("\n") : "(none yet)";
+  const coveredStr = stems.length ? stems.map((s, i) => `${i + 1}. ${s.slice(0, 140)}`).join("\n") : "(none yet)";
   const userPrompt = [
     "You are a syllabus coverage analyst. Build the COMPLETE syllabus map for the topic below exactly as covered in NCERT, standard university textbooks and competitive exams — all major concepts, subtopics and micro-topics across definitions, terminology, causes, processes, mechanisms, types, classification, distribution, factors, effects, importance, examples, exceptions, comparisons, current affairs and (where relevant) maps/numericals.",
     `Topic: ${topic}.`,
     "",
     `These are the stems of questions ALREADY created (${stems.length}) — treat their concepts as COVERED:`,
-    covered,
+    coveredStr,
     "",
-    "List the important subtopics/areas of the syllabus that are NOT yet covered by the questions above (the gaps still to be tested). Each item a short phrase (3-10 words), specific and non-overlapping. Do NOT list an area that is already covered above.",
-    "Return ONLY a JSON array of strings, e.g. [\"subtopic one\",\"subtopic two\"]. No commentary, no markdown.",
+    "Split the syllabus subtopics into TWO lists: (a) \"covered\" — the subtopics the questions above already test; (b) \"missing\" — the important subtopics NOT yet covered (the gaps still to test). Each item a short phrase (3-10 words), specific and non-overlapping.",
+    "Return ONLY a JSON object of this exact shape: {\"covered\":[\"...\"],\"missing\":[\"...\"]}. No markdown, no commentary.",
   ].join("\n");
   const r = await callWithFallback({
     endpoints: chosen.endpoints,
     model: chosen.model,
     userPrompt,
-    maxTokens: 1200,
+    maxTokens: 1600,
     owner: scope.owner,
-    systemPrompt: "You output ONLY a JSON array of short strings — no markdown, no commentary.",
+    systemPrompt: "You output ONLY a JSON object {\"covered\":[],\"missing\":[]} — no markdown, no commentary.",
   });
   if (!r.ok) {
     return res.status(502).json({ message: r.status === 429 ? quota429Message(r.detail) : `AI provider error (${r.status}). ${(r.detail || "").slice(0, 160)}` });
   }
-  res.json({ topic, coveredCount: stems.length, missing: parseStringArray(r.content) });
+  const cov = parseCoverage(r.content);
+  res.json({ topic, coveredCount: stems.length, covered: cov.covered, missing: cov.missing });
+}
+
+// Parse a {"covered":[...],"missing":[...]} coverage reply. Falls back to
+// treating a bare JSON array as the "missing" list.
+function parseCoverage(text) {
+  const out = { covered: [], missing: [] };
+  if (!text) return out;
+  const clean = (arr) => (Array.isArray(arr) ? arr.map((s) => String(s || "").replace(/\s+/g, " ").trim()).filter((s) => s.length >= 2) : []);
+  const m = String(text).match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const o = JSON.parse(m[0]);
+      out.covered = clean(o.covered);
+      out.missing = clean(o.missing);
+      if (out.covered.length || out.missing.length) return out;
+    } catch { /* fall through to array parsing */ }
+  }
+  out.missing = parseStringArray(text);
+  return out;
 }
 
 // POST /api/ai/notes — generate study notes (Markdown text) on a topic.

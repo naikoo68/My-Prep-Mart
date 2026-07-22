@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Sparkles, Wand2, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound } from "lucide-react";
+import { X, Sparkles, Wand2, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, ListChecks, Circle } from "lucide-react";
 import { aiService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 
@@ -47,11 +47,15 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
   const [destChoice, setDestChoice] = useState("current"); // "current" | "new" (where the batch is inserted)
   const [newName, setNewName] = useState("");
   const [inferring, setInferring] = useState(false); // detecting the topic from a quiz's existing questions
+  const [coverage, setCoverage] = useState(null); // { covered:[], missing:[] } — refreshed after each batch
+  const [coverageLoading, setCoverageLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setMsg("");
     setPreview([]);
+    setCoverage(null);
+    setCoverageLoading(false);
     setDestChoice(allowNewTarget && defaultDest === "new" ? "new" : "current");
     setNewName("");
     setSection(defaultSection || sections[0] || ""); // re-sync target subject on open
@@ -111,6 +115,24 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
     );
   const total = TYPE_OPTIONS.reduce((s, t) => s + rowTotal(t.id), 0);
 
+  // After a batch, summarise which syllabus subtopics are now covered vs still
+  // missing — cumulative across the quiz's existing questions plus everything
+  // generated in this session. Best-effort (one small AI call); silent on error.
+  const refreshCoverage = async (stems) => {
+    const t = topic.trim();
+    const list = (stems || []).filter(Boolean);
+    if (!t || !list.length) { setCoverage(null); return; }
+    setCoverageLoading(true);
+    try {
+      const r = await aiService.coverageGaps({ topic: t, questions: list.slice(0, 300), mode: isClient ? source : undefined });
+      setCoverage({ covered: r?.covered || [], missing: r?.missing || [] });
+    } catch {
+      /* coverage is a nice-to-have — ignore failures */
+    } finally {
+      setCoverageLoading(false);
+    }
+  };
+
   // `append` = "Generate more": keep the current preview and add a fresh batch
   // on the same topic, avoiding everything already generated (via avoidStems).
   const generate = async (append = false) => {
@@ -150,7 +172,10 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
           // Append when "Generate more", otherwise replace the preview.
           setPreview((prev) => (append ? [...prev, ...qs] : qs));
           // Remember these stems so the NEXT batch avoids repeating them.
-          setAvoidStems((prev) => Array.from(new Set([...prev, ...qs.map((q) => q.text).filter(Boolean)])));
+          const batchStems = qs.map((q) => q.text).filter(Boolean);
+          setAvoidStems((prev) => Array.from(new Set([...prev, ...batchStems])));
+          // Refresh the covered/uncovered summary using everything so far.
+          refreshCoverage(Array.from(new Set([...avoidStems, ...batchStems])));
           const short = qs.length < requested;
           const quota = s.error === "quota";
           setMsg(
@@ -443,6 +468,47 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Covered vs still-uncovered subtopics, refreshed after each batch. */}
+            {(coverage || coverageLoading) && (
+              <div className="mt-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                  <ListChecks className="h-4 w-4 text-brand-600" /> Syllabus coverage so far
+                  {coverageLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+                </p>
+                {coverage && (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Covered ({coverage.covered.length})</p>
+                        {coverage.covered.length ? (
+                          <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-slate-600 dark:text-slate-300">
+                            {coverage.covered.map((c, i) => (
+                              <li key={i} className="flex gap-1.5"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />{c}</li>
+                            ))}
+                          </ul>
+                        ) : <p className="text-xs text-slate-400">—</p>}
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">Not yet covered ({coverage.missing.length})</p>
+                        {coverage.missing.length ? (
+                          <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-slate-600 dark:text-slate-300">
+                            {coverage.missing.map((c, i) => (
+                              <li key={i} className="flex gap-1.5"><Circle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-500" />{c}</li>
+                            ))}
+                          </ul>
+                        ) : <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">All covered 🎉</p>}
+                      </div>
+                    </div>
+                    {coverage.missing.length > 0 && (
+                      <button type="button" onClick={() => setSubtopics(coverage.missing.join(", "))} className="btn-outline mt-3 text-xs">
+                        <Sparkles className="h-3.5 w-3.5" /> Put uncovered ones in Subtopics → generate them next
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
