@@ -202,10 +202,10 @@ async function buildQuestionSvg(q, opts = {}) {
   </svg>`;
 }
 
-// Render a question to a hosted PNG URL (via Cloudinary). Returns the URL or
-// null on any failure (caller falls back to a text post).
+// Render a question to a hosted PNG URL (via Cloudinary). Returns { url } on
+// success or { error } with the REAL reason (so the UI can show what failed).
 export async function renderQuestionImage(q, opts = {}) {
-  if (!isCloudinaryConfigured()) return null;
+  if (!isCloudinaryConfigured()) return { error: "Cloudinary keys are not set on the server (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET)." };
   try {
     const s = await Settings.findOne({ key: "site" }).lean();
     const svg = await buildQuestionSvg(q, {
@@ -215,8 +215,10 @@ export async function renderQuestionImage(q, opts = {}) {
     });
     const dataUri = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
     const { url } = await uploadImage(dataUri, { format: "png", folder: "mystudyguide/social" });
-    return url || null;
-  } catch {
-    return null;
+    if (url) return { url };
+    return { error: "Cloudinary returned no URL for the image." };
+  } catch (err) {
+    // Surface the real Cloudinary/render error (e.g. SVG upload disabled, bad keys).
+    return { error: `Image render failed: ${err?.message || err}` };
   }
 }

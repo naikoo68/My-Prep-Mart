@@ -132,11 +132,11 @@ export async function testInstagramPost(req, res) {
 
   const site = await getOrCreate();
   const title = `Test post from ${site.siteName || "My Study Guide"}`;
-  const imageUrl = await renderQuestionImage(
+  const rendered = await renderQuestionImage(
     { text: title, options: ["Ready", "Set", "Go", "Posted!"], correct: 3 },
     { includeOptions: true }
   );
-  if (!imageUrl) return res.status(502).json({ ok: false, error: "Could not generate the image (check Cloudinary keys in the server settings)." });
-  const result = await postToInstagram({ imageUrl, caption: `${title} — Instagram auto-posting is connected. ✅` }, cfg);
+  if (!rendered.url) return res.status(502).json({ ok: false, error: rendered.error || "Could not generate the image." });
+  const result = await postToInstagram({ imageUrl: rendered.url, caption: `${title} — Instagram auto-posting is connected. ✅` }, cfg);
   return res.status(result.ok ? 200 : 502).json(result);
 }

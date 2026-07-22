@@ -114,13 +114,13 @@ export async function previewQuestionImage(req, res) {
   if (!questionId) return res.status(400).json({ message: "Missing questionId." });
   const q = await Question.findById(questionId).lean();
   if (!q) return res.status(404).json({ message: "Question not found." });
-  const url = await renderQuestionImage(q, {
+  const r = await renderQuestionImage(q, {
     includeOptions: req.body.includeOptions !== false,
     includeAnswer: !!req.body.includeAnswer,
     hashtags: String(req.body.hashtags || "").trim(),
   });
-  if (!url) return res.status(502).json({ message: "Could not generate the image. Check that Cloudinary keys are set on the server." });
-  res.json({ url });
+  if (!r.url) return res.status(502).json({ message: r.error || "Could not generate the image." });
+  res.json({ url: r.url });
 }
 
 // POST /api/facebook/schedule-question — schedule ONE specific question at a

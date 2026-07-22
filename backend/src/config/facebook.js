@@ -296,13 +296,15 @@ export async function runScheduleOnce(sch, cfgOverride) {
 
   // Render an image if a photo post is requested, or if Instagram is a target
   // (IG can't post text-only). Falls back to text if rendering fails.
-  let imageUrl = null;
+  let imageUrl = null, imageErr = "";
   if (sch.asImage || wantIg) {
-    imageUrl = await renderQuestionImage(q, {
+    const r = await renderQuestionImage(q, {
       includeOptions: sch.includeOptions,
       includeAnswer: sch.includeAnswer,
       hashtags: sch.hashtags,
     });
+    imageUrl = r.url || null;
+    imageErr = r.error || "";
   }
 
   const notes = [];
@@ -313,7 +315,7 @@ export async function runScheduleOnce(sch, cfgOverride) {
     if (r.ok) { anyOk = true; notes.push("Facebook ✓"); } else notes.push(`Facebook ✗ (${r.error})`);
   }
   if (wantIg) {
-    if (!imageUrl) notes.push("Instagram ✗ (image could not be generated)");
+    if (!imageUrl) notes.push(`Instagram ✗ (image failed${imageErr ? `: ${imageErr}` : ""})`);
     else {
       const r = await postToInstagram({ imageUrl, caption: message }, cfg);
       if (r.ok) { anyOk = true; notes.push("Instagram ✓"); } else notes.push(`Instagram ✗ (${r.error})`);
