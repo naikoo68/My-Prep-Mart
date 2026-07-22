@@ -1296,18 +1296,29 @@ const QUESTION_CHUNK_MAX_CHARS = 14000;
 // { count, chunks } or null when no reliable numbering is found (caller then
 // falls back to character-based splitting).
 function splitByQuestions(text, perChunk = QUESTIONS_PER_CHUNK) {
-  // Line-start markers like "1.", "12)", "Q3.", "Q.4", "Question 5:".
-  const re = /(^|\n)[ \t]*(?:Q(?:uestion)?\.?\s*)?(\d{1,3})[.)\]:]\s/gi;
+  // Line-start question markers. Allow leading Markdown/markup BEFORE the number
+  // (e.g. "### 1.", "## 1)", "**1.**", "> 3.", "- 4)") as well as a "Q"/"Question"
+  // prefix ("Q3.", "Question 5:"). Capture the markup + any "Q" word so we can
+  // PREFER these "strong" markers (real question numbers) over bare numbered
+  // lines — a bare "1. / 2. / 3." list also appears INSIDE a question (e.g. a
+  // "which of the following: 1… 2… 3…" statement list) and must NOT be mistaken
+  // for question starts (that bug made a 50-question paste extract only 3).
+  const re = /(^|\n)[ \t]*([#*>\-]{0,6})[ \t]*(Q(?:uestion)?\.?[ \t]*)?(\d{1,3})[.)\]:]\s/gi;
   const marks = [];
   let m;
   while ((m = re.exec(text)) !== null) {
-    marks.push({ pos: m.index + (m[1] ? m[1].length : 0), num: parseInt(m[2], 10) });
+    const strong = /[#*]/.test(m[2] || "") || !!m[3]; // markdown heading/bold, or a "Q" prefix
+    marks.push({ pos: m.index + (m[1] ? m[1].length : 0), num: parseInt(m[4], 10), strong });
   }
+  // When the document uses strong markers (headings/bold/"Q"), rely ONLY on those
+  // so a numbered list inside a question can't fragment it. Plain numbered papers
+  // (no markup at all) keep using every numbered line as before.
+  const usable = marks.some((mk) => mk.strong) ? marks.filter((mk) => mk.strong) : marks;
   // Keep a sequential chain (1,2,3,…) so stray numbers / numbered options aren't
   // mistaken for question starts. Allow a reset to 1 for multi-section papers.
   const starts = [];
   let prev = null;
-  for (const mk of marks) {
+  for (const mk of usable) {
     if (prev === null) {
       if (mk.num <= 3) { starts.push(mk.pos); prev = mk.num; } // begin near the first question
     } else if (mk.num === prev + 1 || mk.num === 1) {
