@@ -22,7 +22,7 @@ const MAX_TOTAL = 500;
 // Reusable "Generate with AI" modal. Mirrors BulkUploadQuestions:
 // `onUpload(questions)` should return a promise (e.g. { inserted }). The AI
 // only PREVIEWS questions here — nothing is saved until the admin clicks Insert.
-export default function AiGenerate({ open, onClose, onUpload, title = "Generate Questions with AI", sections = [], existingQuestions = [], defaultSection = "", allowNewTarget = false, newLeafLabel = "quiz", currentTargetName = "", defaultTopic = "", defaultSubtopics = "", defaultDest = "current" }) {
+export default function AiGenerate({ open, onClose, onUpload, title = "Generate Questions with AI", sections = [], existingQuestions = [], defaultSection = "", allowNewTarget = false, newLeafLabel = "quiz", currentTargetName = "", defaultTopic = "", defaultSubtopics = "", defaultDest = "current", coverageQuestions = [] }) {
   const { user } = useAuth();
   // Clients granted BOTH sources may pick which one this generation uses.
   const isClient = user?.role === "client" && user?.aiAccess;
@@ -122,7 +122,11 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
   // generated in this session. Best-effort (one small AI call); silent on error.
   const refreshCoverage = async (stems) => {
     const t = topic.trim();
-    const list = (stems || []).filter(Boolean);
+    // Merge the whole topic's existing questions (all its quizzes) with this
+    // session's generated ones, so coverage reflects the ENTIRE topic, not just
+    // the current quiz.
+    const topicStems = (coverageQuestions || []).map((q) => (typeof q === "string" ? q : q?.text)).filter(Boolean);
+    const list = Array.from(new Set([...topicStems, ...(stems || []).filter(Boolean)]));
     if (!t || !list.length) { setCoverage(null); return; }
     setCoverageLoading(true);
     try {

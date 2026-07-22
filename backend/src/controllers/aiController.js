@@ -1889,86 +1889,69 @@ export async function coverageGaps(req, res) {
     .map((s) => String(s?.text || s || "").trim())
     .filter(Boolean)
     .slice(0, 300);
-  const coveredStr = stems.length ? stems.map((s, i) => `${i + 1}. ${s.slice(0, 140)}`).join("\n") : "(none yet)";
   // A FIXED syllabus checklist keeps coverage STABLE: as questions accumulate,
   // items only move from "missing" to "covered" — the total never grows. The
   // caller passes the checklist it got on the first call so later calls classify
-  // the SAME list (otherwise the AI reinvents an ever-larger list and "not yet
-  // covered" wrongly increases). On the first call (none passed) we build one.
-  const givenSyllabus = (Array.isArray(req.body?.syllabus) ? req.body.syllabus : [])
+  // the SAME list. On the first call (none passed) we build it here.
+  let syllabus = (Array.isArray(req.body?.syllabus) ? req.body.syllabus : [])
     .map((s) => String(s || "").replace(/\s+/g, " ").trim())
     .filter((s) => s.length >= 2)
     .slice(0, 60);
 
-  const userPrompt = givenSyllabus.length
-    ? [
-        `Topic: ${topic}.`,
-        "FIXED SYLLABUS CHECKLIST — do NOT add, remove, reword or invent items; use these EXACT strings:",
-        givenSyllabus.map((s, i) => `${i + 1}. ${s}`).join("\n"),
-        "",
-        `Question stems already created (${stems.length}):`,
-        coveredStr,
-        "",
-        "For EACH checklist item decide whether at least one question above tests it. Put every checklist item into exactly ONE of two lists — \"covered\" (a question tests it) or \"missing\" (not yet) — using the item's EXACT text. Together the two lists MUST contain every checklist item once.",
-        "Return ONLY {\"covered\":[\"...\"],\"missing\":[\"...\"]}. No markdown, no commentary.",
-      ].join("\n")
-    : [
-        "You are a syllabus coverage analyst. Build a FIXED checklist of the 30 most important, broad, non-overlapping subtopics for the topic below (NCERT / standard university / competitive-exam scope). Keep them at a consistent, medium granularity — NOT hyper-specific niche facts.",
-        `Topic: ${topic}.`,
-        TOPIC_SCOPE_RULE,
-        "",
-        `Question stems already created (${stems.length}) — treat their concepts as covered:`,
-        coveredStr,
-        "",
-        "Then split that SAME checklist into \"covered\" (tested by a question above) and \"missing\" (not yet). Use identical item strings in the syllabus and the two lists; every syllabus item appears in exactly one list.",
-        "Return ONLY {\"syllabus\":[\"...\"],\"covered\":[\"...\"],\"missing\":[\"...\"]}. No markdown, no commentary.",
-      ].join("\n");
+  // Step 1 — build the checklist once, if the caller doesn't have one yet.
+  if (!syllabus.length) {
+    const buildPrompt = [
+      "You are a syllabus coverage analyst. Build a FIXED checklist of the 30 most important, broad, non-overlapping subtopics for the topic below (NCERT / standard university / competitive-exam scope). Keep them at a consistent, medium granularity — NOT hyper-specific niche facts.",
+      `Topic: ${topic}.`,
+      TOPIC_SCOPE_RULE,
+      "Return ONLY a JSON array of strings, e.g. [\"subtopic one\",\"subtopic two\"]. No commentary, no markdown.",
+    ].join("\n");
+    const rb = await callWithFallback({
+      endpoints: chosen.endpoints,
+      model: chosen.model,
+      userPrompt: buildPrompt,
+      maxTokens: 1200,
+      owner: scope.owner,
+      systemPrompt: "You output ONLY a JSON array of short strings — no markdown, no commentary.",
+    });
+    if (!rb.ok) {
+      return res.status(502).json({ message: rb.status === 429 ? quota429Message(rb.detail) : `AI provider error (${rb.status}). ${(rb.detail || "").slice(0, 160)}` });
+    }
+    syllabus = parseStringArray(rb.content).slice(0, 40);
+  }
+  if (!syllabus.length) return res.json({ topic, coveredCount: stems.length, syllabus: [], covered: [], missing: [] });
 
-  const r = await callWithFallback({
-    endpoints: chosen.endpoints,
-    model: chosen.model,
-    userPrompt,
-    maxTokens: 1800,
-    owner: scope.owner,
-    systemPrompt: "You output ONLY a JSON object with the requested arrays — no markdown, no commentary.",
-  });
-  if (!r.ok) {
-    return res.status(502).json({ message: r.status === 429 ? quota429Message(r.detail) : `AI provider error (${r.status}). ${(r.detail || "").slice(0, 160)}` });
+  // Step 2 — classify coverage by ITEM NUMBER (robust: no wording match needed).
+  // For each numbered checklist item, the model returns whether any question
+  // tests it. Nothing to classify when there are no questions yet.
+  let coveredIdx = new Set();
+  if (stems.length) {
+    const classifyPrompt = [
+      `Topic: ${topic}.`,
+      "SYLLABUS CHECKLIST (numbered):",
+      syllabus.map((s, i) => `${i + 1}. ${s}`).join("\n"),
+      "",
+      `Question stems already written (${stems.length}):`,
+      stems.map((s, i) => `${i + 1}. ${s.slice(0, 140)}`).join("\n"),
+      "",
+      "For EACH checklist item, decide whether AT LEAST ONE of the questions above tests that subtopic (even partially). Return ONLY a JSON array of the checklist NUMBERS that ARE covered, e.g. [1,3,4,9]. Return [] if none are covered.",
+    ].join("\n");
+    const rc = await callWithFallback({
+      endpoints: chosen.endpoints,
+      model: chosen.model,
+      userPrompt: classifyPrompt,
+      maxTokens: 500,
+      owner: scope.owner,
+      systemPrompt: "You output ONLY a JSON array of integers — no markdown, no commentary.",
+    });
+    if (rc.ok) {
+      const nums = (String(rc.content).match(/\d+/g) || []).map(Number).filter((n) => n >= 1 && n <= syllabus.length);
+      coveredIdx = new Set(nums.map((n) => n - 1));
+    }
   }
-  const cov = parseCoverage(r.content);
-  // The stable checklist: the one passed in, else the one just built.
-  const syllabus = givenSyllabus.length ? givenSyllabus : cov.syllabus;
-  // Reconcile against the fixed checklist so covered + missing ALWAYS equals the
-  // whole checklist (no drift, no growth). Anything the model marked covered
-  // that is on the list is covered; the rest of the list is missing.
-  if (syllabus.length) {
-    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-    const coveredSet = new Set(cov.covered.map(norm));
-    const covered = syllabus.filter((s) => coveredSet.has(norm(s)));
-    const missing = syllabus.filter((s) => !coveredSet.has(norm(s)));
-    return res.json({ topic, coveredCount: stems.length, syllabus, covered, missing });
-  }
-  res.json({ topic, coveredCount: stems.length, syllabus: cov.syllabus, covered: cov.covered, missing: cov.missing });
-}
-
-// Parse a {"syllabus":[...],"covered":[...],"missing":[...]} coverage reply.
-// Falls back to treating a bare JSON array as the "missing" list.
-function parseCoverage(text) {
-  const out = { syllabus: [], covered: [], missing: [] };
-  if (!text) return out;
-  const clean = (arr) => (Array.isArray(arr) ? arr.map((s) => String(s || "").replace(/\s+/g, " ").trim()).filter((s) => s.length >= 2) : []);
-  const m = String(text).match(/\{[\s\S]*\}/);
-  if (m) {
-    try {
-      const o = JSON.parse(m[0]);
-      out.syllabus = clean(o.syllabus);
-      out.covered = clean(o.covered);
-      out.missing = clean(o.missing);
-      if (out.covered.length || out.missing.length || out.syllabus.length) return out;
-    } catch { /* fall through to array parsing */ }
-  }
-  out.missing = parseStringArray(text);
-  return out;
+  const covered = syllabus.filter((_, i) => coveredIdx.has(i));
+  const missing = syllabus.filter((_, i) => !coveredIdx.has(i));
+  res.json({ topic, coveredCount: stems.length, syllabus, covered, missing });
 }
 
 // POST /api/ai/notes — generate study notes (Markdown text) on a topic.

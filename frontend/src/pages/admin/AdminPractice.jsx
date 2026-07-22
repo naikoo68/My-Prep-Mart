@@ -70,6 +70,7 @@ export default function AdminPractice({ clientMode = false }) {
   const [scanTopic, setScanTopic] = useState("");
   const [scanStems, setScanStems] = useState([]);
   const [gapPrefill, setGapPrefill] = useState(null); // {topic, subtopics, avoid} when generating from the scan gaps
+  const [topicStems, setTopicStems] = useState([]); // stems of ALL quizzes in this topic → coverage panel scans the whole topic
   const [bankOpen, setBankOpen] = useState(false); // hand-pick questions from the bank
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ params: null, name: "" }); // duplicate-scan target
@@ -180,10 +181,22 @@ export default function AdminPractice({ clientMode = false }) {
     }
   };
 
+  // Fetch the stems of every quiz/test in the current topic so the generator's
+  // coverage panel reflects the WHOLE topic (all quizzes), not just this one.
+  const gatherTopicStems = async () => {
+    try {
+      const lists = await Promise.all((items || []).map((it) => testService.getQuestions(it._id).catch(() => [])));
+      setTopicStems(lists.flat().map((q) => q?.text).filter(Boolean));
+    } catch {
+      setTopicStems([]);
+    }
+  };
+
   // Open the generator pre-filled to build a NEW quiz covering the missing areas,
   // avoiding every question already made in this topic.
   const generateFromGaps = () => {
     setGapPrefill({ topic: scanTopic, subtopics: scanMissing.join(", "), avoid: scanStems });
+    setTopicStems(scanStems); // coverage panel reflects the whole topic
     setQItem(null);
     setAiTarget(null);
     setForceSection("");
@@ -499,7 +512,7 @@ export default function AdminPractice({ clientMode = false }) {
               onCopyCsv={copyCsv}
               onDownloadCsv={downloadCsv}
               onBulkUpload={(subject) => { setForceSection(subject); setBulkOpen(true); }}
-              onAiGenerate={(subject) => { setForceSection(subject); setAiTarget(null); setGapPrefill(null); setAiOpen(true); }}
+              onAiGenerate={(subject) => { setForceSection(subject); setAiTarget(null); setGapPrefill(null); setTopicStems([]); gatherTopicStems(); setAiOpen(true); }}
               onImportWeb={(subject) => { setForceSection(subject); setAiTarget(null); setImportOpen(true); }}
               onPickFromBank={(subject) => { setForceSection(subject); setBankOpen(true); }}
               onExtendExplanations={() => setExtendItem(qItem)}
@@ -626,6 +639,7 @@ export default function AdminPractice({ clientMode = false }) {
         defaultTopic={gapPrefill ? gapPrefill.topic : (qItem?.aiTopic || "")}
         defaultSubtopics={gapPrefill ? gapPrefill.subtopics : (qItem?.aiSubtopics || "")}
         defaultDest={gapPrefill ? "new" : "current"}
+        coverageQuestions={topicStems}
         onUpload={(questions, opts = {}) => saveAiBatch(questions, opts)}
       />
 
