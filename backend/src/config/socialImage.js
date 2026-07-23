@@ -193,12 +193,32 @@ async function buildQuestionSvg(q, opts = {}) {
   if (opts.hashtags) { els.push(T(PAD, y + 30, 26, brand, esc(uni(opts.hashtags)))); y += 40; }
 
   const H = Math.max(1080, Math.min(1350, y + 40));
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  // Selfie watermark: embed a circular clipped image if configured.
+  let watermarkSvg = "";
+  if (opts.selfieWatermarkUrl) {
+    const sz = opts.selfieWatermarkSize || 120;
+    const opacity = (opts.selfieWatermarkOpacity || 90) / 100;
+    const pos = opts.selfieWatermarkPosition || "bottom-right";
+    const margin = 24;
+    let cx, cy;
+    if (pos === "bottom-right") { cx = W - margin - sz / 2; cy = H - margin - sz / 2; }
+    else if (pos === "bottom-left") { cx = margin + sz / 2; cy = H - margin - sz / 2; }
+    else if (pos === "top-right") { cx = W - margin - sz / 2; cy = 118 + margin + sz / 2; }
+    else { cx = margin + sz / 2; cy = 118 + margin + sz / 2; } // top-left
+    const r = sz / 2;
+    watermarkSvg = `
+    <defs><clipPath id="selfie-clip"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>
+    <circle cx="${cx}" cy="${cy}" r="${r + 3}" fill="#ffffff" opacity="${opacity}"/>
+    <image href="${esc(opts.selfieWatermarkUrl)}" x="${cx - r}" y="${cy - r}" width="${sz}" height="${sz}" clip-path="url(#selfie-clip)" opacity="${opacity}" preserveAspectRatio="xMidYMid slice"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${brand}" stroke-width="3" opacity="${opacity}"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
     <rect width="${W}" height="${H}" fill="#f8fafc"/>
     <rect x="0" y="0" width="${W}" height="118" fill="${brand}"/>
     ${T(PAD, 74, 44, "#ffffff", siteName, { weight: "800" })}
     ${els.join("\n    ")}
     <rect x="0" y="${H - 10}" width="${W}" height="10" fill="${brand}"/>
+    ${watermarkSvg}
   </svg>`;
 }
 
@@ -208,8 +228,17 @@ export async function renderQuestionImage(q, opts = {}) {
   if (!isCloudinaryConfigured()) return { error: "Cloudinary keys are not set on the server (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET)." };
   try {
     const s = await Settings.findOne({ key: "site" }).lean();
+    // Pass selfie watermark settings if enabled and a URL is set.
+    const selfieOpts = {};
+    if (s?.fbSelfieWatermarkEnabled !== false && s?.fbSelfieWatermarkUrl) {
+      selfieOpts.selfieWatermarkUrl = s.fbSelfieWatermarkUrl;
+      selfieOpts.selfieWatermarkSize = s.fbSelfieWatermarkSize || 120;
+      selfieOpts.selfieWatermarkOpacity = s.fbSelfieWatermarkOpacity || 90;
+      selfieOpts.selfieWatermarkPosition = s.fbSelfieWatermarkPosition || "bottom-right";
+    }
     const svg = await buildQuestionSvg(q, {
       ...opts,
+      ...selfieOpts,
       siteName: opts.siteName || s?.siteName || "My Study Guide",
       brandColor: opts.brandColor || s?.brandColor || s?.primaryColor || "#4f46e5",
     });

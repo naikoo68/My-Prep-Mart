@@ -98,6 +98,13 @@ const settingsSchema = new mongoose.Schema(
       type: [new mongoose.Schema({ label: { type: String, default: "" }, pageId: { type: String, default: "" }, token: { type: String, default: "" } }, { _id: false })],
       default: () => [],
     },
+    // Selfie watermark overlaid on every Facebook/Instagram image post.
+    // Stored as a Cloudinary URL after the admin uploads their photo.
+    fbSelfieWatermarkUrl: { type: String, default: "" },
+    fbSelfieWatermarkEnabled: { type: Boolean, default: true },
+    fbSelfieWatermarkPosition: { type: String, default: "bottom-right" }, // bottom-right | bottom-left | top-right | top-left
+    fbSelfieWatermarkSize: { type: Number, default: 120 }, // px (diameter of the circular selfie)
+    fbSelfieWatermarkOpacity: { type: Number, default: 90 }, // % (10–100)
     // Instagram cross-posting (uses the same Page token; IG account linked to the Page)
     igEnabled: { type: Boolean, default: false },
     igUserId: { type: String, default: "" }, // Instagram Business account id (blank = auto-detect from the Page)
