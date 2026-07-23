@@ -4,7 +4,7 @@ import {
   Clock, CalendarClock, ListChecks, Power, Save, Upload, UserCircle,
 } from "lucide-react";
 import { Facebook, Instagram } from "../../components/ui/SocialIcons";
-import { settingsService, facebookService, contentService } from "../../services";
+import { settingsService, facebookService, contentService, practiceService } from "../../services";
 import { useSettings } from "../../context/SettingsContext";
 import { Loading, ErrorState } from "../../components/ui/AsyncState";
 
@@ -16,40 +16,82 @@ const WEEKDAYS = [
 // Cascading source picker: Stream → Subject → Topic → Session → Quiz. The admin
 // can stop at any level; the deepest queryable scope (quiz > session > subject)
 // is reported up via onChange along with a readable label.
+// Supports both the main quiz hierarchy AND "My Quiz" (Practice Quizzes).
 function SourcePicker({ onPick }) {
+  const [mode, setMode] = useState("quiz"); // "quiz" = main quiz bank, "practice" = My Quiz
   const [streams, setStreams] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [topics, setTopics] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
+  const [practiceItems, setPracticeItems] = useState([]); // My Quiz items (TestSeries)
   const [sel, setSel] = useState({}); // { stream, subject, topic, session, quiz } → node objects
 
-  useEffect(() => { contentService.streams().then(setStreams).catch(() => setStreams([])); }, []);
+  useEffect(() => {
+    setSel({}); setStreams([]); setSubjects([]); setTopics([]); setSessions([]); setQuizzes([]); setPracticeItems([]);
+    if (mode === "quiz") {
+      contentService.streams().then(setStreams).catch(() => setStreams([]));
+    } else {
+      practiceService.adminStreams("quiz").then(setStreams).catch(() => setStreams([]));
+    }
+  }, [mode]);
 
   const emit = (next) => {
-    const label = [next.stream?.name, next.subject?.name, next.topic?.title, next.session?.title, next.quiz?.title].filter(Boolean).join(" › ");
-    onPick({
-      subject: next.subject?._id || null,
-      session: next.session?._id || null,
-      quiz: next.quiz?._id || null,
-      label,
-    });
+    if (mode === "quiz") {
+      const label = [next.stream?.name, next.subject?.name, next.topic?.title, next.session?.title, next.quiz?.title].filter(Boolean).join(" › ");
+      onPick({
+        subject: next.subject?._id || null,
+        session: next.session?._id || null,
+        quiz: next.quiz?._id || null,
+        testSeries: null,
+        label,
+      });
+    } else {
+      // Practice (My Quiz) — items are TestSeries documents
+      const label = ["My Quiz", next.stream?.name, next.subject?.name, next.topic?.title, next.quiz?.name || next.quiz?.title].filter(Boolean).join(" › ");
+      onPick({
+        subject: null,
+        session: null,
+        quiz: null,
+        testSeries: next.quiz?._id || null,
+        label,
+      });
+    }
   };
 
   const pickStream = async (id) => {
     const stream = streams.find((s) => s._id === id) || null;
-    const next = { stream }; setSel(next); setSubjects([]); setTopics([]); setSessions([]); setQuizzes([]); emit(next);
-    if (stream) contentService.subjectsByStream(id).then(setSubjects).catch(() => {});
+    const next = { stream }; setSel(next); setSubjects([]); setTopics([]); setSessions([]); setQuizzes([]); setPracticeItems([]); emit(next);
+    if (stream) {
+      if (mode === "quiz") {
+        contentService.subjectsByStream(id).then(setSubjects).catch(() => {});
+      } else {
+        practiceService.adminSubjects(id).then(setSubjects).catch(() => {});
+      }
+    }
   };
   const pickSubject = async (id) => {
     const subject = subjects.find((s) => s._id === id) || null;
-    const next = { ...sel, subject, topic: null, session: null, quiz: null }; setSel(next); setTopics([]); setSessions([]); setQuizzes([]); emit(next);
-    if (subject) contentService.topics(id).then(setTopics).catch(() => {});
+    const next = { ...sel, subject, topic: null, session: null, quiz: null }; setSel(next); setTopics([]); setSessions([]); setQuizzes([]); setPracticeItems([]); emit(next);
+    if (subject) {
+      if (mode === "quiz") {
+        contentService.topics(id).then(setTopics).catch(() => {});
+      } else {
+        practiceService.adminTopics(id).then(setTopics).catch(() => {});
+      }
+    }
   };
   const pickTopic = async (id) => {
     const topic = topics.find((t) => t._id === id) || null;
-    const next = { ...sel, topic, session: null, quiz: null }; setSel(next); setSessions([]); setQuizzes([]); emit(next);
-    if (topic) contentService.sessions(id).then(setSessions).catch(() => {});
+    const next = { ...sel, topic, session: null, quiz: null }; setSel(next); setSessions([]); setQuizzes([]); setPracticeItems([]); emit(next);
+    if (topic) {
+      if (mode === "quiz") {
+        contentService.sessions(id).then(setSessions).catch(() => {});
+      } else {
+        // Practice: topics contain items (TestSeries) directly
+        practiceService.adminTopicItems(id).then(setPracticeItems).catch(() => {});
+      }
+    }
   };
   const pickSession = async (id) => {
     const session = sessions.find((s) => s._id === id) || null;
@@ -57,7 +99,8 @@ function SourcePicker({ onPick }) {
     if (session) contentService.quizzes(id).then(setQuizzes).catch(() => {});
   };
   const pickQuiz = (id) => {
-    const quiz = quizzes.find((q) => q._id === id) || null;
+    const list = mode === "quiz" ? quizzes : practiceItems;
+    const quiz = list.find((q) => q._id === id) || null;
     const next = { ...sel, quiz }; setSel(next); emit(next);
   };
 
@@ -72,12 +115,31 @@ function SourcePicker({ onPick }) {
   );
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <Row label="Stream" options={streams} value={sel.stream?._id} onChange={pickStream} />
-      <Row label="Subject" options={subjects} value={sel.subject?._id} onChange={pickSubject} disabled={!sel.stream} />
-      <Row label="Topic (optional)" options={topics} value={sel.topic?._id} onChange={pickTopic} labelKey="title" disabled={!sel.subject} />
-      <Row label="Session (optional)" options={sessions} value={sel.session?._id} onChange={pickSession} labelKey="title" disabled={!sel.topic} />
-      <Row label="Quiz (optional)" options={quizzes} value={sel.quiz?._id} onChange={pickQuiz} labelKey="title" disabled={!sel.session} />
+    <div className="space-y-3">
+      {/* Mode toggle */}
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setMode("quiz")}
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${mode === "quiz" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"}`}>
+          Quiz Bank
+        </button>
+        <button type="button" onClick={() => setMode("practice")}
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${mode === "practice" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"}`}>
+          My Quiz (Practice)
+        </button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Row label="Stream" options={streams} value={sel.stream?._id} onChange={pickStream} />
+        <Row label="Subject" options={subjects} value={sel.subject?._id} onChange={pickSubject} disabled={!sel.stream} />
+        <Row label={mode === "quiz" ? "Topic (optional)" : "Topic"} options={topics} value={sel.topic?._id} onChange={pickTopic} labelKey="title" disabled={!sel.subject} />
+        {mode === "quiz" ? (
+          <>
+            <Row label="Session (optional)" options={sessions} value={sel.session?._id} onChange={pickSession} labelKey="title" disabled={!sel.topic} />
+            <Row label="Quiz (optional)" options={quizzes} value={sel.quiz?._id} onChange={pickQuiz} labelKey="title" disabled={!sel.session} />
+          </>
+        ) : (
+          <Row label="My Quiz" options={practiceItems} value={sel.quiz?._id} onChange={pickQuiz} labelKey="name" disabled={!sel.topic} />
+        )}
+      </div>
     </div>
   );
 }
