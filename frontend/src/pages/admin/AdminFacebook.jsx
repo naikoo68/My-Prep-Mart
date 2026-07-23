@@ -82,12 +82,16 @@ function SourcePicker({ onPick }) {
   );
 }
 
-// ---- Selfie Watermark Section ----
+// ---- Post Watermark Section ----
 const POSITIONS = [
   { value: "bottom-right", label: "Bottom Right" },
   { value: "bottom-left", label: "Bottom Left" },
   { value: "top-right", label: "Top Right" },
   { value: "top-left", label: "Top Left" },
+];
+const SHAPES = [
+  { value: "circle", label: "Circle (selfie/logo)" },
+  { value: "rectangle", label: "Rectangle (banner/stamp)" },
 ];
 
 function SelfieWatermarkSection({ settings, saveSettings }) {
@@ -99,6 +103,7 @@ function SelfieWatermarkSection({ settings, saveSettings }) {
   const [position, setPosition] = useState(settings?.fbSelfieWatermarkPosition || "bottom-right");
   const [size, setSize] = useState(settings?.fbSelfieWatermarkSize || 120);
   const [opacity, setOpacity] = useState(settings?.fbSelfieWatermarkOpacity || 90);
+  const [shape, setShape] = useState(settings?.fbSelfieWatermarkShape || "circle");
   const [saving, setSaving] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(settings?.fbSelfieWatermarkUrl || "");
 
@@ -107,8 +112,9 @@ function SelfieWatermarkSection({ settings, saveSettings }) {
     setPosition(settings?.fbSelfieWatermarkPosition || "bottom-right");
     setSize(settings?.fbSelfieWatermarkSize || 120);
     setOpacity(settings?.fbSelfieWatermarkOpacity || 90);
+    setShape(settings?.fbSelfieWatermarkShape || "circle");
     setPreviewUrl(settings?.fbSelfieWatermarkUrl || "");
-  }, [settings?.fbSelfieWatermarkEnabled, settings?.fbSelfieWatermarkPosition, settings?.fbSelfieWatermarkSize, settings?.fbSelfieWatermarkOpacity, settings?.fbSelfieWatermarkUrl]);
+  }, [settings?.fbSelfieWatermarkEnabled, settings?.fbSelfieWatermarkPosition, settings?.fbSelfieWatermarkSize, settings?.fbSelfieWatermarkOpacity, settings?.fbSelfieWatermarkShape, settings?.fbSelfieWatermarkUrl]);
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -119,13 +125,13 @@ function SelfieWatermarkSection({ settings, saveSettings }) {
     try {
       const r = await settingsService.uploadSelfieWatermark(file);
       setPreviewUrl(r.url || r.settings?.fbSelfieWatermarkUrl || "");
-      setMsg({ ok: true, text: "Selfie watermark uploaded!" });
+      setMsg({ ok: true, text: "Watermark uploaded!" });
     } catch (err) { setMsg({ ok: false, text: err.message || "Upload failed." }); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("Remove the selfie watermark? Posts will no longer show it.")) return;
+    if (!window.confirm("Remove the watermark? Posts will no longer show it.")) return;
     setDeleting(true); setMsg(null);
     try {
       await settingsService.deleteSelfieWatermark();
@@ -138,17 +144,19 @@ function SelfieWatermarkSection({ settings, saveSettings }) {
   const saveOptions = async () => {
     setSaving(true); setMsg(null);
     try {
-      await saveSettings({ fbSelfieWatermarkEnabled: enabled, fbSelfieWatermarkPosition: position, fbSelfieWatermarkSize: size, fbSelfieWatermarkOpacity: opacity });
+      await saveSettings({ fbSelfieWatermarkEnabled: enabled, fbSelfieWatermarkPosition: position, fbSelfieWatermarkSize: size, fbSelfieWatermarkOpacity: opacity, fbSelfieWatermarkShape: shape });
       setMsg({ ok: true, text: "Settings saved." });
     } catch (err) { setMsg({ ok: false, text: err.message || "Save failed." }); }
     finally { setSaving(false); }
   };
 
+  const isCircle = shape === "circle";
+
   return (
     <div className="card p-5">
-      <h2 className="flex items-center gap-2 font-bold"><UserCircle className="h-5 w-5 text-[#1877F2]" /> Selfie Watermark</h2>
+      <h2 className="flex items-center gap-2 font-bold"><Upload className="h-5 w-5 text-[#1877F2]" /> Post Watermark</h2>
       <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-        Upload your selfie/logo to appear as a circular watermark on every Facebook &amp; Instagram image post. Branding that travels with every question you share.
+        Upload <b>any image</b> (selfie, logo, stamp, banner) to appear as a watermark on every Facebook &amp; Instagram image post. Choose the shape, position, size, and opacity.
       </p>
 
       <div className="mt-4 flex flex-wrap items-start gap-6">
@@ -156,19 +164,21 @@ function SelfieWatermarkSection({ settings, saveSettings }) {
         <div className="flex flex-col items-center gap-2">
           {previewUrl ? (
             <div className="relative">
-              <img src={previewUrl} alt="Selfie watermark" className="h-28 w-28 rounded-full border-4 border-brand-500 object-cover shadow-lg" style={{ opacity: opacity / 100 }} />
+              <img src={previewUrl} alt="Watermark preview"
+                className={`h-28 w-28 border-4 border-brand-500 object-cover shadow-lg ${isCircle ? "rounded-full" : "rounded-xl"}`}
+                style={{ opacity: opacity / 100 }} />
               <button type="button" onClick={handleDelete} disabled={deleting} title="Remove watermark"
                 className="absolute -right-2 -top-2 rounded-full bg-rose-100 p-1.5 text-rose-600 shadow hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-800/60">
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               </button>
             </div>
           ) : (
-            <div className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-dashed border-slate-300 dark:border-slate-600">
+            <div className={`flex h-28 w-28 items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600 ${isCircle ? "rounded-full" : "rounded-xl"}`}>
               <UserCircle className="h-8 w-8 text-slate-300 dark:text-slate-600" />
             </div>
           )}
           <label className={`btn-outline cursor-pointer text-sm ${uploading ? "pointer-events-none opacity-60" : ""}`}>
-            {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload selfie</>}
+            {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload watermark</>}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
           </label>
         </div>
@@ -176,14 +186,20 @@ function SelfieWatermarkSection({ settings, saveSettings }) {
         {/* Options */}
         <div className="flex-1 space-y-3">
           <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
-            <span className="text-sm font-medium">Enable selfie watermark on posts</span>
+            <span className="text-sm font-medium">Enable watermark on all posts</span>
             <button type="button" onClick={() => setEnabled(!enabled)}
               className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${enabled ? "bg-[#1877F2]" : "bg-slate-300 dark:bg-slate-600"}`}>
               <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${enabled ? "left-6" : "left-1"}`} />
             </button>
           </label>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-500">Shape</label>
+              <select className="input" value={shape} onChange={(e) => setShape(e.target.value)}>
+                {SHAPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-500">Position</label>
               <select className="input" value={position} onChange={(e) => setPosition(e.target.value)}>

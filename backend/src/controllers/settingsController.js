@@ -39,7 +39,7 @@ export async function updateSettings(req, res) {
     "aiMaxPerBatch", "clientPlans",
     "fbEnabled", "fbPageId", "fbAutoOnNotice", "fbGraphVersion", "fbPageAccessToken",
     "fbDefaultHashtags", "fbAutoHashtags", "fbExtraTargets",
-    "fbSelfieWatermarkUrl", "fbSelfieWatermarkEnabled", "fbSelfieWatermarkPosition", "fbSelfieWatermarkSize", "fbSelfieWatermarkOpacity",
+    "fbSelfieWatermarkUrl", "fbSelfieWatermarkEnabled", "fbSelfieWatermarkPosition", "fbSelfieWatermarkSize", "fbSelfieWatermarkOpacity", "fbSelfieWatermarkShape",
     "igEnabled", "igUserId",
   ];
   const update = {};
@@ -76,6 +76,10 @@ export async function updateSettings(req, res) {
   }
   if ("fbSelfieWatermarkSize" in update) update.fbSelfieWatermarkSize = Math.max(40, Math.min(300, parseInt(update.fbSelfieWatermarkSize, 10) || 120));
   if ("fbSelfieWatermarkOpacity" in update) update.fbSelfieWatermarkOpacity = Math.max(10, Math.min(100, parseInt(update.fbSelfieWatermarkOpacity, 10) || 90));
+  if ("fbSelfieWatermarkShape" in update) {
+    const sh = String(update.fbSelfieWatermarkShape || "").trim();
+    update.fbSelfieWatermarkShape = ["circle", "rectangle"].includes(sh) ? sh : "circle";
+  }
 
   // AI limits: clamp the admin's global per-batch ceiling.
   if ("aiMaxPerBatch" in update) {
