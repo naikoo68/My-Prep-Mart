@@ -3423,6 +3423,26 @@ export async function testAllKeys(req, res) {
   res.json({ tested: keys.length });
 }
 
+// POST /api/ai/keys/auto-model-all — like "Test all", but also AUTO-PICKS the
+// best working model for EVERY key in the caller's pool, all at once. Each key's
+// detection (list its models → live-test best-first → store the one that works)
+// runs in PARALLEL so a large pool finishes quickly. Returns a per-key summary.
+export async function autoDetectAllKeys(req, res) {
+  const keys = await AiKey.find({ owner: keyOwner(req) ?? null });
+  const results = await Promise.all(
+    keys.map(async (doc) => {
+      try {
+        const r = await autoDetectModel(doc);
+        return { id: doc._id, ok: !!r.ok, model: doc.models, limited: !!r.limited };
+      } catch {
+        return { id: doc._id, ok: false, model: doc.models };
+      }
+    })
+  );
+  const ok = results.filter((r) => r.ok).length;
+  res.json({ total: keys.length, ok, failed: keys.length - ok, results });
+}
+
 // POST /api/ai/keys/:id/models (admin) — ask the provider which models THIS key
 // can actually use (OpenAI-compatible /models list). Fixes "404 model not found"
 // guesswork by showing valid ids to choose from.

@@ -332,6 +332,7 @@ export const aiService = {
     autoModel: (id) => api.post(`/ai/keys/${id}/auto-model`), // auto-detect + set a working model
     importEnv: () => api.post("/ai/keys/import"),
     testAll: () => api.post("/ai/keys/test-all"),
+    autoModelAll: () => api.post("/ai/keys/auto-model-all"), // auto-pick a working model for every key at once
   },
 };
 
