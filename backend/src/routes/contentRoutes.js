@@ -30,6 +30,8 @@ import {
   deleteQuestion,
   findDuplicates,
   moveQuiz,
+  splitQuiz,
+  splitTopic,
 } from "../controllers/contentController.js";
 import { protect, authorize, optionalAuth } from "../middleware/auth.js";
 
@@ -55,6 +57,7 @@ router.delete("/subjects/:id", ...admin, deleteSubject);
 router.get("/subjects/:subjectId/topics", listTopics);
 router.post("/topics", ...admin, createTopic);
 router.put("/topics/:id", ...admin, updateTopic);
+router.post("/topics/:id/split", ...admin, splitTopic); // split all a topic's questions into quizzes of N
 router.delete("/topics/:id", ...admin, deleteTopic);
 
 // Sessions (within a topic)
@@ -68,6 +71,7 @@ router.get("/sessions/:sessionId/quizzes", listQuizzes);
 router.post("/quizzes", ...admin, createQuiz);
 router.put("/quizzes/:id", ...admin, updateQuiz);
 router.patch("/quizzes/:id/move", ...admin, moveQuiz);
+router.post("/quizzes/:id/split", ...admin, splitQuiz); // split a quiz's questions into quizzes of N
 router.delete("/quizzes/:id", ...admin, deleteQuiz);
 router.get("/quizzes/:quizId/questions", optionalAuth, listQuizQuestions);
 
