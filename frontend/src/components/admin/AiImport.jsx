@@ -290,16 +290,26 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
     );
   const genTotal = Q_TYPES.reduce((s, t) => s + rowTotal(t.id), 0);
 
-  // After a batch, summarise which areas of the topic are now covered vs still
-  // missing. Only runs when a Topic/syllabus name is provided (coverage needs a
-  // topic to build its checklist). Best-effort — silent on error.
+  // After a batch, summarise which areas of the SOURCE (the PDF / link / pasted
+  // text) are now covered vs still missing. The checklist is built from the
+  // source's own content, so no topic is required — but a typed Topic name is
+  // used when there's no pasted text (e.g. a link-only run). Best-effort.
   const refreshCoverage = async (stems) => {
-    const t = genTopic.trim();
     const list = (stems || []).filter(Boolean);
-    if (!t || !list.length) { setCoverage(null); return; }
+    const srcText = text.trim();
+    const t = genTopic.trim();
+    // Need questions to classify, and SOMETHING to build the checklist from
+    // (the source text, or a typed topic).
+    if (!list.length || (!srcText && !t)) { setCoverage(null); return; }
     setCoverageLoading(true);
     try {
-      const r = await aiService.coverageGaps({ topic: t, questions: list.slice(0, 300), syllabus: syllabus || undefined, mode: isClient ? source : undefined });
+      const r = await aiService.coverageGaps({
+        source: srcText || undefined, // build the checklist from the PDF/paste content
+        topic: t || undefined,        // fallback when there's no pasted text
+        questions: list.slice(0, 300),
+        syllabus: syllabus || undefined,
+        mode: isClient ? source : undefined,
+      });
       if (!syllabus && Array.isArray(r?.syllabus) && r.syllabus.length) setSyllabus(r.syllabus);
       setCoverage({ covered: r?.covered || [], missing: r?.missing || [] });
     } catch {
@@ -627,13 +637,14 @@ export default function AiImport({ open, onClose, onUpload, title = "Import Ques
 
             {task === "generate" && (
               <div className="mt-3">
-                {/* Optional topic name → enables the covered / not-covered analysis. */}
-                <label className="mb-1 block text-sm font-semibold">Topic / syllabus name <span className="font-normal text-slate-400">(optional — shows areas covered)</span></label>
+                {/* Optional name — coverage is auto-built from the PDF/source
+                    content, but a typed name helps for link-only runs. */}
+                <label className="mb-1 block text-sm font-semibold">Topic / syllabus name <span className="font-normal text-slate-400">(optional — coverage is auto-read from your PDF/source)</span></label>
                 <input
                   type="text"
                   value={genTopic}
                   onChange={(e) => setGenTopic(e.target.value)}
-                  placeholder='e.g. "Indian Economy", "French Revolution" — enables coverage tracking'
+                  placeholder='Optional label for this source (e.g. "Chapter 3 — Macroeconomics")'
                   className="input mb-3"
                 />
 
