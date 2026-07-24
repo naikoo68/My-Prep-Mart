@@ -978,7 +978,7 @@ async function runGenerationJob(id, ctx) {
   // batches and spreads the rate-limit load across all keys at once.
   const worker = async (ep) => {
     let quotaWaits = 0;
-    while (collected.length < target && attempts < MAX_ATTEMPTS && Date.now() < deadline) {
+    while (collected.length < target && attempts < MAX_ATTEMPTS && Date.now() < deadline && !job.cancelled) {
       const res = reserveChunk();
       if (!res) break; // nothing left to generate
       const prompt = plan
@@ -1045,6 +1045,7 @@ async function runGenerationJob(id, ctx) {
       (fallbackWorkers?.length || 0) > 0 &&
       collected.length < target &&
       Date.now() < deadline &&
+      !job.cancelled &&
       (collected.length === 0 || lastError?.status === 429)
     ) {
       lastError = null; // give the fallback pool a clean slate for error reporting
@@ -1052,7 +1053,15 @@ async function runGenerationJob(id, ctx) {
       await Promise.all(fallbackWorkers.map((ep) => worker(ep)));
     }
 
-    if (!collected.length) {
+    if (job.cancelled) {
+      // Stopped by the user — finalize as "done" with whatever was produced so
+      // far (may be empty) so the client can insert the partial batch.
+      save({
+        status: "done",
+        questions: collected.length ? balanceCorrectOptions(reorderNoConsecutiveTypes(collected)) : [],
+        error: "cancelled",
+      });
+    } else if (!collected.length) {
       let msg;
       if (lastError?.status === 429) {
         msg = quota429Message(lastError.detail);
@@ -1256,8 +1265,23 @@ export function jobStatus(req, res) {
     chunksDone: job.chunksDone,
     model: job.model,
     error: job.error,
+    cancelled: !!job.cancelled,
     questions: job.status === "done" ? job.questions : undefined,
   });
+}
+
+// POST /api/ai/job/:id/cancel  (admin/client) — request a running background job
+// to STOP. The workers (generate / import / extend / regenerate) check
+// job.cancelled between chunks and finish early, KEEPING whatever they produced
+// so far (the job still finalizes as "done" with the partial questions, so the
+// user can insert what was generated before stopping). An in-flight provider
+// call already sent isn't aborted — no NEW work is started once cancelled.
+export function cancelJob(req, res) {
+  const job = genJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ message: "Job not found or expired." });
+  job.cancelled = true;
+  job.updatedAt = Date.now();
+  res.json({ ok: true, status: job.status });
 }
 
 
@@ -1706,7 +1730,7 @@ async function runExtractionJob(id, { endpoints, model, chunks, owner = null, ha
 
   try {
     for (let c = 0; c < chunks.length; c++) {
-      if (Date.now() > deadline) break;
+      if (Date.now() > deadline || job.cancelled) break;
       const r = await callWithFallback({
         endpoints,
         model,
@@ -1733,7 +1757,9 @@ async function runExtractionJob(id, { endpoints, model, chunks, owner = null, ha
       save({ questions: collected.slice() });
     }
 
-    if (!collected.length) {
+    if (job.cancelled) {
+      save({ status: "done", questions: collected, error: "cancelled" });
+    } else if (!collected.length) {
       const msg =
         lastError?.status === 429
           ? "Gemini quota/rate limit reached before any questions were extracted. Wait a minute or use a different model."
@@ -2443,7 +2469,7 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
   const MAX_PASSES = 4;
   let pending = [...questions];
   try {
-    for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline; pass++) {
+    for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline && !job.cancelled; pass++) {
       const failed = [];
       let idx = 0;
       // One worker PER KEY (up to 10) — each starts on a DIFFERENT key (rotated
@@ -2455,7 +2481,7 @@ async function runExtendJob(id, { endpoints, model, questions, owner = null, not
       const WORKERS = Math.min(Math.max(nEps, 1), 10);
       const worker = async (wi) => {
         const eps = nEps > 1 ? rotate(endpoints, wi % nEps) : endpoints;
-        while (idx < pending.length && !keyDead && Date.now() < deadline) {
+        while (idx < pending.length && !keyDead && Date.now() < deadline && !job.cancelled) {
           const q = pending[idx++];
           let ok = false;
           try { ok = await extendOne(q, eps); } catch { ok = false; }
@@ -2910,7 +2936,7 @@ async function runRegenAllJob(id, { endpoints, model, questions, owner = null, n
   const MAX_PASSES = 4;
   let pending = [...questions];
   try {
-    for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline; pass++) {
+    for (let pass = 0; pass < MAX_PASSES && pending.length && !keyDead && Date.now() < deadline && !job.cancelled; pass++) {
       const failed = [];
       let idx = 0;
       const rotate = (arr, k) => arr.slice(k).concat(arr.slice(0, k));
@@ -2918,7 +2944,7 @@ async function runRegenAllJob(id, { endpoints, model, questions, owner = null, n
       const WORKERS = Math.min(Math.max(nEps, 1), 10);
       const worker = async (wi) => {
         const eps = nEps > 1 ? rotate(endpoints, wi % nEps) : endpoints;
-        while (idx < pending.length && !keyDead && Date.now() < deadline) {
+        while (idx < pending.length && !keyDead && Date.now() < deadline && !job.cancelled) {
           const q = pending[idx++];
           let ok = false;
           try { ok = await regenOne(q, eps); } catch { ok = false; }
