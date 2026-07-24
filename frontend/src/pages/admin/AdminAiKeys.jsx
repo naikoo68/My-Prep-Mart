@@ -257,6 +257,23 @@ export default function AdminAiKeys({ clientMode = false }) {
     }
   };
 
+  // Auto-detect + set the best working model for EVERY key at once (parallel).
+  const autoModelAll = async () => {
+    setBulkBusy("automodel");
+    setError("");
+    try {
+      const res = await aiService.keys.autoModelAll();
+      load();
+      if (res && typeof res.ok === "number" && res.ok < (res.total || 0)) {
+        setError(`Auto-picked models for ${res.ok} of ${res.total} key(s). ${res.failed} couldn't find a working model (invalid key or out of quota).`);
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBulkBusy("");
+    }
+  };
+
   const hasEnvKeys = keys.some((k) => k.source === "env");
   const activeCount = keys.filter((k) => k.enabled).length;
 
@@ -289,6 +306,11 @@ export default function AdminAiKeys({ clientMode = false }) {
           {keys.length > 0 && (
             <button onClick={testAll} disabled={bulkBusy === "test"} className="btn-outline">
               {bulkBusy === "test" ? <><Loader2 className="h-4 w-4 animate-spin" /> Testing…</> : <><RefreshCw className="h-4 w-4" /> Test all</>}
+            </button>
+          )}
+          {keys.length > 0 && (
+            <button onClick={autoModelAll} disabled={bulkBusy === "automodel"} className="btn-outline" title="Auto-detect & set the best working model for every key at once">
+              {bulkBusy === "automodel" ? <><Loader2 className="h-4 w-4 animate-spin" /> Picking models…</> : <><Wand2 className="h-4 w-4" /> Auto-pick models</>}
             </button>
           )}
           {hasEnvKeys && (
