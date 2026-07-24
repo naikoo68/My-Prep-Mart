@@ -31,8 +31,11 @@ const DESTS = {
     subjectKey: "subject",
     topicAdapter: {
       createTopic: async (s, name) => (await practiceService.createTopic({ subject: s.subject, name }))?._id,
-      createQuizAndContext: async (s, topicId, name) => {
-        const itemId = (await practiceService.createItem({ name, practiceStream: s.stream, practiceSubject: s.subject, practiceTopic: topicId, practiceKind: "quiz" }))?._id;
+      // Practice has no "session" level — quizzes attach directly to the topic.
+      prepareContainer: async (s, topicId) => topicId,
+      // Create ONE quiz item (Quiz 1/2/3…) under the topic and return its context.
+      createQuiz: async (s, topicId, quizName) => {
+        const itemId = (await practiceService.createItem({ name: quizName, practiceStream: s.stream, practiceSubject: s.subject, practiceTopic: topicId, practiceKind: "quiz" }))?._id;
         return { testSeries: itemId };
       },
       bulk: (questions, context) => contentService.bulkQuestions(questions, context),
@@ -72,9 +75,11 @@ const DESTS = {
     subjectKey: "subject",
     topicAdapter: {
       createTopic: async (s, name) => (await contentService.createTopic({ subject: s.subject, title: name }))?._id,
-      createQuizAndContext: async (s, topicId, name) => {
-        const sessionId = (await contentService.createSession({ subject: s.subject, topic: topicId, title: name }))?._id;
-        const quizId = (await contentService.createQuiz({ subject: s.subject, session: sessionId, title: name }))?._id;
+      // Content has a Session level: make ONE session per topic (named after the
+      // unit), then create Quiz 1/2/3… under it.
+      prepareContainer: async (s, topicId, unitName) => (await contentService.createSession({ subject: s.subject, topic: topicId, title: unitName }))?._id,
+      createQuiz: async (s, sessionId, quizName) => {
+        const quizId = (await contentService.createQuiz({ subject: s.subject, session: sessionId, title: quizName }))?._id;
         return { subject: s.subject, session: sessionId, quiz: quizId };
       },
       bulk: (questions, context) => contentService.bulkQuestions(questions, context),

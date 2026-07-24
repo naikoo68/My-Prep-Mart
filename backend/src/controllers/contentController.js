@@ -225,6 +225,82 @@ export async function moveQuiz(req, res) {
   res.json({ message: "Migrated", _id: quiz._id });
 }
 
+// POST /api/quizzes/:id/split  { perQuiz }
+// Split ONE quiz's questions into multiple quizzes of `perQuiz` each. The
+// original quiz keeps the first chunk (renamed "Quiz 1"); the rest go into new
+// quizzes "Quiz 2", "Quiz 3", … under the same session. e.g. 300 questions at
+// 50/quiz → Quiz 1..Quiz 6.
+export async function splitQuiz(req, res) {
+  const per = Math.max(1, Math.min(500, parseInt(req.body?.perQuiz, 10) || 50));
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+
+  const questions = await Question.find({ quiz: quiz._id }).sort("createdAt _id").select("_id").lean();
+  const total = questions.length;
+  if (total <= per) {
+    return res.json({ message: `No split needed — this quiz has ${total} question(s) (≤ ${per}).`, quizzes: 1, created: 0 });
+  }
+
+  // Chunk the question ids into groups of `per`.
+  const chunks = [];
+  for (let i = 0; i < total; i += per) chunks.push(questions.slice(i, i + per).map((q) => q._id));
+
+  // Original quiz becomes "Quiz 1" and keeps the first chunk (no move needed).
+  quiz.title = "Quiz 1";
+  await quiz.save();
+
+  // New quizzes for the remaining chunks, appended after existing quizzes.
+  let index = await Quiz.countDocuments({ session: quiz.session });
+  for (let k = 1; k < chunks.length; k++) {
+    const newQuiz = await Quiz.create({ title: `Quiz ${k + 1}`, subject: quiz.subject, session: quiz.session, index: index++ });
+    await Question.updateMany({ _id: { $in: chunks[k] } }, { $set: { quiz: newQuiz._id, session: quiz.session, subject: quiz.subject } });
+  }
+  res.json({ message: `Split ${total} questions into ${chunks.length} quizzes.`, quizzes: chunks.length, created: chunks.length - 1 });
+}
+
+// POST /api/topics/:id/split  { perQuiz }
+// Split ALL questions in a topic (across its sessions/quizzes) into quizzes of
+// `perQuiz` each, named "Quiz 1".."Quiz N", under a single session in the topic.
+// Now-empty quizzes and sessions are cleaned up. e.g. 200 questions at 50/quiz
+// → Quiz 1..Quiz 4.
+export async function splitTopic(req, res) {
+  const per = Math.max(1, Math.min(500, parseInt(req.body?.perQuiz, 10) || 50));
+  const topic = await Topic.findById(req.params.id);
+  if (!topic) return res.status(404).json({ message: "Topic not found" });
+
+  const sessions = await Session.find({ topic: topic._id }).sort("index createdAt");
+  const sessionIds = sessions.map((s) => s._id);
+  if (!sessionIds.length) return res.json({ message: "This topic has no sessions/questions yet.", quizzes: 0, created: 0 });
+
+  const questions = await Question.find({ session: { $in: sessionIds } }).sort("createdAt _id").select("_id").lean();
+  const total = questions.length;
+  if (!total) return res.json({ message: "This topic has no questions yet.", quizzes: 0, created: 0 });
+
+  // Target session: reuse the first session (keeps the topic tidy), rest are removed.
+  const targetSession = sessions[0];
+
+  const chunks = [];
+  for (let i = 0; i < total; i += per) chunks.push(questions.slice(i, i + per).map((q) => q._id));
+
+  // Remove the topic's existing quizzes (questions are reassigned below, not deleted).
+  await Quiz.deleteMany({ session: { $in: sessionIds } });
+
+  // Create Quiz 1..N under the target session and move each chunk's questions in.
+  for (let k = 0; k < chunks.length; k++) {
+    const newQuiz = await Quiz.create({ title: `Quiz ${k + 1}`, subject: targetSession.subject, session: targetSession._id, index: k });
+    await Question.updateMany(
+      { _id: { $in: chunks[k] } },
+      { $set: { quiz: newQuiz._id, session: targetSession._id, subject: targetSession.subject } }
+    );
+  }
+
+  // Drop the now-empty extra sessions (all questions live under targetSession now).
+  const extraSessionIds = sessionIds.filter((id) => String(id) !== String(targetSession._id));
+  if (extraSessionIds.length) await Session.deleteMany({ _id: { $in: extraSessionIds } });
+
+  res.json({ message: `Split ${total} questions into ${chunks.length} quizzes.`, quizzes: chunks.length, created: chunks.length });
+}
+
 // GET /api/quizzes/:quizId/questions — practice questions (with answers)
 export async function listQuizQuestions(req, res) {
   // Block students whose quiz access was disabled by an admin.

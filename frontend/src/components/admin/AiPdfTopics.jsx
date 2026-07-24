@@ -23,9 +23,10 @@ const Q_TYPES = [
 //
 // `adapter` (from AdminAiStudio) knows how to create a topic + a quiz for the
 // chosen destination (My Quiz practice OR Content quiz):
-//   adapter.createTopic(sel, name)              -> topicId
-//   adapter.createQuizAndContext(sel, topicId, name) -> bulkQuestions context
-//   adapter.bulk(questions, context)            -> { inserted }
+//   adapter.createTopic(sel, name)                 -> topicId
+//   adapter.prepareContainer(sel, topicId, unit)   -> container (session id / topic id)
+//   adapter.createQuiz(sel, container, quizName)   -> bulkQuestions context
+//   adapter.bulk(questions, context)               -> { inserted }
 // `sel` is the current Stream/Subject selection; `subjectName` is for display.
 const DIFFS = ["Easy", "Medium", "Hard"];
 
@@ -196,20 +197,29 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
     const ready = results.filter((r) => r.questions.length);
     if (!ready.length) { setMsg("Nothing to insert yet — generate first."); return; }
     setInserting(true); setMsg("");
-    let topics = 0, inserted = 0;
+    const QUIZ_SIZE = 50; // each topic's questions are split into quizzes of 50
+    let topics = 0, quizzes = 0, inserted = 0;
     try {
       for (const r of ready) {
         // Reuse the topic created during generation; create it now if missing.
         const topicId = r.topicId || (await adapter.createTopic(sel, r.unit));
         if (!topicId) throw new Error(`Could not create topic “${r.unit}”.`);
         r.topicId = topicId;
-        const context = await adapter.createQuizAndContext(sel, topicId, r.unit);
-        const res = await adapter.bulk(r.questions, context);
-        inserted += res?.inserted ?? r.questions.length;
+        // One container (a Session for content; the topic itself for practice).
+        const container = await adapter.prepareContainer(sel, topicId, r.unit);
+        // Split this topic's questions into chunks of 50 → Quiz 1, Quiz 2, …
+        const chunks = [];
+        for (let i = 0; i < r.questions.length; i += QUIZ_SIZE) chunks.push(r.questions.slice(i, i + QUIZ_SIZE));
+        for (let k = 0; k < chunks.length; k++) {
+          const context = await adapter.createQuiz(sel, container, `Quiz ${k + 1}`);
+          const res = await adapter.bulk(chunks[k], context);
+          inserted += res?.inserted ?? chunks[k].length;
+          quizzes += 1;
+        }
         topics += 1;
-        r.status = "inserted"; setResults((x) => x.slice());
+        r.status = "inserted"; r.quizzes = chunks.length; setResults((x) => x.slice());
       }
-      setMsg(`✓ Inserted ${inserted} question(s) into ${topics} topic(s). Open Content/My Practice to see them.`);
+      setMsg(`✓ Created ${topics} topic(s) with ${quizzes} quiz(zes) (up to ${QUIZ_SIZE} each) and inserted ${inserted} question(s). Open Content/My Practice to see them.`);
     } catch (err) {
       setMsg(err.message || "Insert failed.");
     } finally {
@@ -234,7 +244,7 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
 
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
           Upload a PDF — the AI detects its units/chapters, creates a topic for each under this subject, generates
-          questions per topic, and inserts them into a new quiz under every topic.
+          questions per topic, and splits them into quizzes of 50 (Quiz 1, Quiz 2, …) under every topic.
         </p>
 
         {canChooseSource && (
@@ -344,7 +354,7 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
                   {r.status === "working" && <Loader2 className="inline h-3.5 w-3.5 animate-spin text-brand-500" />}
                   {r.status === "pending" && <span className="text-slate-400">queued</span>}
                   {r.status === "done" && <span className="text-emerald-600">{r.count} questions</span>}
-                  {r.status === "inserted" && <span className="text-emerald-600">✓ inserted ({r.count})</span>}
+                  {r.status === "inserted" && <span className="text-emerald-600">✓ {r.count} in {r.quizzes || 1} quiz{(r.quizzes || 1) > 1 ? "zes" : ""}</span>}
                   {r.status === "error" && <span className="text-rose-600">{r.error || "failed"}</span>}
                 </span>
               </div>

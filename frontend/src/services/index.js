@@ -29,6 +29,8 @@ export const contentService = {
   questions: (sessionId) => api.get(`/sessions/${sessionId}/questions`),
   allQuestions: () => api.get("/questions"),
   moveQuiz: (id, data) => api.patch(`/quizzes/${id}/move`, data), // { session, copy }
+  splitQuiz: (id, perQuiz) => api.post(`/quizzes/${id}/split`, { perQuiz }), // split one quiz into quizzes of N
+  splitTopic: (id, perQuiz) => api.post(`/topics/${id}/split`, { perQuiz }), // split all a topic's questions into quizzes of N
   // streams (admin)
   createStream: (data) => api.post("/streams", data),
   updateStream: (id, data) => api.put(`/streams/${id}`, data),

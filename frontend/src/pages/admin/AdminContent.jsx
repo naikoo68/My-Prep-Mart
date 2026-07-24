@@ -16,7 +16,7 @@ import ExtendExplanationsModal from "../../components/admin/ExtendExplanationsMo
 import ExtendOneQuestionModal from "../../components/admin/ExtendOneQuestionModal";
 import RegenerateAllModal from "../../components/admin/RegenerateAllModal";
 import ScheduleQuestionModal from "../../components/admin/ScheduleQuestionModal";
-import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList, RefreshCw } from "lucide-react";
+import { Sparkles, Files, Globe, Wand2, Loader2, ClipboardList, RefreshCw, Scissors } from "lucide-react";
 
 const COLORS = [
   "from-blue-500 to-indigo-600",
@@ -60,6 +60,10 @@ export default function AdminContent() {
   const [regenId, setRegenId] = useState(null); // per-question regenerate in progress
   const [dupOpen, setDupOpen] = useState(false);
   const [dupScope, setDupScope] = useState({ id: "all", name: "" }); // which subject the duplicate scan targets
+  // Split a topic/quiz into quizzes of N. { kind: "quiz"|"topic", id, name, count }
+  const [splitTarget, setSplitTarget] = useState(null);
+  const [splitPer, setSplitPer] = useState(50);
+  const [splitting, setSplitting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [viewQ, setViewQ] = useState(null); // single question to preview
   const [addToTestQ, setAddToTestQ] = useState(null); // question being copied into a test
@@ -242,6 +246,26 @@ export default function AdminContent() {
       setError(e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Split a quiz (or a whole topic) into quizzes of `splitPer` questions each.
+  const doSplit = async () => {
+    if (!splitTarget) return;
+    const per = Math.max(1, parseInt(splitPer, 10) || 50);
+    setSplitting(true);
+    setError("");
+    try {
+      const res = splitTarget.kind === "topic"
+        ? await contentService.splitTopic(splitTarget.id, per)
+        : await contentService.splitQuiz(splitTarget.id, per);
+      setSplitTarget(null);
+      window.alert(res?.message || "Done.");
+      load(view);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSplitting(false);
     }
   };
 
@@ -513,6 +537,15 @@ export default function AdminContent() {
                     {regenId === item._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   </button>
                 )}
+                {(view === "quizzes" || view === "topics") && (
+                  <button
+                    onClick={() => { setSplitPer(50); setSplitTarget({ kind: view === "topics" ? "topic" : "quiz", id: item._id, name: item.title || item.name, count: item.questions ?? null }); }}
+                    title={view === "topics" ? "Split this topic's questions into quizzes of N" : "Split this quiz into quizzes of N"}
+                    className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+                  >
+                    <Scissors className="h-4 w-4" />
+                  </button>
+                )}
                 <button onClick={() => openEdit(item)} title="Edit" className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30">
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -582,6 +615,49 @@ export default function AdminContent() {
         currentTargetName={aiTarget?.title || quiz?.title || ""}
         onUpload={(questions, opts = {}) => saveAiBatch(questions, opts)}
       />
+
+      {/* Split a quiz / topic into quizzes of N */}
+      {splitTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={splitting ? undefined : () => setSplitTarget(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md animate-scale-in card p-6">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-lg font-bold"><Scissors className="h-5 w-5 text-indigo-600" /> Split into quizzes</h3>
+              <button type="button" onClick={() => setSplitTarget(null)} disabled={splitting}><X className="h-5 w-5" /></button>
+            </div>
+            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+              {splitTarget.kind === "topic"
+                ? <>Split all questions in the topic <b>“{splitTarget.name}”</b> into quizzes named Quiz 1, Quiz 2, …</>
+                : <>Split the quiz <b>“{splitTarget.name}”</b>{splitTarget.count != null ? <> ({splitTarget.count} questions)</> : null} into quizzes named Quiz 1, Quiz 2, …</>}
+            </p>
+            <label className="mb-1 block text-sm font-semibold">Questions per quiz</label>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={splitPer}
+              onChange={(e) => setSplitPer(e.target.value)}
+              className="input"
+              autoFocus
+            />
+            {splitTarget.count != null && (
+              <p className="mt-1 text-xs text-slate-400">
+                {splitTarget.count} questions ÷ {Math.max(1, parseInt(splitPer, 10) || 1)} = about {Math.ceil((splitTarget.count || 0) / Math.max(1, parseInt(splitPer, 10) || 1))} quiz(zes).
+              </p>
+            )}
+            {splitTarget.kind === "topic" && (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                This reorganises the whole topic: all its questions move into fresh Quiz 1…N under one session, and the topic's old quizzes are replaced.
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setSplitTarget(null)} disabled={splitting} className="btn-outline">Cancel</button>
+              <button type="button" onClick={doSplit} disabled={splitting} className="btn-primary">
+                {splitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Splitting…</> : <><Scissors className="h-4 w-4" /> Split</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DuplicatesModal
         open={dupOpen}
