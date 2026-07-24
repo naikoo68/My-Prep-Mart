@@ -6,6 +6,17 @@ import {
 import { aiService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 
+// The question types the generator can produce (same set as the AI Generator).
+const Q_TYPES = [
+  { id: "mcq", label: "MCQ" },
+  { id: "matching", label: "Matching" },
+  { id: "statement", label: "Statements" },
+  { id: "pair", label: "Pairs" },
+  { id: "pairselect", label: "Pair select" },
+  { id: "assertion", label: "Assertion & Reason" },
+  { id: "table", label: "Table" },
+];
+
 // PDF → Topics: upload a PDF (or paste text), auto-detect its units/chapters,
 // create one topic per unit under the chosen subject, generate questions spread
 // across those units, then insert them (auto-creating a quiz under each topic).
@@ -33,8 +44,8 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
 
   const [units, setUnits] = useState([]);         // detected units (editable)
   const [detecting, setDetecting] = useState(false);
-  const [perTopic, setPerTopic] = useState(20);   // questions per unit
-  const [difficulty, setDifficulty] = useState("Medium");
+  // Per-topic question mix: matrix[typeId] = { Easy, Medium, Hard }. Default 20 medium MCQs.
+  const [matrix, setMatrix] = useState({ mcq: { Easy: 0, Medium: 20, Hard: 0 } });
 
   const [generating, setGenerating] = useState(false);
   const [results, setResults] = useState([]);     // [{ unit, questions:[], status, count }]
@@ -47,10 +58,22 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
   useEffect(() => {
     if (!open) return;
     setText(""); setPdfName(""); setUnits([]); setResults([]); setCoverage(null); setMsg("");
-    setPerTopic(20); setDifficulty("Medium"); setGenerating(false); setInserting(false);
+    setMatrix({ mcq: { Easy: 0, Medium: 20, Hard: 0 } }); setGenerating(false); setInserting(false);
     aiService.status(isClient ? apiSource : undefined).then(setStatus).catch(() => setStatus(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // ---- Type × difficulty matrix helpers (mirrors the AI Generator) ----
+  const setCell = (type, diff, val) => {
+    const n = Math.max(0, Math.min(maxPerBatch, parseInt(val, 10) || 0));
+    setMatrix((m) => ({ ...m, [type]: { ...(m[type] || {}), [diff]: n } }));
+  };
+  const rowTotal = (type) => DIFFS.reduce((s, d) => s + (matrix[type]?.[d] || 0), 0);
+  const perTopicTotal = Q_TYPES.reduce((s, t) => s + rowTotal(t.id), 0);
+  const buildPlan = () =>
+    Q_TYPES.flatMap((t) =>
+      DIFFS.map((d) => ({ type: t.id, difficulty: d, count: matrix[t.id]?.[d] || 0 })).filter((e) => e.count > 0)
+    );
 
   // ---- Read an uploaded PDF (or Word/PPT/etc) into the source text ----
   const handleFile = async (e) => {
@@ -114,21 +137,30 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
     const clean = units.map((u) => u.name.trim()).filter(Boolean);
     if (!clean.length) { setMsg("Add at least one unit/topic."); return; }
     if (!text.trim()) { setMsg("Upload a PDF or paste text first."); return; }
-    const count = Math.max(1, Math.min(maxPerBatch, parseInt(perTopic, 10) || 20));
+    const plan = buildPlan();
+    if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
+    if (perTopicTotal > maxPerBatch) { setMsg(`Keep each topic to ${maxPerBatch} questions or fewer.`); return; }
     setGenerating(true); setMsg(""); setCoverage(null);
-    const out = clean.map((unit) => ({ unit, questions: [], status: "pending", count: 0 }));
+    // A topic is auto-CREATED under the subject for each unit as we go, so the
+    // topics appear immediately (even before questions are inserted).
+    const out = clean.map((unit) => ({ unit, questions: [], status: "pending", count: 0, topicId: null }));
     setResults(out.slice());
     try {
       for (let i = 0; i < clean.length; i++) {
         const unit = clean[i];
         out[i].status = "working"; setResults(out.slice());
-        setMsg(`Generating ${count} questions for “${unit}” (${i + 1}/${clean.length})…`);
+        setMsg(`Creating topic + generating ${perTopicTotal} questions for “${unit}” (${i + 1}/${clean.length})…`);
         try {
+          // 1) Auto-create the topic under the subject.
+          if (!out[i].topicId) {
+            out[i].topicId = await adapter.createTopic(sel, unit);
+          }
+          // 2) Generate this unit's questions FROM the PDF, using the full mix.
           const { jobId } = await aiService.generate({
             source: text.trim(),
             topic: unit, // focus this batch on the unit
             notes: `Write the questions ONLY about "${unit}" as covered in the source material.`,
-            plan: [{ type: "mcq", difficulty, count }],
+            plan,
             mode: isClient ? apiSource : undefined,
           });
           if (!jobId) throw new Error("Could not start generation.");
@@ -140,7 +172,8 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
         setResults(out.slice());
       }
       const total = out.reduce((s, r) => s + r.count, 0);
-      setMsg(`✓ Generated ${total} question(s) across ${clean.length} topic(s). Review below, then Insert.`);
+      const madeTopics = out.filter((r) => r.topicId).length;
+      setMsg(`✓ Created ${madeTopics} topic(s) and generated ${total} question(s). Review below, then click Insert.`);
       // Overall coverage against the PDF (areas covered vs not).
       refreshCoverage(out.flatMap((r) => r.questions.map((q) => q.text)).filter(Boolean));
     } catch (err) {
@@ -166,15 +199,17 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
     let topics = 0, inserted = 0;
     try {
       for (const r of ready) {
-        const topicId = await adapter.createTopic(sel, r.unit);
+        // Reuse the topic created during generation; create it now if missing.
+        const topicId = r.topicId || (await adapter.createTopic(sel, r.unit));
         if (!topicId) throw new Error(`Could not create topic “${r.unit}”.`);
+        r.topicId = topicId;
         const context = await adapter.createQuizAndContext(sel, topicId, r.unit);
         const res = await adapter.bulk(r.questions, context);
         inserted += res?.inserted ?? r.questions.length;
         topics += 1;
         r.status = "inserted"; setResults((x) => x.slice());
       }
-      setMsg(`✓ Created ${topics} topic(s) and inserted ${inserted} question(s). Open Content/My Practice to see them.`);
+      setMsg(`✓ Inserted ${inserted} question(s) into ${topics} topic(s). Open Content/My Practice to see them.`);
     } catch (err) {
       setMsg(err.message || "Insert failed.");
     } finally {
@@ -184,7 +219,7 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
 
   if (!open) return null;
 
-  const totalToGenerate = units.filter((u) => u.name.trim()).length * Math.max(1, Math.min(maxPerBatch, parseInt(perTopic, 10) || 20));
+  const totalToGenerate = units.filter((u) => u.name.trim()).length * perTopicTotal;
   const generatedTotal = results.reduce((s, r) => s + r.count, 0);
 
   return (
@@ -247,27 +282,54 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
           <button type="button" onClick={addUnit} className="btn-outline !py-1 text-xs"><Plus className="h-3.5 w-3.5" /> Add topic</button>
         </div>
 
-        {/* Step 3 — how many per topic */}
+        {/* Step 3 — question mix per topic (type × difficulty) */}
         {units.some((u) => u.name.trim()) && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-semibold">Questions per topic</label>
-              <input type="number" min={1} max={maxPerBatch} value={perTopic} onChange={(e) => setPerTopic(e.target.value)} className="input" />
-              <p className="mt-1 text-xs text-slate-400">Up to {maxPerBatch} per topic · total ≈ {totalToGenerate}</p>
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-semibold">3. Questions per topic (by type &amp; difficulty)</label>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${perTopicTotal > maxPerBatch ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30" : "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"}`}>
+                {perTopicTotal} / topic
+              </span>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold">Difficulty</label>
-              <select className="input" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-                {DIFFS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+            <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              <table className="w-full min-w-[360px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
+                    <th className="px-3 py-2 text-left font-semibold">Type</th>
+                    {DIFFS.map((d) => <th key={d} className="px-2 py-2 text-center font-semibold">{d}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Q_TYPES.map((t) => (
+                    <tr key={t.id} className={`border-b border-slate-100 last:border-0 dark:border-slate-800 ${rowTotal(t.id) > 0 ? "bg-brand-50/40 dark:bg-brand-900/10" : ""}`}>
+                      <td className="px-3 py-1.5 font-medium text-slate-700 dark:text-slate-200">{t.label}</td>
+                      {DIFFS.map((d) => (
+                        <td key={d} className="px-2 py-1.5 text-center">
+                          <input
+                            type="number"
+                            min={0}
+                            max={maxPerBatch}
+                            value={matrix[t.id]?.[d] || 0}
+                            onChange={(e) => setCell(t.id, d, e.target.value)}
+                            className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm dark:border-slate-700 dark:bg-slate-900"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+            <p className="mt-1 text-xs text-slate-400">
+              Set a count in any cell (e.g. 30 Medium MCQ + 10 Matching). Up to {maxPerBatch} per topic · total ≈ {totalToGenerate} across all topics.
+            </p>
           </div>
         )}
 
         {/* Step 4 — generate */}
         {units.some((u) => u.name.trim()) && (
           <button type="button" onClick={generateAll} disabled={generating || inserting || !status?.enabled} className="btn-primary mt-4 w-full">
-            {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Sparkles className="h-4 w-4" /> Generate questions for all topics</>}
+            {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating topics &amp; generating…</> : <><Sparkles className="h-4 w-4" /> Create topics &amp; generate questions</>}
           </button>
         )}
 
