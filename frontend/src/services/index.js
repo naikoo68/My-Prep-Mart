@@ -306,6 +306,7 @@ export const aiService = {
   status: (mode) => api.get(`/ai/status${mode ? `?mode=${encodeURIComponent(mode)}` : ""}`),
   generate: (data) => api.post("/ai/generate", data), // returns { jobId, requested }
   job: (id) => api.get(`/ai/job/${id}`), // poll: { status, count, requested, questions? }
+  cancelJob: (id) => api.post(`/ai/job/${id}/cancel`), // stop a running job → keeps partial results
   extract: (data) => api.post("/ai/extract", data), // import questions from a URL/text → { questions }
   notes: (data) => api.post("/ai/notes", data), // generate study notes (Markdown) on a topic
   inferTopic: (data) => api.post("/ai/infer-topic", data), // name the topic a quiz's existing questions belong to → { topic }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { X, Sparkles, Wand2, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, ListChecks, Circle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, Sparkles, Wand2, CheckCircle2, AlertTriangle, Loader2, Server, KeyRound, ListChecks, Circle, Square } from "lucide-react";
 import { aiService } from "../../services";
 import { useAuth } from "../../context/AuthContext";
 
@@ -42,6 +42,9 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
   const [notes, setNotes] = useState("");
   const [preview, setPreview] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false); // user asked to stop the current generation
+  const jobIdRef = useRef(null); // id of the running background job (so Stop can cancel it)
+  const stopRef = useRef(false); // set when the user clicks Stop — breaks/short-circuits the poll loop
   const [inserting, setInserting] = useState(false);
   const [msg, setMsg] = useState("");
   const [destChoice, setDestChoice] = useState("current"); // "current" | "new" (where the batch is inserted)
@@ -150,6 +153,9 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
     if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
     if (total > maxPerBatch) { setMsg(`Please keep the total to ${maxPerBatch} questions or fewer per batch.`); return; }
     setBusy(true);
+    setStopping(false);
+    stopRef.current = false;
+    jobIdRef.current = null;
     if (!append) setPreview([]);
     setMsg(append ? `Generating ${total} more from this topic (no duplicates)…` : `Starting generation of ${total} question(s)…`);
     try {
@@ -164,6 +170,7 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
         mode: isClient ? source : undefined, // which key pool to use for this run
       });
       if (!jobId) throw new Error("Could not start generation.");
+      jobIdRef.current = jobId; // remember it so the Stop button can cancel this run
 
       // Poll the background job for progress until it finishes.
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -187,24 +194,27 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
           refreshCoverage(Array.from(new Set([...avoidStems, ...batchStems])));
           const short = qs.length < requested;
           const quota = s.error === "quota";
+          const cancelled = s.error === "cancelled" || stopRef.current;
           setMsg(
-            (append
-              ? `✓ Added ${qs.length} more question(s)${s.model ? ` with ${s.model}` : ""}.`
-              : `✓ Generated ${qs.length} of ${requested} question(s)${s.model ? ` with ${s.model}` : ""}.`) +
-              (short && quota
-                ? " Stopped early — Gemini free-tier quota was reached. Insert these, then generate the rest in a minute."
-                : short
-                ? " (Some couldn't be generated — click “Generate more” to top up.)"
-                : append
-                ? " No duplicates of the earlier questions. Review & Insert."
-                : " Review below, then Insert.")
+            cancelled
+              ? `⏹ Stopped. Kept ${qs.length} question(s) generated so far${s.model ? ` with ${s.model}` : ""} — review & Insert below, or Generate more.`
+              : (append
+                  ? `✓ Added ${qs.length} more question(s)${s.model ? ` with ${s.model}` : ""}.`
+                  : `✓ Generated ${qs.length} of ${requested} question(s)${s.model ? ` with ${s.model}` : ""}.`) +
+                  (short && quota
+                    ? " Stopped early — Gemini free-tier quota was reached. Insert these, then generate the rest in a minute."
+                    : short
+                    ? " (Some couldn't be generated — click “Generate more” to top up.)"
+                    : append
+                    ? " No duplicates of the earlier questions. Review & Insert."
+                    : " Review below, then Insert.")
           );
           done = true;
         } else if (s.status === "error") {
           setMsg(s.error || "Generation failed.");
           done = true;
         } else {
-          setMsg(`Generating… ${s.count || 0} of ${requested} ready`);
+          setMsg(stopRef.current ? `Stopping… keeping the ${s.count || 0} generated so far` : `Generating… ${s.count || 0} of ${requested} ready`);
         }
       }
       if (!done) setMsg("Still generating — this is taking longer than expected. Please try a smaller batch.");
@@ -212,6 +222,23 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
       setMsg(e.message || "Generation failed.");
     } finally {
       setBusy(false);
+      setStopping(false);
+      stopRef.current = false;
+      jobIdRef.current = null;
+    }
+  };
+
+  // Stop the current generation. Tells the server to cancel the background job;
+  // the poll loop then finalizes with whatever was produced so far, so the
+  // partial batch still shows up for review/insert.
+  const stop = async () => {
+    stopRef.current = true;
+    setStopping(true);
+    setMsg("Stopping…");
+    try {
+      if (jobIdRef.current) await aiService.cancelJob(jobIdRef.current);
+    } catch {
+      /* best-effort — the poll loop still winds down on the next finalize */
     }
   };
 
@@ -440,6 +467,18 @@ export default function AiGenerate({ open, onClose, onUpload, title = "Generate 
             >
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</> : <><Wand2 className="h-4 w-4" /> Generate</>}
             </button>
+
+            {busy && (
+              <button
+                type="button"
+                onClick={stop}
+                disabled={stopping}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                title="Stop generating — keeps the questions already produced so you can insert them"
+              >
+                {stopping ? <><Loader2 className="h-4 w-4 animate-spin" /> Stopping…</> : <><Square className="h-4 w-4" /> Stop generating</>}
+              </button>
+            )}
 
             {preview.length > 0 && (
               <button

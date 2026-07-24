@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  aiStatus, generateQuestions, jobStatus, extractQuestions, generateNotes, extendExplanations, extendOneExplanation, regenerateQuestion, regenerateAll,
+  aiStatus, generateQuestions, jobStatus, cancelJob, extractQuestions, generateNotes, extendExplanations, extendOneExplanation, regenerateQuestion, regenerateAll,
   listKeys, createKey, bulkCreateKeys, updateKey, deleteKey, testKey, importEnvKeys, testAllKeys, listKeyModels, autoDetectKeyModel,
   getAiAccess, setAiMode, inferTopic, coverageGaps, outlineUnits, classifyUnits,
 } from "../controllers/aiController.js";
@@ -16,6 +16,7 @@ const manage = [protect, authorize("admin", "client")];
 router.get("/status", ...manage, aiStatus);
 router.post("/generate", ...manage, generateQuestions);
 router.get("/job/:id", ...manage, jobStatus);
+router.post("/job/:id/cancel", ...manage, cancelJob); // stop a running job, keep partial results
 router.post("/extract", ...manage, extractQuestions);
 router.post("/notes", ...manage, generateNotes); // generate study notes (Markdown) on a topic
 router.post("/infer-topic", ...manage, inferTopic); // name the topic a quiz's existing questions belong to
