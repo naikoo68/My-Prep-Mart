@@ -135,6 +135,33 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
     throw new Error("Generation timed out.");
   };
 
+  // De-duplicate by normalized stem when merging batches for a topic.
+  const normStem = (t) => String(t || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const mergeUnique = (arr, incoming) => {
+    const seen = new Set(arr.map((q) => normStem(q.text)));
+    for (const q of incoming || []) {
+      const k = normStem(q.text);
+      if (k && !seen.has(k)) { seen.add(k); arr.push(q); }
+    }
+    return arr;
+  };
+
+  // One generation job for a unit. Pass a `plan` (type×difficulty mix) OR a
+  // plain `count` (used for top-up rounds), plus `avoid` stems to prevent repeats.
+  const genOnce = async (unit, { plan, count, avoid }) => {
+    const body = {
+      source: text.trim(),
+      topic: unit,
+      notes: `Write the questions ONLY about "${unit}" as covered in the source material.`,
+      mode: isClient ? apiSource : undefined,
+    };
+    if (plan) body.plan = plan; else body.count = count;
+    if (avoid && avoid.length) body.avoid = avoid.slice(-300);
+    const { jobId } = await aiService.generate(body);
+    if (!jobId) throw new Error("Could not start generation.");
+    return await pollJob(jobId);
+  };
+
   const generateAll = async () => {
     const clean = units.map((u) => u.name.trim()).filter(Boolean);
     if (!clean.length) { setMsg("Add at least one unit/topic."); return; }
@@ -142,32 +169,47 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
     const plan = buildPlan();
     if (!plan.length) { setMsg("Set at least one question count in the grid below."); return; }
     if (perTopicTotal > maxPerBatch) { setMsg(`Keep each topic to ${maxPerBatch} questions or fewer.`); return; }
+    const requested = perTopicTotal;
+    const MAX_TOPUP_ROUNDS = 4; // extra passes to fill any shortfall per topic
     setGenerating(true); setMsg(""); setCoverage(null);
     // A topic is auto-CREATED under the subject for each unit as we go, so the
     // topics appear immediately (even before questions are inserted).
-    const out = clean.map((unit) => ({ unit, questions: [], status: "pending", count: 0, topicId: null }));
+    const out = clean.map((unit) => ({ unit, questions: [], status: "pending", count: 0, requested, topicId: null }));
     setResults(out.slice());
     try {
       for (let i = 0; i < clean.length; i++) {
         const unit = clean[i];
         out[i].status = "working"; setResults(out.slice());
-        setMsg(`Creating topic + generating ${perTopicTotal} questions for “${unit}” (${i + 1}/${clean.length})…`);
+        setMsg(`Creating topic + generating ${requested} questions for “${unit}” (${i + 1}/${clean.length})…`);
         try {
           // 1) Auto-create the topic under the subject.
-          if (!out[i].topicId) {
-            out[i].topicId = await adapter.createTopic(sel, unit);
+          if (!out[i].topicId) out[i].topicId = await adapter.createTopic(sel, unit);
+
+          // 2) First pass — the full type/difficulty mix.
+          const collected = [];
+          mergeUnique(collected, await genOnce(unit, { plan }));
+          out[i].count = collected.length; setResults(out.slice());
+
+          // 3) Top-up rounds — refill the shortfall (avoiding duplicates) until
+          //    the target is met or a round adds nothing (source exhausted/quota).
+          let round = 0;
+          while (collected.length < requested && round < MAX_TOPUP_ROUNDS) {
+            const shortfall = requested - collected.length;
+            setMsg(`Topping up “${unit}” — ${collected.length}/${requested} so far (round ${round + 1})…`);
+            const before = collected.length;
+            let more = [];
+            try {
+              more = await genOnce(unit, { count: shortfall, avoid: collected.map((q) => q.text).filter(Boolean) });
+            } catch { /* keep what we have */ }
+            mergeUnique(collected, more);
+            out[i].count = collected.length; setResults(out.slice());
+            if (collected.length <= before) break; // no new distinct questions — stop retrying
+            round += 1;
           }
-          // 2) Generate this unit's questions FROM the PDF, using the full mix.
-          const { jobId } = await aiService.generate({
-            source: text.trim(),
-            topic: unit, // focus this batch on the unit
-            notes: `Write the questions ONLY about "${unit}" as covered in the source material.`,
-            plan,
-            mode: isClient ? apiSource : undefined,
-          });
-          if (!jobId) throw new Error("Could not start generation.");
-          const qs = await pollJob(jobId);
-          out[i].questions = qs; out[i].count = qs.length; out[i].status = "done";
+
+          out[i].questions = collected;
+          out[i].count = collected.length;
+          out[i].status = "done";
         } catch (err) {
           out[i].status = "error"; out[i].error = err.message || "Failed";
         }
@@ -175,11 +217,57 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
       }
       const total = out.reduce((s, r) => s + r.count, 0);
       const madeTopics = out.filter((r) => r.topicId).length;
-      setMsg(`✓ Created ${madeTopics} topic(s) and generated ${total} question(s). Review below, then click Insert.`);
+      const short = out.filter((r) => r.status === "done" && r.count < requested);
+      setMsg(
+        `✓ Created ${madeTopics} topic(s) and generated ${total} question(s).` +
+        (short.length ? ` ${short.length} topic(s) came up short (likely the AI's daily quota, or the PDF doesn't have enough distinct content for that unit) — click “Top up short topics” to try again.` : " Review below, then click Insert.")
+      );
       // Overall coverage against the PDF (areas covered vs not).
       refreshCoverage(out.flatMap((r) => r.questions.map((q) => q.text)).filter(Boolean));
     } catch (err) {
       setMsg(err.message || "Generation failed.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Retry ONLY the topics that fell short of their target (avoiding duplicates).
+  const topUpShort = async () => {
+    const out = results.slice();
+    const shortIdx = out.map((r, i) => (r.status === "done" && r.count < (r.requested || 0) ? i : -1)).filter((i) => i >= 0);
+    if (!shortIdx.length) { setMsg("All topics are already at their target."); return; }
+    setGenerating(true); setMsg("");
+    const MAX_TOPUP_ROUNDS = 4;
+    try {
+      for (const i of shortIdx) {
+        const r = out[i];
+        const requested = r.requested || 0;
+        const collected = r.questions.slice();
+        out[i].status = "working"; setResults(out.slice());
+        let round = 0;
+        while (collected.length < requested && round < MAX_TOPUP_ROUNDS) {
+          const shortfall = requested - collected.length;
+          setMsg(`Topping up “${r.unit}” — ${collected.length}/${requested} (round ${round + 1})…`);
+          const before = collected.length;
+          let more = [];
+          try {
+            more = await genOnce(r.unit, { count: shortfall, avoid: collected.map((q) => q.text).filter(Boolean) });
+          } catch { /* keep what we have */ }
+          mergeUnique(collected, more);
+          out[i].questions = collected; out[i].count = collected.length; setResults(out.slice());
+          if (collected.length <= before) break;
+          round += 1;
+        }
+        out[i].status = "done"; setResults(out.slice());
+      }
+      const stillShort = out.filter((r) => r.status === "done" && r.count < (r.requested || 0));
+      const total = out.reduce((s, r) => s + r.count, 0);
+      setMsg(
+        `✓ Now ${total} question(s) total.` +
+        (stillShort.length ? ` ${stillShort.length} topic(s) still short — the AI likely can't produce more distinct questions for those units (or the daily quota is spent). You can Insert what you have.` : " All topics reached their target. Review, then Insert.")
+      );
+    } catch (err) {
+      setMsg(err.message || "Top-up failed.");
     } finally {
       setGenerating(false);
     }
@@ -360,13 +448,22 @@ export default function AiPdfTopics({ open, onClose, adapter, sel, subjectName =
         {results.length > 0 && (
           <div className="mt-4 space-y-1.5 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
             <p className="mb-1 text-sm font-semibold">Per-topic questions ({generatedTotal} total)</p>
+            {results.some((r) => r.status === "done" && r.requested && r.count < r.requested) && (
+              <button type="button" onClick={topUpShort} disabled={generating || inserting} className="btn-outline mb-2 w-full text-amber-600">
+                {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> Topping up…</> : <><Sparkles className="h-4 w-4" /> Top up short topics</>}
+              </button>
+            )}
             {results.map((r, i) => (
               <div key={i} className="flex items-center justify-between gap-2 text-sm">
                 <span className="truncate text-slate-600 dark:text-slate-300">{r.unit}</span>
                 <span className="flex-shrink-0 font-semibold">
                   {r.status === "working" && <Loader2 className="inline h-3.5 w-3.5 animate-spin text-brand-500" />}
                   {r.status === "pending" && <span className="text-slate-400">queued</span>}
-                  {r.status === "done" && <span className="text-emerald-600">{r.count} questions</span>}
+                  {r.status === "done" && (
+                    <span className={r.requested && r.count < r.requested ? "text-amber-600" : "text-emerald-600"}>
+                      {r.count}{r.requested && r.count < r.requested ? ` / ${r.requested}` : ""} questions
+                    </span>
+                  )}
                   {r.status === "inserted" && <span className="text-emerald-600">✓ {r.count} in {r.quizzes || 1} quiz{(r.quizzes || 1) > 1 ? "zes" : ""}</span>}
                   {r.status === "error" && <span className="text-rose-600">{r.error || "failed"}</span>}
                 </span>
